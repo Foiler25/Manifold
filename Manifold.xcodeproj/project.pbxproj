@@ -35,6 +35,13 @@
 			remoteGlobalIDString = A100000000000000000020A1;
 			remoteInfo = ManifoldKit;
 		};
+		A100000000000000000040F1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A100000000000000000000A1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A100000000000000000010A1;
+			remoteInfo = Manifold;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -66,6 +73,7 @@
 		A100000000000000000010B1 /* Manifold.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Manifold.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A100000000000000000020B1 /* ManifoldKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ManifoldKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A100000000000000000030B1 /* ManifoldWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ManifoldWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A100000000000000000040B1 /* ManifoldTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ManifoldTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -109,6 +117,11 @@
 			path = ManifoldWidget;
 			sourceTree = "<group>";
 		};
+		A100000000000000000040B2 /* ManifoldTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ManifoldTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +148,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A100000000000000000040D2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -144,6 +164,7 @@
 				A100000000000000000010B2 /* Manifold */,
 				A100000000000000000020B2 /* ManifoldKit */,
 				A100000000000000000030B2 /* ManifoldWidget */,
+				A100000000000000000040B2 /* ManifoldTests */,
 				A100000000000000000000B2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -154,6 +175,7 @@
 				A100000000000000000010B1 /* Manifold.app */,
 				A100000000000000000020B1 /* ManifoldKit.framework */,
 				A100000000000000000030B1 /* ManifoldWidget.appex */,
+				A100000000000000000040B1 /* ManifoldTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -226,6 +248,27 @@
 			productReference = A100000000000000000030B1 /* ManifoldWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		A100000000000000000040A1 /* ManifoldTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A100000000000000000040C0 /* Build configuration list for PBXNativeTarget "ManifoldTests" */;
+			buildPhases = (
+				A100000000000000000040D1 /* Sources */,
+				A100000000000000000040D2 /* Frameworks */,
+				A100000000000000000040D3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A100000000000000000040E1 /* PBXTargetDependency on Manifold */,
+			);
+			fileSystemSynchronizedGroups = (
+				A100000000000000000040B2 /* ManifoldTests */,
+			);
+			name = ManifoldTests;
+			productName = ManifoldTests;
+			productReference = A100000000000000000040B1 /* ManifoldTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -244,6 +287,10 @@
 					};
 					A100000000000000000030A1 = {
 						CreatedOnToolsVersion = 26.4.1;
+					};
+					A100000000000000000040A1 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = A100000000000000000010A1;
 					};
 				};
 			};
@@ -264,6 +311,7 @@
 				A100000000000000000010A1 /* Manifold */,
 				A100000000000000000020A1 /* ManifoldKit */,
 				A100000000000000000030A1 /* ManifoldWidget */,
+				A100000000000000000040A1 /* ManifoldTests */,
 			);
 		};
 /* End PBXProject section */
@@ -277,6 +325,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A100000000000000000030D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A100000000000000000040D3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -317,6 +372,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A100000000000000000040D1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -334,6 +396,11 @@
 			isa = PBXTargetDependency;
 			target = A100000000000000000020A1 /* ManifoldKit */;
 			targetProxy = A100000000000000000030F1 /* PBXContainerItemProxy */;
+		};
+		A100000000000000000040E1 /* PBXTargetDependency on Manifold */ = {
+			isa = PBXTargetDependency;
+			target = A100000000000000000010A1 /* Manifold */;
+			targetProxy = A100000000000000000040F1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -480,7 +547,6 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
@@ -514,7 +580,6 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
@@ -551,7 +616,6 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
@@ -588,7 +652,6 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
@@ -619,7 +682,6 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
@@ -650,13 +712,68 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
 				SWIFT_UPCOMING_FEATURE_INTERNAL_IMPORTS_BY_DEFAULT = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A100000000000000000040C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Loofa.ManifoldTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_INTERNAL_IMPORTS_BY_DEFAULT = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Manifold.app/Contents/MacOS/Manifold";
+			};
+			name = Debug;
+		};
+		A100000000000000000040C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Loofa.ManifoldTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_INTERNAL_IMPORTS_BY_DEFAULT = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Manifold.app/Contents/MacOS/Manifold";
 			};
 			name = Release;
 		};
@@ -695,6 +812,15 @@
 			buildConfigurations = (
 				A100000000000000000030C1 /* Debug */,
 				A100000000000000000030C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A100000000000000000040C0 /* Build configuration list for PBXNativeTarget "ManifoldTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000000000000000040C1 /* Debug */,
+				A100000000000000000040C2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

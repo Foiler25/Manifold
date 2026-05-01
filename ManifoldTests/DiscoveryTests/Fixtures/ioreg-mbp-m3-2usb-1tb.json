@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "captureSource": "Hand-crafted representative fixture for SPEC.md §18 Phase 1. Models a MacBook Pro (M3) with two stand-alone USB peripherals plus an Apple Studio Display attached over Thunderbolt — the Studio Display publishes its integrated USB-C hub on the IOUSBHostDevice plane, which is why it appears here.",
+  "devices": [
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd0@2280000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@01000000/AppleEmbeddedUSBXHCIRootHubUSB30@01000000/IOUSBHostInterface@0/IOUSBHostDevice@01100000",
+      "idVendor": 1133,
+      "idProduct": 50475,
+      "USB Product Name": "USB Receiver",
+      "USB Vendor Name": "Logitech",
+      "iSerialNumber": null,
+      "bcdUSB": 528,
+      "Speed": 2,
+      "Requested Power": 98,
+      "PortNum": 1,
+      "locationID": 17825792
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd1@2A80000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@02000000/AppleEmbeddedUSBXHCIRootHubUSB30@02000000/IOUSBHostInterface@0/IOUSBHostDevice@02100000",
+      "idVendor": 1921,
+      "idProduct": 21922,
+      "USB Product Name": "Extreme Pro SSD",
+      "USB Vendor Name": "SanDisk",
+      "iSerialNumber": "0123456789ABCDEF",
+      "bcdUSB": 800,
+      "Speed": 4,
+      "Requested Power": 896,
+      "PortNum": 1,
+      "locationID": 33554432
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd2@2C80000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@03000000/AppleEmbeddedUSBXHCIRootHubUSB30@03000000/IOUSBHostInterface@0/IOUSBHostDevice@03100000",
+      "idVendor": 1452,
+      "idProduct": 4400,
+      "USB Product Name": "Studio Display",
+      "USB Vendor Name": "Apple Inc.",
+      "iSerialNumber": "F2LXDAAAJK3M",
+      "bcdUSB": 800,
+      "Speed": 4,
+      "Requested Power": 500,
+      "PortNum": 1,
+      "locationID": 50331648
+    }
+  ]
+}

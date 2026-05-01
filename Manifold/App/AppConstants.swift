@@ -48,4 +48,11 @@ enum AppConstants {
     /// extension for snapshot file IO. Defined here so both targets agree
     /// on the same string. Used in earnest from Phase 13.
     static let appGroupIdentifier: String = "group.com.Loofa.Manifold"
+
+    /// Size of the Phase-1 placeholder popover. Wide enough to fit a
+    /// device row's fallback "VID:PID" caption on one line; tall enough
+    /// for a typical 4-6 device list without scrolling. Phase 4's full
+    /// popover may revisit these dimensions when `OutlineGroup` is
+    /// introduced for hierarchy display.
+    static let popoverContentSize: CGSize = CGSize(width: 320, height: 360)
 }

@@ -48,6 +48,42 @@
           }
         }
       }
+    },
+    "popover.devices.count" : {
+      "comment" : "Phase-1 popover header: pluralised count of connected USB devices. %lld is the count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld device connected"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld devices connected"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "popover.devices.empty" : {
+      "comment" : "Phase-1 popover empty state shown when no USB devices are detected.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No USB devices detected."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
