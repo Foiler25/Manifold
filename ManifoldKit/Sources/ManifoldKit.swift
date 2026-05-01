@@ -1,30 +1,44 @@
-// ManifoldKit/Sources/ManifoldKit.swift
+// Manifold — visualizes physical USB and Thunderbolt connections live.
+// Copyright (C) 2026 Brandon Villar
 //
-// ManifoldKit is the leaf data module shared by the Manifold app and the
-// ManifoldWidget extension. By design it depends on Foundation and `os.log`
-// only — no Combine, no SwiftUI, no IOKit, no AppKit. That isolation is
-// what lets the widget extension import this module safely (widgets cannot
-// link IOKit) and what keeps `swift build` driving without an Xcode app
-// shell underneath it.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 //
-// Phase 0 status: scaffold only. The real data types (Host, Port, Device,
-// Diagnostic, Snapshot codec, …) land in Phase 2 per SPEC.md §4. The single
-// `ManifoldKit.specRevision` constant exists so the smoke test has something
-// concrete to assert against, and so future phases can fail loudly when the
-// SPEC revision and the in-code types drift apart.
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// ─────────────────────────────────────────────────────────────────────
+// ManifoldKit.swift
+//
+// Module-level metadata for ManifoldKit. The data types (Host, Port,
+// Device, Diagnostic, Snapshot codec, …) live alongside in
+// `Sources/Models/`; this file only carries the module info constants.
+//
+// Why the namespace is `ManifoldKitInfo` and not `ManifoldKit`: the
+// module itself is named `ManifoldKit`, and a top-level type with that
+// same name shadows the module qualifier. After Phase 2 introduced the
+// `Port` type, `ManifoldKit.Port` started resolving to the enum (which
+// has no `Port` member) instead of the module's struct. Renaming the
+// enum to `ManifoldKitInfo` keeps `ManifoldKit.Port` resolving to the
+// real type for any caller (including tests) that needs to disambiguate
+// from `Foundation.Port` (the old NSPort wrapper).
 
-import Foundation
+/// Module-level namespace for ManifoldKit metadata. Caseless enum so
+/// it can never be instantiated — pure container for module info.
+public enum ManifoldKitInfo {
 
-/// Module-level namespace for top-of-tree constants and metadata.
-///
-/// This is intentionally a caseless `enum` rather than a `struct` to make it
-/// impossible to instantiate. The only reason to add members here is module
-/// metadata that does not belong to any single domain type.
-public enum ManifoldKit {
     /// SPEC.md revision this module's types correspond to.
     ///
-    /// Bumped by the Builder whenever Phase 2+ updates the data model in a
-    /// way that callers should care about. Phase 0 baseline matches
-    /// `SPEC.md` revision 1.
-    public static let specRevision: Int = 1
+    /// Bumped by the Builder whenever the data model lands an update
+    /// callers should care about. Phase 2 ships the full §4 type set
+    /// against SPEC rev 3 (which incorporated Phase-1 license/repo and
+    /// Phase-2 fallback-key amendments).
+    public static let specRevision: Int = 3
 }

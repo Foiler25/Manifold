@@ -17,20 +17,17 @@
 // ─────────────────────────────────────────────────────────────────────
 // AppDelegate.swift
 //
-// Owns the single `NSStatusItem` and (Phase 1+) the placeholder
-// `NSPopover` that appears when the user clicks it. Phase 4 splits this
-// out into `StatusItemController` + `PopoverHostingView` + `PopoverRoot`
-// per SPEC.md §3; for Phase 1 the popover lives at the bottom of this
-// file so the Phase-4 cleanup is one delete + one move.
-//
-// Why `@MainActor` on the whole class: every AppKit interaction in this
-// file (`NSStatusBar`, `NSPopover`, `NSHostingController`) is main-actor
-// constrained in Swift 6 strict mode. Marking the class once is cleaner
-// than annotating every member.
+// Owns the `NSStatusItem` and the popover that appears on click.
+// Phase 2 swap-out: replaces Phase 1's `USBWalker` + `Phase1PopoverModel`
+// pair with the SPEC §6 `DiscoveryService.walk() async throws -> [Host]`
+// API and the `@Observable PortGraph` that the popover SwiftUI body
+// reads through. Phase 4 splits this file into
+// `StatusItemController` + `PopoverHostingView` + `PopoverRoot`.
 
 import AppKit
 import SwiftUI
 import os
+import ManifoldKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -41,100 +38,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `NSStatusBar` releases it the moment we drop the reference.
     private var statusItem: NSStatusItem?
 
-    /// The popover shown on status-item click. Created lazily on first
-    /// open so launch is fast even if the user never clicks the icon.
+    /// The popover shown on status-item click. Created lazily on
+    /// first open so launch is fast even if the user never clicks.
     private var popover: NSPopover?
 
-    // MARK: - Discovery
+    // MARK: - Discovery + model
 
-    /// Phase-1 USB walker, configured to hit live IOKit. Kept on the
-    /// AppDelegate so the popover can request a fresh walk on every
-    /// open. Phase 3 will replace on-demand walking with event-driven
-    /// updates from `EventService`.
-    private let usbWalker = USBWalker()
+    /// SPEC §6 discovery API. Replaces Phase 1's direct `USBWalker`
+    /// reference; AppDelegate no longer talks to IOKit directly.
+    private let discoveryService = DiscoveryService()
+
+    /// Single source of truth for every UI surface. The popover
+    /// reads `portGraph.hosts` through SwiftUI's `@Observable`
+    /// machinery; updates re-render automatically.
+    private let portGraph = PortGraph()
 
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItem()
-        performInitialUSBWalk()
+        Task { await performInitialWalk() }
 #if DEBUG
         runLeakBenchIfRequested()
 #endif
     }
 
-#if DEBUG
-    /// DEBUG-only stress harness. Runs `usbWalker.walk()` N times in a
-    /// tight loop when the `MANIFOLD_LEAK_BENCH` environment variable
-    /// is set to a positive integer. Used to satisfy the SPEC §18 Phase 1
-    /// "Instruments Leaks pass — zero leaks after walking 100x" criterion
-    /// without an interactive Instruments session: launch the app with
-    /// the env var, wait for completion (logged to stderr), then attach
-    /// `leaks(1)` to the still-alive process and inspect.
-    ///
-    /// Tagged DEBUG-only because Release builds must never run gratuitous
-    /// IOKit traversals at launch. This is also the seed of followup
-    /// F7 ("scriptable leak bench") — Phase 3+ may extend this with an
-    /// XCTest wrapper that drives the same loop and asserts via Mach
-    /// task allocation diff or the `leaks` exit status.
-    private func runLeakBenchIfRequested() {
-        guard
-            let raw = ProcessInfo.processInfo.environment["MANIFOLD_LEAK_BENCH"],
-            let count = Int(raw),
-            count > 0
-        else { return }
-
-        let start = Date()
-        for _ in 0..<count {
-            _ = try? usbWalker.walk()
-        }
-        let elapsed = Date().timeIntervalSince(start)
-
-        let line = String(
-            format: "[Manifold leak-bench] %d walks completed in %.3f s — process held open for leaks(1) attach\n",
-            count,
-            elapsed
-        )
-        if let data = line.data(using: .utf8) {
-            FileHandle.standardError.write(data)
-        }
-        Log.app.notice("Leak bench: \(count, privacy: .public) walks in \(elapsed, privacy: .public)s")
-    }
-#endif
-
-    /// One-shot walk at launch so the popover already has data on first
-    /// open and so the SPEC criterion's "prints every connected device"
-    /// requirement is satisfied without requiring user interaction. The
-    /// log lines surface in `log show --predicate 'subsystem ==
-    /// "com.Loofa.Manifold"'`. Phase 3 replaces this initial walk with
-    /// event-driven updates from `EventService`.
-    private func performInitialUSBWalk() {
-        do {
-            let devices = try usbWalker.walkAndLog()
-            Phase1PopoverModel.shared.update(devices: devices)
-        } catch {
-            // Log and swallow — a failed initial walk should not crash
-            // the app. The popover will simply show the empty state
-            // until the user clicks (which retries) or until Phase 3
-            // events kick in.
-            Log.discovery.error("Initial USB walk failed: \(String(describing: error), privacy: .public)")
-        }
-    }
-
     // MARK: - Status item setup
 
-    /// Builds the `NSStatusItem`, sets a templated SF Symbol as its icon,
-    /// and wires the click handler to `togglePopover`.
+    /// Builds the `NSStatusItem`, sets a templated SF Symbol as its
+    /// icon, and wires the click handler to `togglePopover`.
     ///
-    /// Template image (`isTemplate = true`) tells AppKit to invert and
-    /// tint the icon to match the menu bar's appearance — required for
-    /// the icon to stay legible across light/dark menu bar backgrounds.
+    /// Template image (`isTemplate = true`) tells AppKit to invert
+    /// and tint the icon to match the menu bar's appearance — required
+    /// for the icon to stay legible across light/dark menu bars.
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: AppConstants.statusItemLength)
 
         guard let button = item.button else {
-            // `NSStatusItem.button` is nil only when the status bar is
-            // unavailable (headless test runs). Safe no-op in that case.
+            // `NSStatusItem.button` is nil only when the status bar
+            // is unavailable (headless test runs). Safe no-op.
             return
         }
 
@@ -155,6 +97,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("NSStatusItem installed.")
     }
 
+    // MARK: - Discovery
+
+    /// One-shot walk at launch so the popover already has data on
+    /// first open. Phase 3 replaces this with event-driven updates
+    /// from `EventService`; until then we do an additional walk on
+    /// every popover open (`togglePopover`) so reopening reflects
+    /// hot-plug changes the user made while the popover was closed.
+    ///
+    /// `discoveryService.walk()` internally invokes
+    /// `usbWalker.walkAndLog()`, so the SPEC §16.1 logging discipline
+    /// (os.Logger always, DEBUG-only stderr) fires from this single
+    /// call — no separate Phase-1-style emit needed.
+    private func performInitialWalk() async {
+        do {
+            let hosts = try await discoveryService.walk()
+            portGraph.replace(hosts: hosts)
+        } catch {
+            Log.discovery.error("Initial walk failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     // MARK: - Click handling
 
     @objc
@@ -163,11 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Open the popover if it is closed, close it if open.
-    ///
-    /// Why request a fresh walk on every open (Phase 1 only): there is
-    /// no event subscription yet, so the popover would otherwise show
-    /// stale state. Phase 3 introduces hot-plug events and removes this
-    /// per-open walk in favor of subscribed updates.
+    /// Triggers a fresh walk on open so changes since the last open
+    /// are reflected. Phase 3 retires the per-open walk in favour of
+    /// event-driven updates.
     private func togglePopover() {
         let popover = popoverIfNeeded()
         if popover.isShown {
@@ -175,8 +136,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let devices = (try? usbWalker.walkAndLog()) ?? []
-        Phase1PopoverModel.shared.update(devices: devices)
+        Task {
+            do {
+                let hosts = try await discoveryService.walk()
+                portGraph.replace(hosts: hosts)
+            } catch {
+                Log.discovery.error("Popover-open walk failed: \(String(describing: error), privacy: .public)")
+            }
+        }
 
         guard let button = statusItem?.button else { return }
         popover.show(
@@ -186,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Lazy popover construction. The `NSHostingController` wraps the
+    /// Lazy popover construction. `NSHostingController` wraps the
     /// SwiftUI body so the entire popover content is SwiftUI from
     /// Phase 1 onward — matches DECISIONS.md D1 ("AppKit shim only").
     private func popoverIfNeeded() -> NSPopover {
@@ -197,77 +164,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         popover.contentSize = AppConstants.popoverContentSize
         popover.contentViewController = NSHostingController(
-            rootView: Phase1PopoverContent(model: Phase1PopoverModel.shared)
+            rootView: PopoverContent(graph: portGraph)
         )
         self.popover = popover
         return popover
     }
-}
 
-// MARK: - Phase 1 popover model
+#if DEBUG
+    /// DEBUG-only stress harness. Runs `discoveryService.walk()` N
+    /// times in a tight loop when `MANIFOLD_LEAK_BENCH` is set to a
+    /// positive integer. Used to verify the SPEC §18 Phase 1
+    /// "Instruments Leaks pass — zero leaks after 100 walks" criterion
+    /// from `leaks(1)` without an interactive Instruments session.
+    ///
+    /// Goes through `discoveryService.walk()` rather than the bare
+    /// `USBWalker.walk()` so the bench exercises the full Phase-2
+    /// transformation path (snapshot → builder → Host array). If the
+    /// IOKit retain discipline holds end-to-end, leak count stays 0.
+    private func runLeakBenchIfRequested() {
+        guard
+            let raw = ProcessInfo.processInfo.environment["MANIFOLD_LEAK_BENCH"],
+            let count = Int(raw),
+            count > 0
+        else { return }
 
-/// View-model carrying the most recent walk result to the popover.
-///
-/// `@Observable` (not `ObservableObject`) so we don't pull in Combine.
-/// SwiftUI auto-observes property reads on `@Observable` reference
-/// types passed in by value — no `@Environment` or `@StateObject`
-/// needed for this Phase-1 use. Phase 4 replaces this with the proper
-/// `@Observable PortGraph` once Phase 2 has built the model.
-///
-/// Singleton because the popover content view sees one instance and
-/// AppDelegate is the only writer. Worth noting and not generalising —
-/// this is a Phase-1 shortcut that goes away with Phase 4's full UI.
-@MainActor
-@Observable
-final class Phase1PopoverModel {
-    static let shared = Phase1PopoverModel()
-    private init() {}
-
-    private(set) var devices: [USBDeviceSnapshot] = []
-
-    func update(devices: [USBDeviceSnapshot]) {
-        self.devices = devices
+        Task { [discoveryService] in
+            let start = Date()
+            for _ in 0..<count {
+                _ = try? await discoveryService.walk()
+            }
+            let elapsed = Date().timeIntervalSince(start)
+            let line = String(
+                format: "[Manifold leak-bench] %d walks completed in %.3f s — process held open for leaks(1) attach\n",
+                count,
+                elapsed
+            )
+            if let data = line.data(using: .utf8) {
+                FileHandle.standardError.write(data)
+            }
+            Log.app.notice("Leak bench: \(count, privacy: .public) walks in \(elapsed, privacy: .public)s")
+        }
     }
+#endif
 }
 
-// MARK: - Phase 1 popover view
+// MARK: - Phase-1/2 popover view
 
-/// Phase-1 popover body. Header line ("N devices connected") + a list
-/// of detected devices with VID/PID/speed/power. Replaced wholesale by
-/// `PopoverRoot` in Phase 4.
-///
-/// All strings live in `Localizable.xcstrings`; no string literals
-/// inline in the view body, per builder.md.
-private struct Phase1PopoverContent: View {
+/// Phase-1/2 popover body. Header ("N devices connected") plus a list
+/// of detected devices with VID/PID/speed/power. Replaced by
+/// `PopoverRoot` in Phase 4. Reads through `@Bindable` so SwiftUI
+/// observes `PortGraph`'s `@Observable` properties.
+private struct PopoverContent: View {
 
-    /// Reference to the shared @Observable model. Reads inside `body`
-    /// are tracked by SwiftUI and re-render the view when the model
-    /// updates.
-    let model: Phase1PopoverModel
+    /// `@Bindable` exposes the `PortGraph` to SwiftUI's observation
+    /// system; reads of `graph.hosts` etc. inside `body` re-render
+    /// automatically when the graph mutates.
+    @Bindable var graph: PortGraph
+
+    /// Devices flattened across hosts (Phase 2 has only one host but
+    /// the API is shaped for the general case). Pulled into a
+    /// computed property so the body stays readable.
+    private var devices: [(host: ManifoldKit.Host, port: ManifoldKit.Port, device: Device)] {
+        graph.hosts.flatMap { host in
+            host.ports.compactMap { port in
+                port.connectedDevice.map { (host, port, $0) }
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(headerString(for: model.devices.count))
+            Text(headerString(for: graph.totalDeviceCount))
                 .font(.headline)
 
             Divider()
 
-            if model.devices.isEmpty {
-                // Empty state — surfaces explicitly so the user knows
-                // the walker ran rather than wondering whether the app
-                // is broken.
+            if devices.isEmpty {
                 Text("popover.devices.empty")
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
             } else {
-                // Phase 1 list: one row per device. Phase 4 will swap
-                // this for a hierarchy-aware `OutlineGroup` over `Port`
-                // values. ScrollView so a long device list stays
-                // navigable inside the fixed-size popover.
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(model.devices, id: \.registryPath) { device in
-                            Phase1DeviceRow(device: device)
+                        ForEach(devices, id: \.port.id) { entry in
+                            DeviceListRow(port: entry.port, device: entry.device)
                         }
                     }
                 }
@@ -281,57 +261,49 @@ private struct Phase1PopoverContent: View {
         )
     }
 
-    /// Build the header label, picking singular/plural via the string
-    /// catalog. `String(localized:)` reads the `popover.devices.count`
-    /// entry in `Localizable.xcstrings`, which carries the plural rules.
     private func headerString(for count: Int) -> String {
         String(
             format: NSLocalizedString(
                 "popover.devices.count",
-                comment: "Phase 1 popover header: total connected devices."
+                comment: "Phase 1/2 popover header: total connected devices."
             ),
             count
         )
     }
 }
 
-/// Row representing one Phase-1 device. Pure presentation; no app
+/// Row representing one Phase-2 device. Pure presentation; no app
 /// behaviour. Replaced by `DeviceRow` in Phase 4.
-private struct Phase1DeviceRow: View {
-    let device: USBDeviceSnapshot
+private struct DeviceListRow: View {
+
+    let port: ManifoldKit.Port
+    let device: Device
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(device.productName ?? device.fallbackName)
+            Text(device.name.isEmpty ? fallbackName : device.name)
                 .font(.body)
-            Text(device.detailLine)
+            Text(detailLine)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
 
-// MARK: - USBDeviceSnapshot display helpers
-
-private extension USBDeviceSnapshot {
-
-    /// Used when `productName` is nil — falls back to a "VID:PID"
-    /// pseudo-name so the row is never empty.
-    var fallbackName: String {
-        String(format: "Device %04X:%04X", vendorID, productID)
+    /// "VID:PID" placeholder when the resolved device name is empty.
+    private var fallbackName: String {
+        String(format: "Device %04X:%04X", device.vendorID, device.productID)
     }
 
-    /// Two-segment caption: VID/PID + speed + power. Power is
-    /// suppressed when nil so the row doesn't end in a dangling
-    /// separator.
-    var detailLine: String {
+    /// "VID:PID · Protocol · Power". Power suppressed when nil so the
+    /// row doesn't end in a dangling separator.
+    private var detailLine: String {
         var segments: [String] = [
-            String(format: "%04X:%04X", vendorID, productID),
-            USBDiscoveryConstants.speedName(for: speed)
+            String(format: "%04X:%04X", device.vendorID, device.productID),
+            port.negotiated?.protocolName ?? "Unknown"
         ]
-        if let mA = requestedPowerMA {
-            segments.append("\(mA) mA")
+        if let watts = port.powerDraw {
+            segments.append(watts.formatted)
         }
         return segments.joined(separator: " · ")
     }

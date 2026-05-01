@@ -64,6 +64,56 @@ enum USBDiscoveryConstants {
         static let iSerialNumber    = "iSerialNumber"
     }
 
+    // MARK: Fallback property-key chains (rev-3 / Phase 2 bullet)
+
+    /// Per SPEC.md §18 Phase 2 (rev 3): canonical IOKit property names
+    /// don't fire on every device under macOS 26 — Apple's M-series
+    /// internal SSD, for example, returns nil for both `Speed` and
+    /// `Requested Power`. The walker tries each alternate in order
+    /// before giving up and producing nil. Order matters: the
+    /// canonical keys come first so devices that publish them
+    /// continue to work; the fallbacks add coverage for the cases
+    /// that don't.
+    enum FallbackKey {
+
+        /// Tried in order when reading the negotiated link speed.
+        ///
+        /// - `Speed` (canonical IOUSBHostDevice property; covers most
+        ///   external USB peripherals on macOS 14–26)
+        /// - `Device Speed` (some pre-USB-3 drivers publish the link
+        ///   speed under this key instead)
+        /// - `USB Host Connect Speed` (the property name the
+        ///   `kUSBHostPortPropertyConnectSpeed` constant resolves to —
+        ///   used by macOS's newer USB stack on Apple Silicon)
+        ///
+        /// If every entry returns nil the walker falls back to deriving
+        /// from `bcdUSB` (see `USBWalker.deriveSpeedFromBcd`) and
+        /// finally to nil. Last-resort nil renders as "Unknown" in the
+        /// popover row, which is the correct fallback rendering.
+        static let speedAlternates: [String] = [
+            "Speed",
+            "Device Speed",
+            "USB Host Connect Speed"
+        ]
+
+        /// Tried in order when reading the device's requested power.
+        ///
+        /// - `Requested Power` (canonical IOUSBHostDevice property,
+        ///   value in milliamps)
+        /// - `USB Power Required` (some legacy drivers expose it here)
+        /// - `USBDeviceCurrent` (Apple T-series Mac internals
+        ///   sometimes use this name)
+        ///
+        /// nil from every alternate means the device doesn't advertise
+        /// power requirements (uncommon for self-powered storage; very
+        /// common for built-in components).
+        static let powerAlternates: [String] = [
+            "Requested Power",
+            "USB Power Required",
+            "USBDeviceCurrent"
+        ]
+    }
+
     // MARK: Speed lookup
 
     /// Human-readable name for the IOKit `Speed` enum value. Codes

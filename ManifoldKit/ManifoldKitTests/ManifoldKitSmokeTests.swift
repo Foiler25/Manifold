@@ -18,9 +18,10 @@ import XCTest
 final class ManifoldKitSmokeTests: XCTestCase {
 
     /// The constant exists so future phases can fail loudly when the SPEC
-    /// revision and the in-code data model drift apart. Phase 0 baseline
-    /// is revision 1, matching `SPEC.md`'s header.
-    func test_specRevision_matchesPhaseZeroBaseline() {
-        XCTAssertEqual(ManifoldKit.specRevision, 1)
+    /// revision and the in-code data model drift apart. Phase 2 baseline
+    /// is revision 3, matching `SPEC.md`'s rev-3 header (license + repo
+    /// public flip + Phase-2 fallback-key bullet amendments).
+    func test_specRevision_matchesPhase2Baseline() {
+        XCTAssertEqual(ManifoldKitInfo.specRevision, 3)
     }
 }

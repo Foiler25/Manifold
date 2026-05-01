@@ -1,0 +1,63 @@
+// Manifold — visualizes physical USB and Thunderbolt connections live.
+// Copyright (C) 2026 Brandon Villar
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// ─────────────────────────────────────────────────────────────────────
+// Host.swift
+//
+// One Mac. The root of the port tree. Per SPEC.md §4.3.
+//
+// `Hashable` for SwiftUI `ForEach` stability across re-renders;
+// `Codable` for the Snapshot wire format and CSV/JSON exports;
+// `Sendable` because everything in ManifoldKit is value-type and
+// trivially safe to cross actor boundaries.
+
+// No Foundation types in the public API surface — only ManifoldKit
+// types and stdlib `String`/`Array`. UUID is mentioned in the doc
+// comment but never instantiated here.
+
+public struct Host: Identifiable, Hashable, Sendable, Codable {
+
+    /// Stable host identifier — derived from the machine's hardware
+    /// UUID by the discovery layer. Persists across reboots.
+    public let id: HostID
+
+    /// Human-readable model name as Apple publishes it ("MacBook Pro").
+    public let name: String
+
+    /// Apple model identifier ("Mac15,9", "MacBookPro18,4"). Used by
+    /// Phase 8's diagnostic rules (some power budgets are model-keyed)
+    /// and by Phase 12 exports.
+    public let model: String
+
+    /// Top-level ports on this host. Each port may have downstream
+    /// children (hubs, daisy-chained TB devices); see `Port.children`.
+    public let ports: [Port]
+
+    /// Total wattage draw across every device attached to this host,
+    /// summed recursively through downstream hubs and daisy chains.
+    /// Computed so it stays consistent as the underlying tree changes
+    /// (no cache to invalidate).
+    public var totalPowerDraw: Watts {
+        Watts(ports.reduce(0.0) { $0 + $1.totalDraw.value })
+    }
+
+    public init(id: HostID, name: String, model: String, ports: [Port]) {
+        self.id = id
+        self.name = name
+        self.model = model
+        self.ports = ports
+    }
+}

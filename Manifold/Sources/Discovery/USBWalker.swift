@@ -191,6 +191,7 @@ struct LiveIOKitUSBSource: USBRegistrySource {
         }
 
         let path = registryPath(of: entry) ?? "<unknown>"
+        let bcd = uint16Property(keys.bcdUSB, of: entry)
 
         return USBDeviceSnapshot(
             registryPath:     path,
@@ -199,12 +200,72 @@ struct LiveIOKitUSBSource: USBRegistrySource {
             productName:      stringProperty(keys.usbProductName,  of: entry),
             vendorName:       stringProperty(keys.usbVendorName,   of: entry),
             serial:           stringProperty(keys.iSerialNumber,   of: entry),
-            bcdUSB:           uint16Property(keys.bcdUSB,          of: entry),
-            speed:            uint32Property(keys.speed,           of: entry),
-            requestedPowerMA: intProperty(   keys.requestedPower,  of: entry),
+            bcdUSB:           bcd,
+            speed:            resolveSpeed(from: entry, bcdUSB: bcd),
+            requestedPowerMA: resolvePower(from: entry),
             portNum:          intProperty(   keys.portNum,         of: entry),
             locationID:       uint32Property(keys.locationID,      of: entry)
         )
+    }
+
+    /// Walk the speed-property fallback chain and, as a last resort,
+    /// infer the link speed from `bcdUSB`. Per SPEC.md §18 Phase 2
+    /// rev-3 fallback bullet (resolves Builder Phase 1 Q4).
+    ///
+    /// Sequence:
+    ///   1. Try every key in `FallbackKey.speedAlternates`.
+    ///   2. If every key returned nil, infer from `bcdUSB`:
+    ///      - bcdUSB ≥ 0x0300 → return Speed code 3 ("Super Speed")
+    ///      - bcdUSB == 0x0210 or 0x0200 → return Speed code 2 ("High Speed")
+    ///      - bcdUSB == 0x0110 or 0x0100 → return Speed code 1 ("Full Speed")
+    ///   3. Otherwise nil — surfaces as "Unknown" in the popover.
+    ///
+    /// The bcd inference is conservative: if the device says "I support
+    /// USB 3.x" we report Super Speed even though it might be on a
+    /// USB 2.0 link upstream. That's a known weakness — Phase 8's
+    /// "Running @ USB 2.0" diagnostic catches the mismatch correctly
+    /// once the negotiated speed is also visible. For Phase 2 the goal
+    /// is to never show "Unknown" when *any* signal is available.
+    private static func resolveSpeed(
+        from entry: borrowing IOObject,
+        bcdUSB: UInt16?
+    ) -> UInt32? {
+        for key in USBDiscoveryConstants.FallbackKey.speedAlternates {
+            if let value = uint32Property(key, of: entry) {
+                return value
+            }
+        }
+        return deriveSpeedFromBcd(bcdUSB)
+    }
+
+    /// Walk the requested-power fallback chain. Per SPEC.md §18 Phase 2
+    /// rev-3 fallback bullet.
+    ///
+    /// Unlike speed, there is no good last-resort heuristic for power —
+    /// nothing in the descriptor encodes "how much current the device
+    /// will pull" implicitly. nil from every alternate means we
+    /// genuinely don't know; the popover row renders this as "—".
+    private static func resolvePower(from entry: borrowing IOObject) -> Int? {
+        for key in USBDiscoveryConstants.FallbackKey.powerAlternates {
+            if let value = intProperty(key, of: entry) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    /// Map `bcdUSB` to an IOKit Speed enum code. Returns nil for
+    /// values we don't recognise (vendor-extended BCDs) so callers can
+    /// fall through to "Unknown" rather than reporting a wrong speed.
+    private static func deriveSpeedFromBcd(_ bcdUSB: UInt16?) -> UInt32? {
+        guard let bcd = bcdUSB else { return nil }
+        switch bcd {
+        case 0x0100, 0x0110: return 1   // USB 1.x → Full Speed
+        case 0x0200, 0x0210: return 2   // USB 2.x → High Speed
+        case 0x0300...0x03FF: return 3  // USB 3.x → Super Speed (3.1/3.2 details lost; conservative)
+        case 0x0400...0x04FF: return 4  // USB4 → Super Speed+
+        default: return nil
+        }
     }
 }
 
