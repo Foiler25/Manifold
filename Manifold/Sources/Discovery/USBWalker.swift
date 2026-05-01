@@ -361,16 +361,24 @@ final class USBWalker: Sendable {
         return devices
     }
 
-    /// Send `line` to both os.Logger (for Console.app integration) and
-    /// stderr (for development visibility). Force-unwrapping
-    /// `.data(using: .utf8)` is safe — UTF-8 encoding never fails for
-    /// any Swift string — and is the one place the wider "no force
-    /// unwraps in production" rule has a clean carve-out (`emit` is
-    /// internal, not user-reachable).
+    /// Send `line` to `os.Logger` always, and to stderr in DEBUG builds.
+    ///
+    /// The stderr branch is `#if DEBUG`-gated per SPEC.md §16.1 — Release
+    /// builds emit only through the unified log. The whole stderr path is
+    /// scheduled for retirement in Phase 3 once connect/disconnect
+    /// emissions move to `.notice` (which IS persisted by the unified
+    /// log without any DEBUG crutch). Reviewer enforces both the
+    /// `#if DEBUG` gate here and the Phase 3 deletion.
+    ///
+    /// `if let data = …` — UTF-8 encoding cannot fail for a Swift
+    /// String, but the optional makes the call site readable without a
+    /// force-unwrap and costs nothing.
     private func emit(_ line: String) {
         Log.discovery.info("\(line, privacy: .public)")
+#if DEBUG
         if let data = (line + "\n").data(using: .utf8) {
             FileHandle.standardError.write(data)
         }
+#endif
     }
 }

@@ -58,7 +58,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItem()
         performInitialUSBWalk()
+#if DEBUG
+        runLeakBenchIfRequested()
+#endif
     }
+
+#if DEBUG
+    /// DEBUG-only stress harness. Runs `usbWalker.walk()` N times in a
+    /// tight loop when the `MANIFOLD_LEAK_BENCH` environment variable
+    /// is set to a positive integer. Used to satisfy the SPEC §18 Phase 1
+    /// "Instruments Leaks pass — zero leaks after walking 100x" criterion
+    /// without an interactive Instruments session: launch the app with
+    /// the env var, wait for completion (logged to stderr), then attach
+    /// `leaks(1)` to the still-alive process and inspect.
+    ///
+    /// Tagged DEBUG-only because Release builds must never run gratuitous
+    /// IOKit traversals at launch. This is also the seed of followup
+    /// F7 ("scriptable leak bench") — Phase 3+ may extend this with an
+    /// XCTest wrapper that drives the same loop and asserts via Mach
+    /// task allocation diff or the `leaks` exit status.
+    private func runLeakBenchIfRequested() {
+        guard
+            let raw = ProcessInfo.processInfo.environment["MANIFOLD_LEAK_BENCH"],
+            let count = Int(raw),
+            count > 0
+        else { return }
+
+        let start = Date()
+        for _ in 0..<count {
+            _ = try? usbWalker.walk()
+        }
+        let elapsed = Date().timeIntervalSince(start)
+
+        let line = String(
+            format: "[Manifold leak-bench] %d walks completed in %.3f s — process held open for leaks(1) attach\n",
+            count,
+            elapsed
+        )
+        if let data = line.data(using: .utf8) {
+            FileHandle.standardError.write(data)
+        }
+        Log.app.notice("Leak bench: \(count, privacy: .public) walks in \(elapsed, privacy: .public)s")
+    }
+#endif
 
     /// One-shot walk at launch so the popover already has data on first
     /// open and so the SPEC criterion's "prints every connected device"
