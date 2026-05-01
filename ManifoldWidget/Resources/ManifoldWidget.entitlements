@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	    Phase 0 widget entitlements. Same baseline as Manifold.entitlements:
+	    sandbox + JIT off. App Group declaration deferred to Phase 13 to keep
+	    ad-hoc signing working — see Manifold.entitlements for the full
+	    explanation. When Phase 13 lands, both entitlement files gain:
+
+	        <key>com.apple.security.application-groups</key>
+	        <array><string>group.com.Loofa.Manifold</string></array>
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.security.cs.allow-jit</key>
+	<false/>
+</dict>
+</plist>

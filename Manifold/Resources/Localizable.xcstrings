@@ -1,0 +1,54 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "menubar.icon.accessibility" : {
+      "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manifold"
+          }
+        }
+      }
+    },
+    "placeholder.settings.title" : {
+      "comment" : "Phase-0 placeholder shown in the Settings scene before Phase 14 builds the real panes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manifold settings will live here."
+          }
+        }
+      }
+    },
+    "placeholder.window.subtitle" : {
+      "comment" : "Phase-0 placeholder subtitle in the standalone window before Phase 6 builds the real topology view.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The standalone window will host the topology browser, history, and exports starting in Phase 6."
+          }
+        }
+      }
+    },
+    "placeholder.window.title" : {
+      "comment" : "Phase-0 placeholder title in the standalone window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manifold — Phase 0 scaffold"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
