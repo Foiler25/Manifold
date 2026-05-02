@@ -17,12 +17,12 @@
 // ─────────────────────────────────────────────────────────────────────
 // AppDelegate.swift
 //
-// Owns the `NSStatusItem` and the popover that appears on click.
-// Phase 2 swap-out: replaces Phase 1's `USBWalker` + `Phase1PopoverModel`
-// pair with the SPEC §6 `DiscoveryService.walk() async throws -> [Host]`
-// API and the `@Observable PortGraph` that the popover SwiftUI body
-// reads through. Phase 4 splits this file into
-// `StatusItemController` + `PopoverHostingView` + `PopoverRoot`.
+// Owns the `NSStatusItem`, the popover, and the lifetime of the
+// `EventService` + `DiscoveryService` pair. Phase 3 swap-out: drops
+// the per-popover-open synchronous walk in favour of subscribing to
+// `EventService.events()` once and letting hot-plug events drive the
+// model. The popover-open path becomes a pure UI concern; live data
+// already arrived via the event stream.
 
 import AppKit
 import SwiftUI
@@ -34,51 +34,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Status item & popover
 
-    /// The system-vended menu bar slot. Held strongly because
-    /// `NSStatusBar` releases it the moment we drop the reference.
     private var statusItem: NSStatusItem?
-
-    /// The popover shown on status-item click. Created lazily on
-    /// first open so launch is fast even if the user never clicks.
     private var popover: NSPopover?
 
-    // MARK: - Discovery + model
+    // MARK: - Discovery + events + model
 
-    /// SPEC §6 discovery API. Replaces Phase 1's direct `USBWalker`
-    /// reference; AppDelegate no longer talks to IOKit directly.
+    /// Phase 2's discovery API. Phase 3 still uses it for the
+    /// `.fullRefresh`-triggered re-walk and for the initial seed.
     private let discoveryService = DiscoveryService()
 
-    /// Single source of truth for every UI surface. The popover
-    /// reads `portGraph.hosts` through SwiftUI's `@Observable`
-    /// machinery; updates re-render automatically.
+    /// Phase 3's event source. Lifetime owned by AppDelegate; torn
+    /// down in `applicationWillTerminate`.
+    private var eventService: EventService?
+
+    /// Single source of truth for every UI surface.
     private let portGraph = PortGraph()
+
+    /// Handle to the long-running task that consumes `eventService.events()`.
+    /// Cancelled in `applicationWillTerminate` so the actor doesn't
+    /// leak past app shutdown.
+    private var eventConsumerTask: Task<Void, Never>?
 
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installStatusItem()
-        Task { await performInitialWalk() }
+
+        let service = EventService()
+        self.eventService = service
+        startEventConsumer(service: service)
+
+        // Trigger the initial walk via .fullRefresh so the consumer
+        // path (walk → replace) is the same as for any subsequent
+        // refresh. The seed-attach events from EventService's initial
+        // notification drain are coalesced into this replace because
+        // they both update the same `portGraph` on MainActor in order.
+        service.requestRefresh()
+
 #if DEBUG
         runLeakBenchIfRequested()
 #endif
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        eventConsumerTask?.cancel()
+        eventService?.shutdown()
+    }
+
     // MARK: - Status item setup
 
-    /// Builds the `NSStatusItem`, sets a templated SF Symbol as its
-    /// icon, and wires the click handler to `togglePopover`.
-    ///
-    /// Template image (`isTemplate = true`) tells AppKit to invert
-    /// and tint the icon to match the menu bar's appearance — required
-    /// for the icon to stay legible across light/dark menu bars.
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: AppConstants.statusItemLength)
-
-        guard let button = item.button else {
-            // `NSStatusItem.button` is nil only when the status bar
-            // is unavailable (headless test runs). Safe no-op.
-            return
-        }
+        guard let button = item.button else { return }
 
         let image = NSImage(
             systemSymbolName: AppConstants.menuBarIconSymbolName,
@@ -89,7 +96,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         image?.isTemplate = true
         button.image = image
-
         button.target = self
         button.action = #selector(statusItemClicked(_:))
 
@@ -97,24 +103,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("NSStatusItem installed.")
     }
 
-    // MARK: - Discovery
+    // MARK: - Event consumer
 
-    /// One-shot walk at launch so the popover already has data on
-    /// first open. Phase 3 replaces this with event-driven updates
-    /// from `EventService`; until then we do an additional walk on
-    /// every popover open (`togglePopover`) so reopening reflects
-    /// hot-plug changes the user made while the popover was closed.
-    ///
-    /// `discoveryService.walk()` internally invokes
-    /// `usbWalker.walkAndLog()`, so the SPEC §16.1 logging discipline
-    /// (os.Logger always, DEBUG-only stderr) fires from this single
-    /// call — no separate Phase-1-style emit needed.
-    private func performInitialWalk() async {
+    /// Single MainActor `for await` loop. Each event hops to MainActor
+    /// here (the closure body runs on AppDelegate's actor) before
+    /// touching `PortGraph`. SPEC §18 Phase 3 acceptance "Notification
+    /// callbacks correctly hop to @MainActor before mutating PortGraph"
+    /// is satisfied by virtue of this consumer running on MainActor.
+    private func startEventConsumer(service: EventService) {
+        eventConsumerTask = Task { @MainActor [weak self] in
+            for await event in service.events() {
+                guard let self else { return }
+                await self.handle(event: event)
+            }
+        }
+    }
+
+    /// Per-event dispatch. `.fullRefresh` (and the not-found-attach
+    /// flag set by `PortGraph.apply(.attached)` per §4.6.1) trigger
+    /// a discovery walk + `replace`. Other events go straight to
+    /// `portGraph.apply` for the surgical mutation path.
+    private func handle(event: PortEvent) async {
+        switch event {
+        case .fullRefresh:
+            await rebuildGraph()
+        default:
+            portGraph.apply(event)
+            // §4.6.1: a not-found .attached sets needsFullRefresh.
+            // Acknowledge + re-walk so the next .attached for this
+            // port hits the surgical path.
+            if portGraph.needsFullRefresh {
+                portGraph.acknowledgeRefreshRequest()
+                await rebuildGraph()
+            }
+        }
+    }
+
+    /// Walk via `DiscoveryService` and atomic-swap into `PortGraph`.
+    /// Errors logged and swallowed — a failed walk shouldn't crash the
+    /// app; the popover stays at its previous state until the next
+    /// successful walk.
+    private func rebuildGraph() async {
         do {
             let hosts = try await discoveryService.walk()
             portGraph.replace(hosts: hosts)
         } catch {
-            Log.discovery.error("Initial walk failed: \(String(describing: error), privacy: .public)")
+            Log.discovery.error("rebuildGraph walk failed: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -125,26 +159,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         togglePopover()
     }
 
-    /// Open the popover if it is closed, close it if open.
-    /// Triggers a fresh walk on open so changes since the last open
-    /// are reflected. Phase 3 retires the per-open walk in favour of
-    /// event-driven updates.
+    /// Open the popover if closed, close if open. No walk-on-open
+    /// anymore — the event stream keeps `PortGraph` current.
     private func togglePopover() {
         let popover = popoverIfNeeded()
         if popover.isShown {
             popover.performClose(nil)
             return
         }
-
-        Task {
-            do {
-                let hosts = try await discoveryService.walk()
-                portGraph.replace(hosts: hosts)
-            } catch {
-                Log.discovery.error("Popover-open walk failed: \(String(describing: error), privacy: .public)")
-            }
-        }
-
         guard let button = statusItem?.button else { return }
         popover.show(
             relativeTo: button.bounds,
@@ -153,9 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Lazy popover construction. `NSHostingController` wraps the
-    /// SwiftUI body so the entire popover content is SwiftUI from
-    /// Phase 1 onward — matches DECISIONS.md D1 ("AppKit shim only").
     private func popoverIfNeeded() -> NSPopover {
         if let existing = popover { return existing }
 
@@ -173,14 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #if DEBUG
     /// DEBUG-only stress harness. Runs `discoveryService.walk()` N
     /// times in a tight loop when `MANIFOLD_LEAK_BENCH` is set to a
-    /// positive integer. Used to verify the SPEC §18 Phase 1
-    /// "Instruments Leaks pass — zero leaks after 100 walks" criterion
-    /// from `leaks(1)` without an interactive Instruments session.
-    ///
-    /// Goes through `discoveryService.walk()` rather than the bare
-    /// `USBWalker.walk()` so the bench exercises the full Phase-2
-    /// transformation path (snapshot → builder → Host array). If the
-    /// IOKit retain discipline holds end-to-end, leak count stays 0.
+    /// positive integer. Phase 1's `leaks(1)` verification harness;
+    /// kept alive through Phase 3 so each phase's pipeline can be
+    /// re-leak-checked.
     private func runLeakBenchIfRequested() {
         guard
             let raw = ProcessInfo.processInfo.environment["MANIFOLD_LEAK_BENCH"],
@@ -208,22 +222,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #endif
 }
 
-// MARK: - Phase-1/2 popover view
+// MARK: - Phase-2/3 popover view
 
-/// Phase-1/2 popover body. Header ("N devices connected") plus a list
-/// of detected devices with VID/PID/speed/power. Replaced by
-/// `PopoverRoot` in Phase 4. Reads through `@Bindable` so SwiftUI
-/// observes `PortGraph`'s `@Observable` properties.
 private struct PopoverContent: View {
 
-    /// `@Bindable` exposes the `PortGraph` to SwiftUI's observation
-    /// system; reads of `graph.hosts` etc. inside `body` re-render
-    /// automatically when the graph mutates.
     @Bindable var graph: PortGraph
 
-    /// Devices flattened across hosts (Phase 2 has only one host but
-    /// the API is shaped for the general case). Pulled into a
-    /// computed property so the body stays readable.
     private var devices: [(host: ManifoldKit.Host, port: ManifoldKit.Port, device: Device)] {
         graph.hosts.flatMap { host in
             host.ports.compactMap { port in
@@ -265,15 +269,13 @@ private struct PopoverContent: View {
         String(
             format: NSLocalizedString(
                 "popover.devices.count",
-                comment: "Phase 1/2 popover header: total connected devices."
+                comment: "Phase 1/2/3 popover header: total connected devices."
             ),
             count
         )
     }
 }
 
-/// Row representing one Phase-2 device. Pure presentation; no app
-/// behaviour. Replaced by `DeviceRow` in Phase 4.
 private struct DeviceListRow: View {
 
     let port: ManifoldKit.Port
@@ -290,13 +292,10 @@ private struct DeviceListRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "VID:PID" placeholder when the resolved device name is empty.
     private var fallbackName: String {
         String(format: "Device %04X:%04X", device.vendorID, device.productID)
     }
 
-    /// "VID:PID · Protocol · Power". Power suppressed when nil so the
-    /// row doesn't end in a dangling separator.
     private var detailLine: String {
         var segments: [String] = [
             String(format: "%04X:%04X", device.vendorID, device.productID),

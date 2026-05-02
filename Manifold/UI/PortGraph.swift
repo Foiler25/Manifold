@@ -18,100 +18,278 @@
 // PortGraph.swift
 //
 // `@MainActor @Observable` source of truth for every UI surface
-// (popover, window, settings). Per SPEC.md §4.6 — though the SPEC
-// comment suggests this type lives inside `MainWindow.swift` (Phase
-// 6), giving it its own file in `Manifold/UI/` keeps the model/view
-// separation honest. Phase 6 can relocate or keep, Builder's call.
+// (popover, window, settings). SPEC.md §4.6 — rev 4 made this
+// location permanent (`Manifold/UI/PortGraph.swift`).
 //
-// `@Observable` (not `ObservableObject`) so we don't pull in Combine.
-// Property reads in any SwiftUI view are tracked automatically and
-// re-render when the model mutates.
-//
-// `final class` not `actor` because the type is `@MainActor`-bound.
-// Every consumer (`AppDelegate`, popover SwiftUI, future Phase 6
-// window) is also MainActor; isolation alignment lets reads/writes
-// be synchronous.
+// Phase 3 implements the full §4.6.1 mutation pattern: a private
+// `mutatePort(id:_:)` helper walks the host tree COW-style and
+// applies a closure to the matching port. All four surgical /
+// surgical-structural cases call through it; `.fullRefresh` and
+// `.diagnostic` are top-level rebuild + dedupe respectively.
 
 import Foundation
 import ManifoldKit
+import os
 
 @MainActor
 @Observable
 final class PortGraph {
 
-    /// Every host we've discovered. Phase 2 always emits exactly one
-    /// (the local Mac); the array shape is preserved for the future
-    /// if remote-host support is ever added (explicitly out of scope
-    /// per BRIEF.md, but the API doesn't preclude it).
+    /// Every host we've discovered. Phase 2/3 always emit exactly one;
+    /// the array shape is preserved for future remote-host support.
     private(set) var hosts: [ManifoldKit.Host] = []
 
-    /// Active diagnostics produced by the Phase 8 engine. Phase 2
-    /// ships an empty list; Phase 8 starts populating it.
+    /// Active diagnostics (Phase 8 populates). Phase 3 supports
+    /// `.diagnostic` event delivery + dedupe so Phase 8 doesn't have
+    /// to relitigate the apply pattern.
     private(set) var diagnostics: [Diagnostic] = []
 
-    /// Wall-clock time of the last mutation. Used by the popover
-    /// "last updated" affordance and as a monotonic test signal —
-    /// `replace(hosts:diagnostics:)` and `apply(_:)` both bump it.
+    /// Wall-clock time of the last mutation. Bumped on every successful
+    /// `replace`/`apply` call — used by the popover's "last updated"
+    /// affordance and as a monotonic test signal.
     private(set) var lastUpdated: Date = .now
+
+    /// Pending `.fullRefresh` request flag. Set by `apply(.attached)`
+    /// when the target port isn't in the current graph (per §4.6.1).
+    /// The consumer (`AppDelegate`) reads this after each `apply` call
+    /// and calls `requestRefresh()` on EventService if true; the flag
+    /// is cleared by `acknowledgeRefreshRequest()`. Avoids re-entrant
+    /// emission from inside `apply`.
+    private(set) var needsFullRefresh: Bool = false
 
     init() {}
 
     // MARK: - Mutation
 
     /// Replace the entire graph atomically. Called on initial walk,
-    /// on `.fullRefresh`, and (Phase 14) when the user changes a
-    /// setting that affects discovery filtering.
-    ///
-    /// `lastUpdated` advances on every replace even when the new
-    /// content is identical to the old — useful as a "I tried to
-    /// refresh" signal for tests and for any UI that wants to flash
-    /// the "just synced" indicator.
+    /// on `.fullRefresh` consumer-side rebuilds, and Phase 14 settings
+    /// changes that affect discovery filtering. Bumps `lastUpdated`
+    /// even when the new content is identical to the old.
     func replace(hosts: [ManifoldKit.Host], diagnostics: [Diagnostic] = []) {
         self.hosts = hosts
         self.diagnostics = diagnostics
         self.lastUpdated = .now
+        self.needsFullRefresh = false
     }
 
-    /// Apply one `PortEvent` to the model. Phase 2 implements the
-    /// two cases the popover and the spec acceptance check exercise:
-    ///
-    ///   - `.fullRefresh` — bumps `lastUpdated`. The actual re-walk
-    ///     is initiated by whichever component owns the
-    ///     `DiscoveryService` (Phase 2: `AppDelegate`; Phase 3:
-    ///     `EventService`). The model itself does not call IOKit.
-    ///
-    ///   - `.diagnostic(_)` — appends to `diagnostics` and bumps
-    ///     `lastUpdated`. Lets Phase 8 land a working diagnostic flow
-    ///     before Phase 3's EventService is ready to drive it.
-    ///
-    /// `.attached` / `.detached` / `.telemetry` are no-ops in Phase 2
-    /// because their implementations require deeply-nested Port tree
-    /// mutations that should be designed alongside Phase 3's event
-    /// stream — hard-coding a partial pattern here would either lock
-    /// in the wrong shape or be torn out next phase. Phase 3 will
-    /// implement the full match-port-by-ID + insert/remove pass.
+    /// Apply one `PortEvent` per the SPEC §4.6.1 hybrid surgical /
+    /// structural strategy. Switch on the event case and dispatch to
+    /// the per-case handler; each handler is documented with its
+    /// §4.6.1 contract.
     func apply(_ event: PortEvent) {
         switch event {
-        case .fullRefresh:
-            lastUpdated = .now
+        case .telemetry(let portID, let sample):
+            applyTelemetry(portID: portID, sample: sample)
+
+        case .attached(let device, at: let portID):
+            applyAttached(device: device, at: portID)
+
+        case .detached(let deviceID, from: let portID):
+            applyDetached(deviceID: deviceID, from: portID)
 
         case .diagnostic(let diag):
-            diagnostics.append(diag)
-            lastUpdated = .now
+            applyDiagnostic(diag)
 
-        case .attached, .detached, .telemetry:
-            // Phase 3 lands the per-port mutation logic. Until then
-            // the only path that produces these events is Phase 5+
-            // testing fixtures — none of which exist yet.
-            break
+        case .fullRefresh:
+            // §4.6.1: ".fullRefresh enum case is the *signal* to
+            // rebuild; replace(_:diagnostics:) is what actually swaps
+            // the graph." The consumer (AppDelegate) does the swap on
+            // its own; here we just bump lastUpdated so anything
+            // observing "I tried to refresh" sees a tick.
+            lastUpdated = .now
         }
+    }
+
+    /// Consumer (AppDelegate) calls this after observing
+    /// `needsFullRefresh == true` and triggering a re-walk. Resets the
+    /// flag so the next `.attached` not-found can set it again.
+    func acknowledgeRefreshRequest() {
+        needsFullRefresh = false
+    }
+
+    // MARK: - Per-case handlers (§4.6.1)
+
+    /// `.telemetry` — surgical, hot path, no structural change.
+    /// Phase 3 implements `powerDraw`/`negotiated` updates from the
+    /// sample. The history-ring-buffer append described in §4.6.1
+    /// arrives in Phase 5 alongside `TelemetryBuffer` (Port doesn't
+    /// have a `history` field yet — see BUILD_LOG Phase 3 deviation).
+    private func applyTelemetry(portID: PortID, sample: TelemetrySample) {
+        let found = mutatePort(id: portID) { port in
+            // Update non-nil sample fields onto the port. Nil-from-sample
+            // means "not measured this tick" — leave the prior value
+            // in place rather than wiping it.
+            if let watts = sample.watts {
+                port = ManifoldKit.Port(
+                    id: port.id,
+                    position: port.position,
+                    kind: port.kind,
+                    parentID: port.parentID,
+                    connectedDevice: port.connectedDevice,
+                    negotiated: port.negotiated,
+                    powerDraw: watts,
+                    children: port.children
+                )
+            }
+            if let bitrate = sample.bitrate, let proto = port.negotiated?.protocolName {
+                port = ManifoldKit.Port(
+                    id: port.id,
+                    position: port.position,
+                    kind: port.kind,
+                    parentID: port.parentID,
+                    connectedDevice: port.connectedDevice,
+                    negotiated: LinkSpeed(protocolName: proto, bitrate: bitrate),
+                    powerDraw: port.powerDraw,
+                    children: port.children
+                )
+            }
+        }
+
+        if found {
+            lastUpdated = .now
+        } else {
+            // §4.6.1: "drop the sample silently and emit Log.events.debug —
+            // DO NOT trigger a full refresh on a missing port from a stale
+            // telemetry tick."
+            Log.events.debug("telemetry for unknown port \(portID.rawValue, privacy: .public) — dropped")
+        }
+    }
+
+    /// `.attached` — surgical structural. Found: replace
+    /// `connectedDevice`, clear `negotiated` + `powerDraw` (next
+    /// telemetry tick fills them), leave `children` (a hub announces
+    /// its own downstream ports via separate `.attached` events).
+    /// Not-found: set `needsFullRefresh = true` per §4.6.1.
+    private func applyAttached(device: Device, at portID: PortID) {
+        let found = mutatePort(id: portID) { port in
+            port = ManifoldKit.Port(
+                id: port.id,
+                position: port.position,
+                kind: port.kind,
+                parentID: port.parentID,
+                connectedDevice: device,
+                negotiated: nil,
+                powerDraw: nil,
+                children: port.children
+            )
+        }
+
+        if found {
+            lastUpdated = .now
+        } else {
+            // §4.6.1: "the event references a port that wasn't in the
+            // last walk — emit .fullRefresh instead of inventing a port."
+            // We surface via the `needsFullRefresh` flag rather than a
+            // re-entrant `apply(.fullRefresh)` so the consumer owns the
+            // walk-then-replace sequencing.
+            Log.events.notice("attached to unknown port \(portID.rawValue, privacy: .public); requesting full refresh")
+            needsFullRefresh = true
+            lastUpdated = .now
+        }
+    }
+
+    /// `.detached` — surgical structural. Found: clear device + all
+    /// link/power state, drop downstream children (a hub being removed
+    /// kills its tree). Not-found: drop + debug log per §4.6.1.
+    private func applyDetached(deviceID: DeviceID, from portID: PortID) {
+        let found = mutatePort(id: portID) { port in
+            port = ManifoldKit.Port(
+                id: port.id,
+                position: port.position,
+                kind: port.kind,
+                parentID: port.parentID,
+                connectedDevice: nil,
+                negotiated: nil,
+                powerDraw: nil,
+                children: []
+            )
+        }
+
+        if found {
+            lastUpdated = .now
+        } else {
+            Log.events.debug("detached from unknown port \(portID.rawValue, privacy: .public) — dropped")
+        }
+    }
+
+    /// `.diagnostic` — append + dedupe by (target, ruleIdentifier).
+    /// Latest wins: same key replaces existing entry, otherwise
+    /// append. Phase 8 produces these.
+    private func applyDiagnostic(_ diag: Diagnostic) {
+        let key = (diag.target, diag.ruleIdentifier)
+        diagnostics.removeAll { $0.target == key.0 && $0.ruleIdentifier == key.1 }
+        diagnostics.append(diag)
+        lastUpdated = .now
+    }
+
+    // MARK: - mutatePort traversal helper (§4.6.1)
+
+    /// Walk the host tree, locate the port matching `id`, apply the
+    /// closure to it. Returns `true` if the port was found and the
+    /// closure ran, `false` otherwise.
+    ///
+    /// Implements §4.6.1's COW traversal: rebuilds the path from the
+    /// matching port up to the host root, leaving sibling subtrees
+    /// untouched (so SwiftUI's diff doesn't invalidate them).
+    @discardableResult
+    private func mutatePort(id: PortID, _ mutation: (inout ManifoldKit.Port) -> Void) -> Bool {
+        for hostIndex in hosts.indices {
+            var host = hosts[hostIndex]
+            var newPorts = host.ports
+            if Self.mutatePortInArray(&newPorts, id: id, mutation: mutation) {
+                host = ManifoldKit.Host(
+                    id: host.id,
+                    name: host.name,
+                    model: host.model,
+                    ports: newPorts
+                )
+                hosts[hostIndex] = host
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Recursive helper: search a `[Port]` for the matching ID. If
+    /// found, apply mutation in place. Recurses into `children`. Static
+    /// so it doesn't carry MainActor isolation through the recursion.
+    private static func mutatePortInArray(
+        _ ports: inout [ManifoldKit.Port],
+        id: PortID,
+        mutation: (inout ManifoldKit.Port) -> Void
+    ) -> Bool {
+        for index in ports.indices {
+            if ports[index].id == id {
+                var port = ports[index]
+                mutation(&port)
+                ports[index] = port
+                return true
+            }
+            // Recurse into children. Rebuild the parent port if a
+            // descendant mutation succeeded.
+            var children = ports[index].children
+            if mutatePortInArray(&children, id: id, mutation: mutation) {
+                let parent = ports[index]
+                ports[index] = ManifoldKit.Port(
+                    id: parent.id,
+                    position: parent.position,
+                    kind: parent.kind,
+                    parentID: parent.parentID,
+                    connectedDevice: parent.connectedDevice,
+                    negotiated: parent.negotiated,
+                    powerDraw: parent.powerDraw,
+                    children: children
+                )
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Convenience derivations
 
     /// Total connected device count across every host. Used by the
-    /// Phase-1/2 popover header ("N devices connected") and by the
-    /// Shortcut intent (Phase 12) that returns the same number.
+    /// popover header and the Shortcut intent (Phase 12).
     var totalDeviceCount: Int {
         hosts.reduce(0) { acc, host in
             acc + host.ports.reduce(0) { portAcc, port in
@@ -120,8 +298,6 @@ final class PortGraph {
         }
     }
 
-    /// Recursive helper for `totalDeviceCount` — counts devices in
-    /// any nested children Phase 7 starts populating.
     private static func descendantDeviceCount(of port: ManifoldKit.Port) -> Int {
         port.children.reduce(0) { acc, child in
             acc + (child.connectedDevice == nil ? 0 : 1) + descendantDeviceCount(of: child)

@@ -180,7 +180,12 @@ struct LiveIOKitUSBSource: USBRegistrySource {
     /// which means it is not a real USB device (e.g., a stale orphan
     /// node mid-disconnect). Anything with a VID is included even if
     /// other strings are missing.
-    private static func makeSnapshot(from entry: borrowing IOObject) -> USBDeviceSnapshot? {
+    ///
+    /// Internal (not private) so Phase 3's `EventService` can call it
+    /// directly from a hot-plug callback — the same property-read
+    /// pipeline produces both initial-walk snapshots and hot-plug
+    /// snapshots.
+    static func makeSnapshot(from entry: borrowing IOObject) -> USBDeviceSnapshot? {
         let keys = USBDiscoveryConstants.PropertyKey.self
 
         guard
@@ -383,32 +388,25 @@ final class USBWalker: Sendable {
         return raw.sorted { $0.registryPath < $1.registryPath }
     }
 
-    /// Walk and emit each device's VID/PID/name/speed/power both to the
-    /// `discovery` os.Logger and to stderr. Returns the same list
-    /// `walk()` would. Used by Phase 1's `AppDelegate` so the popover,
-    /// the Xcode debug console, and Console.app's live log stream all
-    /// show the same data.
+    /// Walk and log each device's VID/PID/name/speed/power. Returns
+    /// the same list `walk()` would. Used by `DiscoveryService.walk()`
+    /// so each discovery cycle leaves a one-line-per-device summary
+    /// in the `events.notice` unified-log category.
     ///
-    /// Why dual-emit (Logger + stderr): info-level os.Logger writes are
-    /// not persisted by macOS unified logging by default — they show up
-    /// in `log stream` only while the stream is open. For a short-lived
-    /// development run, that race makes the lines hard to capture.
-    /// Writing to stderr in parallel guarantees the lines are visible
-    /// from Xcode's debug console, from a terminal launch, and (via
-    /// launchd's stderr capture) from Console.app's process tab.
-    /// Phase 3+ will probably bump the per-event lines to `.notice`
-    /// once event flow stabilises, at which point the stderr emit can
-    /// be retired.
+    /// Phase 3 retired the Phase-1 DEBUG-only stderr dual-emit per
+    /// SPEC §16.1 — `.notice` is persisted by the unified log without
+    /// any DEBUG crutch, so the stderr branch is gone. Per-walk
+    /// summary headline goes through `discovery.info` (low-frequency,
+    /// fine to lose to default filtering); per-device lines go through
+    /// `events.notice` so they survive in `log show` after the fact.
     ///
     /// Privacy markers are `.public` because everything we log here
     /// (VID, PID, product name, link speed, milliamps) is hardware
     /// metadata, not user PII.
     func walkAndLog() throws -> [USBDeviceSnapshot] {
         let devices = try walk()
-        emit("USB walk found \(devices.count) device(s)")
+        Log.discovery.info("USB walk found \(devices.count, privacy: .public) device(s)")
         for device in devices {
-            // Pre-format the line so each emit() call writes a single
-            // pre-built string to both sinks.
             let line = String(
                 format: "  VID=0x%04X PID=0x%04X name=%@ speed=%@ power=%@",
                 device.vendorID,
@@ -417,29 +415,8 @@ final class USBWalker: Sendable {
                 USBDiscoveryConstants.speedName(for: device.speed),
                 device.requestedPowerMA.map { "\($0) mA" } ?? "—"
             )
-            emit(line)
+            Log.events.notice("\(line, privacy: .public)")
         }
         return devices
-    }
-
-    /// Send `line` to `os.Logger` always, and to stderr in DEBUG builds.
-    ///
-    /// The stderr branch is `#if DEBUG`-gated per SPEC.md §16.1 — Release
-    /// builds emit only through the unified log. The whole stderr path is
-    /// scheduled for retirement in Phase 3 once connect/disconnect
-    /// emissions move to `.notice` (which IS persisted by the unified
-    /// log without any DEBUG crutch). Reviewer enforces both the
-    /// `#if DEBUG` gate here and the Phase 3 deletion.
-    ///
-    /// `if let data = …` — UTF-8 encoding cannot fail for a Swift
-    /// String, but the optional makes the call site readable without a
-    /// force-unwrap and costs nothing.
-    private func emit(_ line: String) {
-        Log.discovery.info("\(line, privacy: .public)")
-#if DEBUG
-        if let data = (line + "\n").data(using: .utf8) {
-            FileHandle.standardError.write(data)
-        }
-#endif
     }
 }

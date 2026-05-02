@@ -98,7 +98,16 @@ struct PortGraphBuilder: Sendable {
         )
     }
 
-    private func makeDevice(from snapshot: USBDeviceSnapshot, timestamp: Date) -> Device {
+    /// Snapshot → Device. Internal-static so Phase 3's `EventService`
+    /// can produce a `Device` for hot-plug `.attached` events without
+    /// going through the full builder pipeline. The instance method
+    /// `makeDevice(from:timestamp:)` delegates here for the in-pipeline
+    /// path; both produce identical output.
+    ///
+    /// Phase 2 defaults — `kind = .other`, `displayInfo = nil`. Phase 5+
+    /// refines `kind` via CoreAudio/HID parent walks; Phase 7 populates
+    /// `displayInfo` from EDID.
+    static func makeDevice(from snapshot: USBDeviceSnapshot, timestamp: Date) -> Device {
         let id = DeviceID.make(
             vendorID: snapshot.vendorID,
             productID: snapshot.productID,
@@ -110,23 +119,35 @@ struct PortGraphBuilder: Sendable {
         return Device(
             id: id,
             name: resolvedName,
-            kind: .other,                              // Phase 2 default; Phase 5+ refines via CoreAudio/HID parent walks
+            kind: .other,
             vendorID: snapshot.vendorID,
             productID: snapshot.productID,
             serial: snapshot.serial,
             usbVersion: deriveUSBVersion(from: snapshot.bcdUSB),
-            displayInfo: nil,                          // Phase 7 populates for displays
+            displayInfo: nil,
             firstSeen: timestamp,
             lastSeen: timestamp
         )
     }
 
-    private func makeLinkSpeed(from snapshot: USBDeviceSnapshot) -> LinkSpeed? {
+    private func makeDevice(from snapshot: USBDeviceSnapshot, timestamp: Date) -> Device {
+        Self.makeDevice(from: snapshot, timestamp: timestamp)
+    }
+
+    /// Snapshot → LinkSpeed. Internal-static for the same reason as
+    /// `makeDevice` — Phase 3's hot-plug path needs to produce a
+    /// `LinkSpeed?` from a fresh snapshot. Returns nil only when the
+    /// snapshot itself has nil `speed`.
+    static func makeLinkSpeed(from snapshot: USBDeviceSnapshot) -> LinkSpeed? {
         guard let speed = snapshot.speed else { return nil }
         return LinkSpeed(
             protocolName: USBDiscoveryConstants.speedName(for: speed),
-            bitrate: Self.bitrate(forSpeedCode: speed)
+            bitrate: bitrate(forSpeedCode: speed)
         )
+    }
+
+    private func makeLinkSpeed(from snapshot: USBDeviceSnapshot) -> LinkSpeed? {
+        Self.makeLinkSpeed(from: snapshot)
     }
 
     // MARK: - bcdUSB → USBVersion mapping
@@ -134,7 +155,8 @@ struct PortGraphBuilder: Sendable {
     /// Map the 16-bit BCD `bcdUSB` field to our typed `USBVersion`.
     /// Returns `.unknown` for recognised classes we don't have an enum
     /// case for, and `nil` only when the source had no bcdUSB at all.
-    private func deriveUSBVersion(from bcd: UInt16?) -> USBVersion? {
+    /// Static so `makeDevice`'s static variant can call it.
+    static func deriveUSBVersion(from bcd: UInt16?) -> USBVersion? {
         guard let bcd else { return nil }
         switch bcd {
         case 0x0200, 0x0210:        return .usb2_0

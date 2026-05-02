@@ -41,9 +41,18 @@ enum Log {
     static let subsystem = "com.Loofa.Manifold"
 
     /// Category for the IORegistry walks (USB / TB / displays). Phase 1
-    /// is the first user; later phases add `events`, `telemetry`,
-    /// `diagnostics`, etc. as siblings.
+    /// was the first user; Phase 3 retired most discovery emissions in
+    /// favour of `events.notice(...)` per SPEC §16.1, but the category
+    /// remains for the periodic re-walk path.
     static let discovery = Logger(subsystem: subsystem, category: "discovery")
+
+    /// Category for hot-plug events (connect / disconnect /
+    /// diagnostic). Per SPEC §16.1, connect/disconnect emissions live
+    /// here at `.notice` level — `.notice` is persisted to the unified
+    /// log by default (no DEBUG-only stderr crutch needed) and is the
+    /// right tier for "user-actionable hardware change just happened."
+    /// Telemetry samples flow through `.debug` here too (high volume).
+    static let events = Logger(subsystem: subsystem, category: "events")
 
     /// Category for app-level lifecycle (launch, NSStatusItem install,
     /// popover open/close).

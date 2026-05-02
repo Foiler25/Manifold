@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "captureSource": "Hand-crafted Phase 3 events fixture per SPEC.md §18 Phase 3 rev-4 bullet. Includes a fourth device (Sandberg USB hub) with `Speed: null` + populated `bcdUSB: 768` (0x0300) so the F5 Speed-fallback chain (USBWalker.resolveSpeed → deriveSpeedFromBcd) is regression-pinned in CI rather than only verified by Brandon's M1 Max boot-SSD live walk. Closes Phase 2 Q3.",
+  "devices": [
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd0@2280000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@01000000/AppleEmbeddedUSBXHCIRootHubUSB30@01000000/IOUSBHostInterface@0/IOUSBHostDevice@01100000",
+      "idVendor": 1133,
+      "idProduct": 50475,
+      "USB Product Name": "USB Receiver",
+      "USB Vendor Name": "Logitech",
+      "iSerialNumber": null,
+      "bcdUSB": 528,
+      "Speed": 2,
+      "Requested Power": 98,
+      "PortNum": 1,
+      "locationID": 17825792
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd1@2A80000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@02000000/AppleEmbeddedUSBXHCIRootHubUSB30@02000000/IOUSBHostInterface@0/IOUSBHostDevice@02100000",
+      "idVendor": 1921,
+      "idProduct": 21922,
+      "USB Product Name": "Extreme Pro SSD",
+      "USB Vendor Name": "SanDisk",
+      "iSerialNumber": "0123456789ABCDEF",
+      "bcdUSB": 800,
+      "Speed": 4,
+      "Requested Power": 896,
+      "PortNum": 1,
+      "locationID": 33554432
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/usb-drd3@2E80000/AppleT6000USBXHCI/AppleEmbeddedUSBXHCIRoot@04000000/AppleEmbeddedUSBXHCIRootHubUSB30@04000000/IOUSBHostInterface@0/IOUSBHostDevice@04100000",
+      "idVendor": 2385,
+      "idProduct": 1810,
+      "USB Product Name": "USB-C Hub",
+      "USB Vendor Name": "Sandberg",
+      "iSerialNumber": null,
+      "bcdUSB": 768,
+      "Speed": null,
+      "Requested Power": null,
+      "PortNum": 1,
+      "locationID": 67108864
+    }
+  ]
+}
