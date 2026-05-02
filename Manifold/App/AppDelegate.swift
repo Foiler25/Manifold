@@ -37,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventService: EventService?
     private let portGraph = PortGraph()
     private var statusItemController: StatusItemController?
+    private var telemetrySampler: TelemetrySampler?
+    private let samplerLifecycle = SamplerLifecycle()
     private var eventConsumerTask: Task<Void, Never>?
     private var graphObservationTask: Task<Void, Never>?
 
@@ -46,7 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = StatusItemController(
             graph: portGraph,
             onOpenWindow: { [weak self] in self?.openMainWindow() },
-            onOpenSettings: { [weak self] in self?.openSettings() }
+            onOpenSettings: { [weak self] in self?.openSettings() },
+            onPopoverDidShow: { [weak self] in self?.samplerLifecycle.popoverDidOpen() },
+            onPopoverDidClose: { [weak self] in self?.samplerLifecycle.popoverDidClose() }
         )
         controller.install()
         statusItemController = controller
@@ -55,6 +59,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         eventService = service
         startEventConsumer(service: service)
         startBadgeObserver(controller: controller)
+
+        // Phase 5: telemetry sampler attached to the lifecycle. The
+        // lifecycle starts/stops the sampler as popover (and Phase 6
+        // window) surfaces appear/disappear; the sampler emits
+        // .telemetry events via EventService.inject which flow into
+        // PortGraph.apply via the same consumer task.
+        let sampler = TelemetrySampler(eventService: service)
+        telemetrySampler = sampler
+        samplerLifecycle.attach(sampler: sampler)
 
         // Seed the initial walk through the same .fullRefresh path as
         // any subsequent refresh — keeps the consumer's behavior
@@ -69,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         eventConsumerTask?.cancel()
         graphObservationTask?.cancel()
+        samplerLifecycle.shutdown()
         eventService?.shutdown()
     }
 

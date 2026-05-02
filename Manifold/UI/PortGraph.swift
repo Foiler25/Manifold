@@ -44,6 +44,15 @@ final class PortGraph {
     /// to relitigate the apply pattern.
     private(set) var diagnostics: [Diagnostic] = []
 
+    /// Per-port telemetry history. Phase 5: keyed by `PortID`,
+    /// `TelemetryBuffer` is the fixed-cap-60 ring buffer per SPEC §8.
+    /// Phase-3-deferred-to-Phase-5 work landed: `.telemetry` events
+    /// now append to the buffer for the matching `PortID`. Lives on
+    /// PortGraph (not on `Port`) because `TelemetryBuffer` is a
+    /// Manifold-target type, not ManifoldKit — see Phase 5 BUILD_LOG
+    /// design note #1.
+    private(set) var telemetryHistory: [PortID: TelemetryBuffer] = [:]
+
     /// Wall-clock time of the last mutation. Bumped on every successful
     /// `replace`/`apply` call — used by the popover's "last updated"
     /// affordance and as a monotonic test signal.
@@ -68,8 +77,28 @@ final class PortGraph {
     func replace(hosts: [ManifoldKit.Host], diagnostics: [Diagnostic] = []) {
         self.hosts = hosts
         self.diagnostics = diagnostics
+        // Prune telemetry history to ports that still exist in the
+        // new graph. Avoids unbounded growth across replug churn —
+        // a port that's gone for good has no business keeping its
+        // sparkline data alive in memory.
+        let livePortIDs = Self.allPortIDs(in: hosts)
+        self.telemetryHistory = self.telemetryHistory.filter { livePortIDs.contains($0.key) }
         self.lastUpdated = .now
         self.needsFullRefresh = false
+    }
+
+    /// Recursively collect every PortID in the host tree. Used by
+    /// `replace` to prune telemetry history for vanished ports.
+    private static func allPortIDs(in hosts: [ManifoldKit.Host]) -> Set<PortID> {
+        var ids: Set<PortID> = []
+        func walk(_ ports: [ManifoldKit.Port]) {
+            for port in ports {
+                ids.insert(port.id)
+                walk(port.children)
+            }
+        }
+        for host in hosts { walk(host.ports) }
+        return ids
     }
 
     /// Apply one `PortEvent` per the SPEC §4.6.1 hybrid surgical /
@@ -110,10 +139,10 @@ final class PortGraph {
     // MARK: - Per-case handlers (§4.6.1)
 
     /// `.telemetry` — surgical, hot path, no structural change.
-    /// Phase 3 implements `powerDraw`/`negotiated` updates from the
-    /// sample. The history-ring-buffer append described in §4.6.1
-    /// arrives in Phase 5 alongside `TelemetryBuffer` (Port doesn't
-    /// have a `history` field yet — see BUILD_LOG Phase 3 deviation).
+    /// Phase 5 closes the Phase-3 partial implementation: the sample
+    /// is appended to `telemetryHistory[portID]`, and the port's
+    /// `powerDraw`/`negotiated.bitrate` are refreshed from the
+    /// sample's non-nil fields.
     private func applyTelemetry(portID: PortID, sample: TelemetrySample) {
         let found = mutatePort(id: portID) { port in
             // Update non-nil sample fields onto the port. Nil-from-sample
@@ -146,6 +175,12 @@ final class PortGraph {
         }
 
         if found {
+            // Append the sample to the per-port ring buffer. Phase 3's
+            // §4.6.1 contract: "Append sample to that port's history
+            // ring buffer (capacity 60, oldest dropped)."
+            var buffer = telemetryHistory[portID] ?? TelemetryBuffer()
+            buffer.append(sample)
+            telemetryHistory[portID] = buffer
             lastUpdated = .now
         } else {
             // §4.6.1: "drop the sample silently and emit Log.events.debug —
@@ -153,6 +188,15 @@ final class PortGraph {
             // telemetry tick."
             Log.events.debug("telemetry for unknown port \(portID.rawValue, privacy: .public) — dropped")
         }
+    }
+
+    // MARK: - Telemetry accessor
+
+    /// History buffer for `portID`, or nil if no samples have been
+    /// recorded yet for that port. Used by the popover's `DeviceRow`
+    /// to drive its sparkline.
+    func history(forPortID portID: PortID) -> TelemetryBuffer? {
+        telemetryHistory[portID]
     }
 
     /// `.attached` — surgical structural. Found: replace
@@ -190,7 +234,8 @@ final class PortGraph {
 
     /// `.detached` — surgical structural. Found: clear device + all
     /// link/power state, drop downstream children (a hub being removed
-    /// kills its tree). Not-found: drop + debug log per §4.6.1.
+    /// kills its tree), clear history (§4.6.1's "clear history").
+    /// Not-found: drop + debug log per §4.6.1.
     private func applyDetached(deviceID: DeviceID, from portID: PortID) {
         let found = mutatePort(id: portID) { port in
             port = ManifoldKit.Port(
@@ -206,6 +251,10 @@ final class PortGraph {
         }
 
         if found {
+            // §4.6.1: ".detached → clear history". The buffer for this
+            // port is gone; the next .attached on this PortID will
+            // start a fresh sparkline.
+            telemetryHistory.removeValue(forKey: portID)
             lastUpdated = .now
         } else {
             Log.events.debug("detached from unknown port \(portID.rawValue, privacy: .public) — dropped")

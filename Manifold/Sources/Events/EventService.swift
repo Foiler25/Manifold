@@ -83,7 +83,7 @@ final class EventService: @unchecked Sendable {
 
     /// Pass `notificationCenter: nil` for test mode — the multiplexed
     /// stream still works, hot-plug events just have to be injected via
-    /// `_testEmit(_:)`. Production constructs with the default-built
+    /// `inject(_:)`. Production constructs with the default-built
     /// `IOKitNotificationCenter()` which spawns the dedicated CFRunLoop
     /// thread and registers IOUSBHostDevice notifications.
     init(notificationCenter: IOKitNotificationCenter? = IOKitNotificationCenter()) {
@@ -245,14 +245,21 @@ final class EventService: @unchecked Sendable {
         }
     }
 
-    // MARK: - Test injection
+    // MARK: - Back-channel publisher (SPEC §8 wording)
 
-    /// **TEST ONLY.** Bypass the IOKit notification path and yield an
-    /// event directly to every active stream. EventStreamTests use
-    /// this to script attach/detach sequences without spinning up the
-    /// live CFRunLoop thread. Production code never calls this — the
-    /// `_test` prefix and the doc tag flag misuse loudly.
-    func _testEmit(_ event: PortEvent) {
+    /// Inject a `PortEvent` into the multiplexed stream from outside
+    /// the IOKit notification path. Per SPEC §8: "The sampler emits
+    /// samples through the same `AsyncStream<PortEvent>` as
+    /// `EventService`, via a back-channel publisher." `TelemetrySampler`
+    /// uses this on every tick; `EventStreamTests` use it to script
+    /// attach/detach sequences without spinning up the live CFRunLoop
+    /// thread.
+    ///
+    /// Phase 3 named this `inject(_:)`; Phase 5 renamed to
+    /// `inject(_:)` because production code (the sampler) is now also
+    /// a legitimate caller. Same yield semantics as the IOKit-side
+    /// path — every active continuation gets the event.
+    func inject(_ event: PortEvent) {
         emit(event)
     }
 }

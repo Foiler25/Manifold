@@ -72,7 +72,7 @@ struct PopoverRoot: View {
                 LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(graph.hosts.first?.ports ?? [], id: \.id) { port in
                         OutlineGroup(port, children: \.childrenForOutline) { node in
-                            PortRow(port: node)
+                            PortRow(port: node, history: graph.history(forPortID: node.id))
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 4)
                         }

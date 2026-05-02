@@ -32,6 +32,12 @@ struct DeviceRow: View {
     let port: ManifoldKit.Port
     let device: Device
 
+    /// Phase 5: per-port telemetry buffer. nil → no samples yet
+    /// (placeholder line); `.samples` is the Sparkline's input. The
+    /// PortGraph passes this in from `history(forPortID:)`; the
+    /// `@Observable` PortGraph re-renders the row on every append.
+    let history: TelemetryBuffer?
+
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: iconName(for: device.kind))
@@ -50,10 +56,15 @@ struct DeviceRow: View {
 
             Spacer()
 
-            if let watts = port.powerDraw {
-                Text(watts.formatted)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            // Sparkline + watts column. Phase 4 had only the watts
+            // value; Phase 5 adds the sparkline above it.
+            VStack(alignment: .trailing, spacing: 2) {
+                Sparkline(samples: history?.samples ?? [])
+                if let watts = port.powerDraw {
+                    Text(watts.formatted)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,20 +147,46 @@ struct DeviceRow: View {
     }
 }
 
-#Preview("DeviceRow — Logitech mouse") {
-    DeviceRow(port: PreviewData.logitechPort, device: PreviewData.logitechMouse)
-        .padding()
-        .background(Color.manifoldSurface)
+// MARK: - Previews
+
+private func previewBuffer(seed: Double) -> TelemetryBuffer {
+    var b = TelemetryBuffer()
+    for i in 0..<60 {
+        b.append(TelemetrySample(
+            timestamp: Date(timeIntervalSince1970: TimeInterval(i)),
+            watts: Watts(seed + sin(Double(i) / 5.0) * 0.3 + Double(i) * 0.005),
+            bitrate: nil
+        ))
+    }
+    return b
 }
 
-#Preview("DeviceRow — SanDisk SSD (high power)") {
-    DeviceRow(port: PreviewData.sandiskPort, device: PreviewData.sandiskSSD)
-        .padding()
-        .background(Color.manifoldSurface)
+#Preview("DeviceRow — Logitech mouse with sparkline") {
+    DeviceRow(
+        port: PreviewData.logitechPort,
+        device: PreviewData.logitechMouse,
+        history: previewBuffer(seed: 0.5)
+    )
+    .padding()
+    .background(Color.manifoldSurface)
 }
 
-#Preview("DeviceRow — Studio Display") {
-    DeviceRow(port: PreviewData.studioDisplayPort, device: PreviewData.studioDisplay)
-        .padding()
-        .background(Color.manifoldSurface)
+#Preview("DeviceRow — SanDisk SSD (high power) with sparkline") {
+    DeviceRow(
+        port: PreviewData.sandiskPort,
+        device: PreviewData.sandiskSSD,
+        history: previewBuffer(seed: 4.5)
+    )
+    .padding()
+    .background(Color.manifoldSurface)
+}
+
+#Preview("DeviceRow — Studio Display, no history yet") {
+    DeviceRow(
+        port: PreviewData.studioDisplayPort,
+        device: PreviewData.studioDisplay,
+        history: nil
+    )
+    .padding()
+    .background(Color.manifoldSurface)
 }

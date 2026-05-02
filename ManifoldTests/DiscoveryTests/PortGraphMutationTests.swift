@@ -39,9 +39,8 @@ final class PortGraphMutationTests: XCTestCase {
     // MARK: - .telemetry
 
     /// Found-port .telemetry updates powerDraw + negotiated.bitrate
-    /// from the sample. Phase 3 doesn't append to history (Phase 5
-    /// adds TelemetryBuffer); we just verify the surgical update of
-    /// the existing fields.
+    /// from the sample AND appends to the per-port history buffer
+    /// (Phase 5 closure of the Phase-3 partial implementation).
     func test_telemetry_foundPort_updatesPowerAndBitrate() {
         let graph = PortGraph()
         let portID = PortID("/host/port-1")
@@ -82,6 +81,88 @@ final class PortGraphMutationTests: XCTestCase {
 
         XCTAssertEqual(graph.lastUpdated, initialUpdated, "Not-found telemetry must not bump lastUpdated.")
         XCTAssertFalse(graph.needsFullRefresh, "Not-found telemetry must NOT request full refresh.")
+    }
+
+    /// Phase 5: telemetry history is appended on every found-port
+    /// .telemetry. The per-port `TelemetryBuffer` accumulates samples
+    /// up to capacity 60.
+    func test_telemetry_foundPort_appendsToHistory() {
+        let graph = PortGraph()
+        let portID = PortID("/host/port-1")
+        graph.replace(hosts: [makeHost(portIDs: [portID], withInitialDevice: true)])
+
+        for i in 0..<5 {
+            graph.apply(.telemetry(
+                portID,
+                TelemetrySample(
+                    timestamp: Date(timeIntervalSince1970: Double(i)),
+                    watts: Watts(Double(i) * 0.1),
+                    bitrate: nil
+                )
+            ))
+        }
+
+        let history = graph.history(forPortID: portID)
+        XCTAssertNotNil(history)
+        XCTAssertEqual(history?.samples.count, 5)
+        XCTAssertEqual(history?.latest?.watts?.value ?? 0, 0.4, accuracy: 0.001)
+    }
+
+    /// Telemetry history caps at 60 samples per SPEC §8 (the buffer's
+    /// default capacity). Pinning so a future buffer-cap regression
+    /// surfaces in CI.
+    func test_telemetry_history_capsAtBufferCapacity() {
+        let graph = PortGraph()
+        let portID = PortID("/host/port-cap")
+        graph.replace(hosts: [makeHost(portIDs: [portID], withInitialDevice: true)])
+
+        for i in 0..<100 {
+            graph.apply(.telemetry(
+                portID,
+                TelemetrySample(timestamp: Date(timeIntervalSince1970: Double(i)), watts: Watts(0), bitrate: nil)
+            ))
+        }
+
+        XCTAssertEqual(graph.history(forPortID: portID)?.samples.count, 60)
+    }
+
+    /// `.detached` clears history per §4.6.1. Pinning so the
+    /// "history goes away when the device unplugs" contract is
+    /// regression-protected.
+    func test_detached_clearsHistory() {
+        let graph = PortGraph()
+        let portID = PortID("/host/port-1")
+        graph.replace(hosts: [makeHost(portIDs: [portID], withInitialDevice: true)])
+
+        graph.apply(.telemetry(
+            portID,
+            TelemetrySample(timestamp: Date(), watts: Watts(1.0), bitrate: nil)
+        ))
+        XCTAssertNotNil(graph.history(forPortID: portID))
+
+        graph.apply(.detached(deviceID: DeviceID("ignored"), from: portID))
+        XCTAssertNil(graph.history(forPortID: portID), "Detach clears the per-port history buffer.")
+    }
+
+    /// `replace(hosts:)` prunes telemetry history for ports that no
+    /// longer exist in the new graph. Otherwise history would grow
+    /// unbounded across replug churn.
+    func test_replace_prunesHistoryForVanishedPorts() {
+        let graph = PortGraph()
+        let portA = PortID("/a")
+        let portB = PortID("/b")
+        graph.replace(hosts: [makeHost(portIDs: [portA, portB], withInitialDevice: true)])
+
+        graph.apply(.telemetry(portA, TelemetrySample(timestamp: Date(), watts: Watts(1.0), bitrate: nil)))
+        graph.apply(.telemetry(portB, TelemetrySample(timestamp: Date(), watts: Watts(2.0), bitrate: nil)))
+        XCTAssertNotNil(graph.history(forPortID: portA))
+        XCTAssertNotNil(graph.history(forPortID: portB))
+
+        // New graph: portA is gone. portB stays.
+        graph.replace(hosts: [makeHost(portIDs: [portB], withInitialDevice: true)])
+
+        XCTAssertNil(graph.history(forPortID: portA), "Vanished port's history pruned.")
+        XCTAssertNotNil(graph.history(forPortID: portB), "Surviving port's history preserved.")
     }
 
     // MARK: - .attached

@@ -28,7 +28,7 @@
 //   - F5 fallback fixture is exercised in CI (rev-4 bullet #10)
 //
 // Tests construct EventService in test mode (`notificationCenter: nil`)
-// — no live IOKit thread spins up — and use `_testEmit(_:)` to script
+// — no live IOKit thread spins up — and use `inject(_:)` to script
 // events. The PortGraph delta assertion lives in PortGraphMutationTests.
 
 import XCTest
@@ -66,7 +66,7 @@ final class EventStreamTests: XCTestCase {
 
         Task.detached {
             try? await Task.sleep(for: .milliseconds(20))
-            service._testEmit(.attached(device, at: portID))
+            service.inject(.attached(device, at: portID))
         }
 
         let event = try await Self.firstEvent(of: stream, timeoutSeconds: 1)
@@ -112,7 +112,7 @@ final class EventStreamTests: XCTestCase {
 
         Task.detached {
             try? await Task.sleep(for: .milliseconds(20))
-            service._testEmit(.attached(device, at: portID))
+            service.inject(.attached(device, at: portID))
         }
 
         async let event1 = Self.firstEvent(of: stream1, timeoutSeconds: 1)

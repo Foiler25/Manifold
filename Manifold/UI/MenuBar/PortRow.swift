@@ -33,9 +33,13 @@ struct PortRow: View {
 
     let port: ManifoldKit.Port
 
+    /// Phase 5: per-port telemetry buffer threaded through to
+    /// `DeviceRow`. nil for empty ports (no device → no telemetry).
+    let history: TelemetryBuffer?
+
     var body: some View {
         if let device = port.connectedDevice {
-            DeviceRow(port: port, device: device)
+            DeviceRow(port: port, device: device, history: history)
         } else {
             emptyPortRow
         }
@@ -94,14 +98,22 @@ struct PortRow: View {
     }
 }
 
-#Preview("PortRow — populated (Logitech)") {
-    PortRow(port: PreviewData.logitechPort)
+#Preview("PortRow — populated (Logitech) with sparkline") {
+    var buffer = TelemetryBuffer()
+    for i in 0..<60 {
+        buffer.append(TelemetrySample(
+            timestamp: Date(timeIntervalSince1970: TimeInterval(i)),
+            watts: Watts(0.5 + sin(Double(i) / 5.0) * 0.2),
+            bitrate: nil
+        ))
+    }
+    return PortRow(port: PreviewData.logitechPort, history: buffer)
         .padding()
         .background(Color.manifoldSurface)
 }
 
 #Preview("PortRow — empty USB-C") {
-    PortRow(port: PreviewData.emptyUSBCPort)
+    PortRow(port: PreviewData.emptyUSBCPort, history: nil)
         .padding()
         .background(Color.manifoldSurface)
 }

@@ -60,18 +60,31 @@ final class StatusItemController {
     /// Closures injected by AppDelegate so the popover toolbar's
     /// "open window" / "settings" buttons trigger AppKit-level
     /// activation without StatusItemController knowing about
-    /// `NSApplication`.
+    /// `NSApplication`. Phase 5 adds `onPopoverDidShow` /
+    /// `onPopoverDidClose` so AppDelegate can drive `SamplerLifecycle`
+    /// per SPEC §18 Phase 5 acceptance #3.
     private let onOpenWindow: @MainActor () -> Void
     private let onOpenSettings: @MainActor () -> Void
+    private let onPopoverDidShow: @MainActor () -> Void
+    private let onPopoverDidClose: @MainActor () -> Void
+
+    /// Inner delegate so StatusItemController can forward NSPopover
+    /// callbacks without itself conforming to NSPopoverDelegate (which
+    /// would force `@MainActor` interop with `NSObjectProtocol`).
+    private var popoverDelegate: PopoverDelegateAdapter?
 
     init(
         graph: PortGraph,
         onOpenWindow: @escaping @MainActor () -> Void,
-        onOpenSettings: @escaping @MainActor () -> Void
+        onOpenSettings: @escaping @MainActor () -> Void,
+        onPopoverDidShow: @escaping @MainActor () -> Void = {},
+        onPopoverDidClose: @escaping @MainActor () -> Void = {}
     ) {
         self.graph = graph
         self.onOpenWindow = onOpenWindow
         self.onOpenSettings = onOpenSettings
+        self.onPopoverDidShow = onPopoverDidShow
+        self.onPopoverDidClose = onPopoverDidClose
     }
 
     // MARK: - Install
@@ -140,6 +153,14 @@ final class StatusItemController {
             onOpenWindow: onOpenWindow,
             onOpenSettings: onOpenSettings
         )
+        // Wire the popover delegate so SamplerLifecycle hears about
+        // popover open/close and can pause/resume the sampler.
+        let delegate = PopoverDelegateAdapter(
+            onShow: onPopoverDidShow,
+            onClose: onPopoverDidClose
+        )
+        popover.delegate = delegate
+        self.popoverDelegate = delegate
         self.popover = popover
         return popover
     }
@@ -159,6 +180,34 @@ final class StatusItemController {
         )
         image?.isTemplate = true
         return image
+    }
+}
+
+// MARK: - Popover delegate adapter
+
+/// Inner class that bridges NSPopoverDelegate's Objective-C callbacks
+/// to our Swift closure pair. Held by `StatusItemController` so the
+/// delegate stays alive as long as the popover does — `NSPopover.delegate`
+/// is `weak`.
+@MainActor
+private final class PopoverDelegateAdapter: NSObject, NSPopoverDelegate {
+    let onShow: @MainActor () -> Void
+    let onClose: @MainActor () -> Void
+
+    init(
+        onShow: @escaping @MainActor () -> Void,
+        onClose: @escaping @MainActor () -> Void
+    ) {
+        self.onShow = onShow
+        self.onClose = onClose
+    }
+
+    nonisolated func popoverDidShow(_ notification: Notification) {
+        Task { @MainActor in onShow() }
+    }
+
+    nonisolated func popoverDidClose(_ notification: Notification) {
+        Task { @MainActor in onClose() }
     }
 }
 
