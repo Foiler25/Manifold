@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "captureSource": "Hand-crafted Phase 7 fixture per SPEC.md §18 Phase 7. Models the canonical Studio Display test rig: host TB controller → Studio Display (which contains its own downstream TB switch) → an OWC TB SSD daisy-chained behind the display. Brandon does not have this rig (per QUESTIONS.md #9), so live-hardware verification ships PASS WITH FOLLOWUPS per SPEC §18.0 STUDIO-DISPLAY-CHAIN. The CI test path is fixture-driven; PortGraphBuilder.nestByRegistryPath should reconstruct: host-root → display → downstream SSD.",
+  "devices": [
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/atc-phy@5800000/AppleT6000Thunderbolt/IOThunderboltSwitchType2@0",
+      "Route String": "0-0",
+      "IOThunderboltLinkType": null,
+      "IOThunderboltLinkSpeed": null,
+      "IOThunderboltLinkWidth": null,
+      "IOThunderboltVendorName": "Apple Inc.",
+      "IOThunderboltDeviceName": "MacBook Pro",
+      "vendorID": 1452,
+      "deviceID": 64513
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/atc-phy@5800000/AppleT6000Thunderbolt/IOThunderboltSwitchType2@0/IOThunderboltPort@1/IOThunderboltSwitchType2@1",
+      "Route String": "1-0",
+      "IOThunderboltLinkType": 4,
+      "IOThunderboltLinkSpeed": 400,
+      "IOThunderboltLinkWidth": 2,
+      "IOThunderboltVendorName": "Apple Inc.",
+      "IOThunderboltDeviceName": "Studio Display",
+      "vendorID": 1452,
+      "deviceID": 4400
+    },
+    {
+      "registryPath": "IOService:/AppleARMPE/arm-io@10F00000/AppleT6020IO/atc-phy@5800000/AppleT6000Thunderbolt/IOThunderboltSwitchType2@0/IOThunderboltPort@1/IOThunderboltSwitchType2@1/IOThunderboltPort@2/IOThunderboltSwitchType2@2",
+      "Route String": "1-2",
+      "IOThunderboltLinkType": 3,
+      "IOThunderboltLinkSpeed": 400,
+      "IOThunderboltLinkWidth": 1,
+      "IOThunderboltVendorName": "Other World Computing",
+      "IOThunderboltDeviceName": "Envoy Pro FX",
+      "vendorID": 7765,
+      "deviceID": 8211
+    }
+  ]
+}

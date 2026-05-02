@@ -135,23 +135,39 @@ final class TelemetrySampler {
     }
 
     /// One sampler tick. Walks IOKit, builds one TelemetrySample per
-    /// device, pushes via `EventService.inject`. Errors logged and
-    /// swallowed — a single failed walk shouldn't kill the sampler.
+    /// device, pushes via `EventService.inject`.
+    ///
+    /// Phase 7 (Reviewer F9) routes the IOKit walk through
+    /// `IOKitQueue.shared` — same serial-executor hop as
+    /// `DiscoveryService.walk`. The Task we spawn inherits MainActor
+    /// from the surrounding @MainActor context, then `await`s the
+    /// queue: the walk runs on the queue's serial executor, the
+    /// emit returns to MainActor.
+    ///
+    /// Errors logged and swallowed — a single failed walk shouldn't
+    /// kill the sampler.
     private func tick() {
-        guard let snapshots = try? walker.walk() else {
-            Log.events.debug("TelemetrySampler: walk failed; skipping tick")
-            return
-        }
-        let now = Date()
-        for snapshot in snapshots {
-            let sample = TelemetrySample(
-                timestamp: now,
-                watts: snapshot.requestedPowerMA.map {
-                    Watts.fromMilliamps($0, atVolts: USBBusVoltage.standard)
-                },
-                bitrate: snapshot.speed.map(PortGraphBuilder.bitrate(forSpeedCode:))
-            )
-            eventService.inject(.telemetry(PortID(snapshot.registryPath), sample))
+        let walker = self.walker
+        let eventService = self.eventService
+        Task { @MainActor in
+            let snapshots: [USBDeviceSnapshot]
+            do {
+                snapshots = try await IOKitQueue.shared.usbWalk(walker: walker)
+            } catch {
+                Log.events.debug("TelemetrySampler: walk failed; skipping tick")
+                return
+            }
+            let now = Date()
+            for snapshot in snapshots {
+                let sample = TelemetrySample(
+                    timestamp: now,
+                    watts: snapshot.requestedPowerMA.map {
+                        Watts.fromMilliamps($0, atVolts: USBBusVoltage.standard)
+                    },
+                    bitrate: snapshot.speed.map(PortGraphBuilder.bitrate(forSpeedCode:))
+                )
+                eventService.inject(.telemetry(PortID(snapshot.registryPath), sample))
+            }
         }
     }
 

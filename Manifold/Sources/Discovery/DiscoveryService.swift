@@ -17,29 +17,22 @@
 // ─────────────────────────────────────────────────────────────────────
 // DiscoveryService.swift
 //
-// Phase-2 discovery entry point. Replaces Phase 1's direct
-// `usbWalker.walk()` call from AppDelegate with the per-SPEC §6
-// `walk() async throws -> [Host]` API.
+// Per SPEC.md §6 — single entry point for "walk the IORegistry once
+// and return [Host]." Phase 7 closes Reviewer F9 by routing every
+// IOKit-touching call through `IOKitQueue` (the SPEC §1
+// dedicated-serial-executor for IOKit traversal). Phases 1–6 ran
+// USB walks synchronously on whichever actor invoked `walk()`
+// (typically MainActor); Phase 7's TB walker + display resolver
+// would push that visibly under load.
 //
-// Responsibilities:
-//   - Drive every sub-walker (Phase 2: USB only; Phase 7 adds TB
-//     and DisplayResolver).
-//   - Resolve the local Host's metadata from `IOPlatformExpertDevice`.
-//   - Hand everything to `PortGraphBuilder` and return the assembled
-//     `[Host]` graph.
-//
-// Why `async throws`: the SPEC mandates this signature so Phase 3 can
-// hop to a dedicated `IOKitQueue` without changing the callers' world.
-// Phase 2's implementation runs synchronously on the calling actor —
-// the live IOKit walk takes < 1 ms on M1 Max per Phase 1's leak bench
-// (5263 walks/s) so blocking the caller is acceptable for now.
-//
-// `MainActor` because the popover, the eventual PortGraph, and the
-// AppDelegate that drives this all live on MainActor. Phase 3
-// rewrites the walker hop pattern; this isolation may relax then.
+// `@MainActor` annotation kept — the public `walk()` returns to
+// MainActor before its [Host] result lands so consumers (PortGraph,
+// AppDelegate) don't have to re-hop. The IOKit traversal happens on
+// `IOKitQueue.shared`'s serial executor via `await`.
 
 import Foundation
 import IOKit
+import os
 import ManifoldKit
 
 @MainActor
@@ -47,25 +40,22 @@ final class DiscoveryService {
 
     // MARK: - Dependencies
 
-    /// USB-side walker. Defaulted to a live IOKit source; tests inject
-    /// a `USBWalker(source: FixtureUSBSource(...))` to drive
-    /// fixture-based assertions without hitting hardware.
     private let usbWalker: USBWalker
-
-    /// Pure transformation from snapshots → graph.
+    private let tbWalker: ThunderboltWalker
+    private let displayResolver: DisplayResolver
     private let builder: PortGraphBuilder
-
-    /// Override host metadata for tests. nil means "resolve from live
-    /// IOKit at walk time"; tests pass an explicit `HostMetadata` so
-    /// the assembled `Host` is deterministic.
     private let hostMetadataOverride: HostMetadata?
 
     init(
         usbWalker: USBWalker = USBWalker(),
+        tbWalker: ThunderboltWalker = ThunderboltWalker(),
+        displayResolver: DisplayResolver = DisplayResolver(),
         builder: PortGraphBuilder = PortGraphBuilder(),
         hostMetadataOverride: HostMetadata? = nil
     ) {
         self.usbWalker = usbWalker
+        self.tbWalker = tbWalker
+        self.displayResolver = displayResolver
         self.builder = builder
         self.hostMetadataOverride = hostMetadataOverride
     }
@@ -73,32 +63,82 @@ final class DiscoveryService {
     // MARK: - Public API
 
     /// Walk the IORegistry once and return the resulting `[Host]`
-    /// graph. Single-Mac for Phase 2 (the array always has exactly
-    /// one element); future "remote machine" support — explicitly out
-    /// of scope per BRIEF.md — would let the array grow.
+    /// graph. Every IOKit-touching call hops to `IOKitQueue.shared`
+    /// (Phase 7 / Reviewer F9). Result returns to MainActor.
     ///
-    /// Internally calls `usbWalker.walkAndLog()` so the SPEC §16.1
-    /// logging discipline (os.Logger always, DEBUG-only stderr) still
-    /// fires once per discovery call. Errors propagate from the
-    /// walker. The host-metadata resolver returns sane defaults
-    /// rather than throwing — a Mac without a `IOPlatformExpertDevice`
-    /// registry entry is a catastrophe no error message could
-    /// meaningfully describe.
+    /// Errors propagate from the underlying walkers. The host-metadata
+    /// resolver returns sane defaults rather than throwing.
     func walk() async throws -> [ManifoldKit.Host] {
-        let snapshots = try usbWalker.walkAndLog()
-        let metadata = hostMetadataOverride ?? Self.resolveLiveHostMetadata()
-        let host = builder.buildHost(metadata: metadata, usbDevices: snapshots)
+        // Hop to IOKit queue for every IOKit-touching operation.
+        // Each await is a suspension point; the actor's serial
+        // executor processes them one at a time, satisfying SPEC §1's
+        // "serial DispatchQueue" requirement.
+        async let usbAwait = IOKitQueue.shared.usbWalk(walker: usbWalker)
+        async let tbAwait = Self.tryTBWalk(via: tbWalker)
+        async let displaysAwait = Self.tryResolveDisplays(via: displayResolver)
+        let metadata: HostMetadata
+        if let override = hostMetadataOverride {
+            metadata = override
+        } else {
+            metadata = await IOKitQueue.shared.resolveHostMetadata()
+        }
+
+        // Surface USB errors; TB and Display soft-fail to empty
+        // arrays so a missing TB framework on a non-TB Mac (e.g.,
+        // older Air) doesn't break discovery entirely.
+        let usbSnapshots = try await usbAwait
+        let tbSnapshots = await tbAwait
+        let displaySnapshots = await displaysAwait
+
+        let host = builder.merge(
+            metadata: metadata,
+            usbDevices: usbSnapshots,
+            tbDevices: tbSnapshots,
+            displays: displaySnapshots
+        )
         return [host]
     }
 
-    // MARK: - Host metadata resolver
+    // MARK: - Soft-failing TB / Display walks
+
+    /// Wrap `tbWalk` in a try-and-discard. On Macs with no TB
+    /// hardware the matching dictionary returns no matches (empty
+    /// result, not an error); on Macs where the TB framework
+    /// genuinely throws, log + return empty so USB discovery still
+    /// succeeds.
+    private static func tryTBWalk(via walker: ThunderboltWalker) async -> [TBDeviceSnapshot] {
+        do {
+            return try await IOKitQueue.shared.tbWalk(walker: walker)
+        } catch {
+            Log.discovery.error("TB walk failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
+    }
+
+    /// Same soft-fail policy for the display resolver.
+    private static func tryResolveDisplays(via resolver: DisplayResolver) async -> [DisplaySnapshot] {
+        do {
+            return try await IOKitQueue.shared.resolveDisplays(resolver: resolver)
+        } catch {
+            Log.discovery.error("Display resolve failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
+    }
+
+    // MARK: - Host metadata resolver (called from IOKitQueue)
 
     /// Read the local Mac's stable identifier and model from
-    /// `IOPlatformExpertDevice`. Falls back to a labelled placeholder
-    /// if either property is missing — a missing UUID would mean we
-    /// can't track this Mac across reboots, which is bad, but worse
-    /// would be crashing the discovery pipeline over it.
-    private static func resolveLiveHostMetadata() -> HostMetadata {
+    /// `IOPlatformExpertDevice`. Called from `IOKitQueue.shared.resolveHostMetadata()`
+    /// so it runs on the IOKit serial executor like every other
+    /// IOKit-touching call. Pre-Phase-7 callers used the old
+    /// `resolveLiveHostMetadata()` static — that's gone; this is the
+    /// single live host-metadata path now.
+    ///
+    /// `nonisolated` because it's invoked from `IOKitQueue` (an
+    /// actor whose isolation differs from `DiscoveryService`'s
+    /// MainActor). Body touches only IOKit + ProcessInfo, both
+    /// thread-safe.
+    nonisolated static func resolveLiveHostMetadataOnQueue() -> HostMetadata {
         var resolvedID: HostID?
         var resolvedModel: String?
 
@@ -112,9 +152,6 @@ final class DiscoveryService {
                    let uuid = stringProperty("IOPlatformUUID", of: entry) {
                     resolvedID = HostID(uuid)
                 }
-                // The `model` property comes back as `Data` (a
-                // C-string with trailing NUL bytes) on Apple Silicon.
-                // Convert via String(decoding:as:) and strip the NUL.
                 if resolvedModel == nil,
                    let modelData = property("model", of: entry, as: Data.self) {
                     let bytes = modelData.prefix(while: { $0 != 0 })
@@ -126,15 +163,12 @@ final class DiscoveryService {
 
         return HostMetadata(
             id: resolvedID ?? HostID("UNKNOWN-\(ProcessInfo.processInfo.hostName)"),
-            name: ProcessInfo.processInfo.hostName,    // user-visible host name; Phase 6 may swap to model-derived
+            name: ProcessInfo.processInfo.hostName,
             model: resolvedModel ?? "Unknown"
         )
     }
 
-    /// Returned when even the matching dictionary couldn't be built —
-    /// a configuration error (bad class name) that should never fire
-    /// in practice, but if it does we want a non-crashing fallback.
-    private static func fallbackMetadata() -> HostMetadata {
+    nonisolated private static func fallbackMetadata() -> HostMetadata {
         HostMetadata(
             id: HostID("UNKNOWN-\(ProcessInfo.processInfo.hostName)"),
             name: ProcessInfo.processInfo.hostName,
