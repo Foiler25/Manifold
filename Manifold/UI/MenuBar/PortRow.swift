@@ -37,12 +37,36 @@ struct PortRow: View {
     /// `DeviceRow`. nil for empty ports (no device → no telemetry).
     let history: TelemetryBuffer?
 
+    /// Phase 8: diagnostics whose `target` matches this port. Empty
+    /// when the port is clean. Threaded in by `PopoverRoot` from
+    /// `graph.diagnostics(forPortID:)`.
+    let diagnostics: [Diagnostic]
+
     var body: some View {
-        if let device = port.connectedDevice {
-            DeviceRow(port: port, device: device, history: history)
-        } else {
-            emptyPortRow
+        VStack(alignment: .leading, spacing: 2) {
+            if let device = port.connectedDevice {
+                DeviceRow(port: port, device: device, history: history)
+            } else {
+                emptyPortRow
+            }
+            if !diagnostics.isEmpty {
+                badgeStrip
+            }
         }
+    }
+
+    /// Horizontal flow of `DiagnosticBadge`s. `WrappingHStack` would be
+    /// nicer for >2 badges but that's a Phase 15 polish item; the
+    /// expected per-port count in Phase 8 is 0–2 so a plain HStack
+    /// fits the popover width.
+    private var badgeStrip: some View {
+        HStack(spacing: 6) {
+            ForEach(diagnostics) { diagnostic in
+                DiagnosticBadge(diagnostic: diagnostic)
+            }
+            Spacer()
+        }
+        .padding(.leading, 26)  // align under the device-row text column
     }
 
     /// "Port N — Empty" for ports with no connected device. Renders
@@ -107,13 +131,23 @@ struct PortRow: View {
             bitrate: nil
         ))
     }
-    return PortRow(port: PreviewData.logitechPort, history: buffer)
+    return PortRow(port: PreviewData.logitechPort, history: buffer, diagnostics: [])
         .padding()
         .background(Color.manifoldSurface)
 }
 
 #Preview("PortRow — empty USB-C") {
-    PortRow(port: PreviewData.emptyUSBCPort, history: nil)
+    PortRow(port: PreviewData.emptyUSBCPort, history: nil, diagnostics: [])
         .padding()
         .background(Color.manifoldSurface)
+}
+
+#Preview("PortRow — populated with diagnostic badge") {
+    PortRow(
+        port: PreviewData.logitechPort,
+        history: nil,
+        diagnostics: [PreviewData.runningAtUSB2Warning]
+    )
+    .padding()
+    .background(Color.manifoldSurface)
 }

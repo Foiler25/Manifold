@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let discoveryService = DiscoveryService()
     private var eventService: EventService?
+    /// Phase 8: registers + runs the SPEC §9 diagnostic rules between
+    /// each discovery walk and the `portGraph.replace` commit.
+    private let diagnosticEngine = DiagnosticEngine()
 
     /// `internal` (default) so `ManifoldApp.body` can pass the graph
     /// into `MainWindow`. The same instance is observed by the popover
@@ -157,7 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func rebuildGraph() async {
         do {
             let hosts = try await discoveryService.walk()
-            portGraph.replace(hosts: hosts)
+            let diagnostics = diagnosticEngine.diagnostics(for: hosts)
+            portGraph.replace(hosts: hosts, diagnostics: diagnostics)
         } catch {
             Log.discovery.error("rebuildGraph walk failed: \(String(describing: error), privacy: .public)")
         }

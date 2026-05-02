@@ -112,6 +112,21 @@ enum USBDiscoveryConstants {
             "USB Power Required",
             "USBDeviceCurrent"
         ]
+
+        /// Tried in order when reading the per-port available current
+        /// budget (Phase 8 PowerDeficitRule consumer).
+        ///
+        /// - `Available Current` (canonical USB-A property)
+        /// - `Port Power` (USB-C / TB-C ports often expose this
+        ///   instead — already in milliamps, despite the name)
+        ///
+        /// nil from every alternate means the port doesn't advertise
+        /// a budget; PowerDeficitRule treats absent budget as
+        /// "infinite" and skips firing.
+        static let availableCurrentAlternates: [String] = [
+            "Available Current",
+            "Port Power"
+        ]
     }
 
     // MARK: Speed lookup

@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "diagnostic.cable-bottleneck.detail" : {
+      "comment" : "Phase 8 cable-bottleneck rule detail. %1$@ device name.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ is linked at Thunderbolt 3. If the device supports TB4, swap to an active TB4 cable." } } }
+    },
+    "diagnostic.cable-bottleneck.title" : {
+      "comment" : "Phase 8 cable-bottleneck rule headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "TB4 device on TB3 link" } } }
+    },
+    "diagnostic.daisy-chain-depth.detail" : {
+      "comment" : "Phase 8 daisy-chain-depth rule detail. %1$lld depth, %2$lld TB max-allowed depth.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "This chain is %1$lld devices deep. Thunderbolt supports a maximum of %2$lld; shorten the chain to avoid dropouts." } } }
+    },
+    "diagnostic.daisy-chain-depth.title" : {
+      "comment" : "Phase 8 daisy-chain-depth rule headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Daisy chain too deep" } } }
+    },
+    "diagnostic.hub-overcommit.detail" : {
+      "comment" : "Phase 8 hub-overcommit rule detail. %1$@ children total, %2$@ budget.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Connected devices draw %1$@, exceeding the %2$@ hub budget. Move high-power devices to a host port." } } }
+    },
+    "diagnostic.hub-overcommit.title" : {
+      "comment" : "Phase 8 hub-overcommit rule headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hub overcommit" } } }
+    },
+    "diagnostic.power-deficit.detail" : {
+      "comment" : "Phase 8 power-deficit rule detail. %1$@ device, %2$@ requested, %3$@ available.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ requests %2$@ but the port only supplies %3$@. Try a powered hub." } } }
+    },
+    "diagnostic.power-deficit.title" : {
+      "comment" : "Phase 8 power-deficit rule headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power deficit" } } }
+    },
+    "diagnostic.running-at-usb-2.detail" : {
+      "comment" : "Phase 8 running-at-usb-2 rule detail. %1$@ device name, %2$@ supported USB version.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ supports %2$@ but is on a USB 2.0 link. Try a different cable or upstream port." } } }
+    },
+    "diagnostic.running-at-usb-2.title" : {
+      "comment" : "Phase 8 running-at-usb-2 rule headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Running @ USB 2.0" } } }
+    },
     "menubar.icon.accessibility" : {
       "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",
       "extractionState" : "manual",
@@ -196,6 +246,21 @@
     "popover.port.kind.magsafe" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MagSafe Port" } } }
+    },
+    "popover.diagnostic.severity.critical" : {
+      "comment" : "VO prefix for a critical-severity diagnostic badge.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Critical." } } }
+    },
+    "popover.diagnostic.severity.info" : {
+      "comment" : "VO prefix for an info-severity diagnostic badge.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Info." } } }
+    },
+    "popover.diagnostic.severity.warning" : {
+      "comment" : "VO prefix for a warning-severity diagnostic badge.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Warning." } } }
     },
     "popover.port.kind.sd" : {
       "extractionState" : "manual",

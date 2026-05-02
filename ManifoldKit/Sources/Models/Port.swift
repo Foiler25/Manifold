@@ -76,6 +76,13 @@ public struct Port: Identifiable, Hashable, Sendable, Codable {
     /// `totalDraw` for the recursive sum.
     public let powerDraw: Watts?
 
+    /// Per-port budget the host advertises to the connected device,
+    /// in watts. Phase 8's `PowerDeficitRule` fires when
+    /// `powerDraw > availablePower` (a device asking for more than
+    /// the port can supply). nil → port doesn't advertise a budget;
+    /// the rule treats absent budget as "infinite" and skips firing.
+    public let availablePower: Watts?
+
     /// Downstream ports for hubs / TB daisy chains. Empty for ports
     /// that cannot have children (USB-A, SD card slot, etc.).
     public let children: [Port]
@@ -98,6 +105,7 @@ public struct Port: Identifiable, Hashable, Sendable, Codable {
         connectedDevice: Device?,
         negotiated: LinkSpeed?,
         powerDraw: Watts?,
+        availablePower: Watts? = nil,
         children: [Port]
     ) {
         self.id = id
@@ -107,6 +115,7 @@ public struct Port: Identifiable, Hashable, Sendable, Codable {
         self.connectedDevice = connectedDevice
         self.negotiated = negotiated
         self.powerDraw = powerDraw
+        self.availablePower = availablePower
         self.children = children
     }
 }

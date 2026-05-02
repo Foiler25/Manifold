@@ -166,9 +166,29 @@ final class SnapshotRoundTripTests: XCTestCase {
             connectedDevice: nil,
             negotiated: nil,
             powerDraw: nil,
+            availablePower: Watts(4.5),
             children: [child]
         )
         try roundTrip(parent)
+    }
+
+    /// Phase 8 added `availablePower` for `PowerDeficitRule`. Pin
+    /// the round-trip independently so a future Codable change to
+    /// the field surfaces here, not at runtime when the JSON
+    /// snapshot is exchanged with the widget.
+    func test_port_availablePowerRoundTrip() throws {
+        let port = ManifoldKit.Port(
+            id: PortID("IOService:/.../available-power"),
+            position: 2,
+            kind: .usbC,
+            parentID: nil,
+            connectedDevice: nil,
+            negotiated: nil,
+            powerDraw: nil,
+            availablePower: Watts(7.5),
+            children: []
+        )
+        try roundTrip(port)
     }
 
     func test_host_roundTrip() throws {

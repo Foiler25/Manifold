@@ -85,6 +85,12 @@ struct USBDeviceSnapshot: Sendable, Equatable {
     /// Compared against per-port budgets by Phase 8's `PowerDeficitRule`.
     let requestedPowerMA: Int?
 
+    /// Per-port power budget the host advertises to this device, in
+    /// milliamps. Read from `Available Current` (USB-A) or
+    /// `Port Power` (USB-C). Phase 8 PowerDeficitRule fires when
+    /// `requestedPowerMA > availableCurrentMA`.
+    let availableCurrentMA: Int?
+
     /// Port number on the parent hub or controller. 1-indexed at
     /// publication; we keep the raw IOKit value here (no offset).
     let portNum: Int?
@@ -199,18 +205,34 @@ struct LiveIOKitUSBSource: USBRegistrySource {
         let bcd = uint16Property(keys.bcdUSB, of: entry)
 
         return USBDeviceSnapshot(
-            registryPath:     path,
-            vendorID:         vid,
-            productID:        pid,
-            productName:      stringProperty(keys.usbProductName,  of: entry),
-            vendorName:       stringProperty(keys.usbVendorName,   of: entry),
-            serial:           stringProperty(keys.iSerialNumber,   of: entry),
-            bcdUSB:           bcd,
-            speed:            resolveSpeed(from: entry, bcdUSB: bcd),
-            requestedPowerMA: resolvePower(from: entry),
-            portNum:          intProperty(   keys.portNum,         of: entry),
-            locationID:       uint32Property(keys.locationID,      of: entry)
+            registryPath:        path,
+            vendorID:            vid,
+            productID:           pid,
+            productName:         stringProperty(keys.usbProductName,  of: entry),
+            vendorName:          stringProperty(keys.usbVendorName,   of: entry),
+            serial:              stringProperty(keys.iSerialNumber,   of: entry),
+            bcdUSB:              bcd,
+            speed:               resolveSpeed(from: entry, bcdUSB: bcd),
+            requestedPowerMA:    resolvePower(from: entry),
+            availableCurrentMA:  resolveAvailableCurrent(from: entry),
+            portNum:             intProperty(   keys.portNum,         of: entry),
+            locationID:          uint32Property(keys.locationID,      of: entry)
         )
+    }
+
+    /// Walk the available-current fallback chain. Phase 8 adds this
+    /// for `PowerDeficitRule` — the rule needs both
+    /// `requestedPowerMA` (what the device asked for) and
+    /// `availableCurrentMA` (what the port offers). nil → port
+    /// doesn't advertise a budget; rule treats absent budget as
+    /// "infinite" and doesn't fire.
+    private static func resolveAvailableCurrent(from entry: borrowing IOObject) -> Int? {
+        for key in USBDiscoveryConstants.FallbackKey.availableCurrentAlternates {
+            if let value = intProperty(key, of: entry) {
+                return value
+            }
+        }
+        return nil
     }
 
     /// Walk the speed-property fallback chain and, as a last resort,
@@ -333,6 +355,7 @@ struct FixtureUSBSource: USBRegistrySource {
         let bcdUSB: UInt16?
         let speed: UInt32?
         let requestedPowerMA: Int?
+        let availableCurrentMA: Int?
         let portNum: Int?
         let locationID: UInt32?
 
@@ -346,23 +369,25 @@ struct FixtureUSBSource: USBRegistrySource {
             case bcdUSB
             case speed           = "Speed"
             case requestedPowerMA = "Requested Power"
+            case availableCurrentMA = "Available Current"
             case portNum         = "PortNum"
             case locationID
         }
 
         func toSnapshot() -> USBDeviceSnapshot {
             USBDeviceSnapshot(
-                registryPath:     registryPath,
-                vendorID:         idVendor,
-                productID:        idProduct,
-                productName:      usbProductName,
-                vendorName:       usbVendorName,
-                serial:           serial,
-                bcdUSB:           bcdUSB,
-                speed:            speed,
-                requestedPowerMA: requestedPowerMA,
-                portNum:          portNum,
-                locationID:       locationID
+                registryPath:        registryPath,
+                vendorID:            idVendor,
+                productID:           idProduct,
+                productName:         usbProductName,
+                vendorName:          usbVendorName,
+                serial:              serial,
+                bcdUSB:              bcdUSB,
+                speed:               speed,
+                requestedPowerMA:    requestedPowerMA,
+                availableCurrentMA:  availableCurrentMA,
+                portNum:             portNum,
+                locationID:          locationID
             )
         }
     }

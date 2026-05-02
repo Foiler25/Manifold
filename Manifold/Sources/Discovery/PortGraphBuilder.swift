@@ -137,6 +137,8 @@ struct PortGraphBuilder: Sendable {
         let linkSpeed = makeLinkSpeed(from: snapshot)
         let powerDraw = snapshot.requestedPowerMA
             .map { Watts.fromMilliamps($0, atVolts: USBBusVoltage.standard) }
+        let availablePower = snapshot.availableCurrentMA
+            .map { Watts.fromMilliamps($0, atVolts: USBBusVoltage.standard) }
 
         return ManifoldKit.Port(
             id: PortID(snapshot.registryPath),
@@ -146,6 +148,7 @@ struct PortGraphBuilder: Sendable {
             connectedDevice: device,
             negotiated: linkSpeed,
             powerDraw: powerDraw,
+            availablePower: availablePower,
             children: []
         )
     }
@@ -336,6 +339,7 @@ struct PortGraphBuilder: Sendable {
                 connectedDevice: updatedDevice,
                 negotiated: port.negotiated,
                 powerDraw: port.powerDraw,
+                availablePower: port.availablePower,
                 children: port.children
             )
         }
@@ -401,24 +405,29 @@ struct PortGraphBuilder: Sendable {
         }
 
         // Recursively rebuild each port with its resolved children.
-        // Using a function to walk the tree post-order so each port
-        // is rebuilt with its (already-rebuilt) children populated.
-        func rebuild(_ port: ManifoldKit.Port) -> ManifoldKit.Port {
-            let kids = (childrenOf[port.id] ?? []).map(rebuild)
+        // Phase 8 (Reviewer F19) sets `parentID` during the rebuild
+        // step so the SPEC §4.3 data-model contract holds — Phase 7's
+        // initial implementation left it nil, which made
+        // DaisyChainDepthRule's parent traversal awkward.
+        func rebuild(_ port: ManifoldKit.Port, parent: ManifoldKit.Port?) -> ManifoldKit.Port {
+            let resolvedID = port.id
+            let kids = (childrenOf[resolvedID] ?? []).map { child in
+                rebuild(child, parent: port)
+            }
             return ManifoldKit.Port(
-                id: port.id,
+                id: resolvedID,
                 position: port.position,
                 kind: port.kind,
-                parentID: port.parentID,        // nestByRegistryPath doesn't set parentID;
-                                                // PortGraph.apply derives ancestry from path
+                parentID: parent?.id,
                 connectedDevice: port.connectedDevice,
                 negotiated: port.negotiated,
                 powerDraw: port.powerDraw,
+                availablePower: port.availablePower,
                 children: kids
             )
         }
 
-        return roots.map(rebuild)
+        return roots.map { rebuild($0, parent: nil) }
     }
 
     // MARK: - IOKit Speed code → Bitrate

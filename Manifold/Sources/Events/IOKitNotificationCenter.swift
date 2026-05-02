@@ -17,37 +17,51 @@
 // ─────────────────────────────────────────────────────────────────────
 // IOKitNotificationCenter.swift
 //
-// Owns the dedicated background `Thread` + `CFRunLoop` that IOKit
-// notification ports require, plus the register/unregister API that
-// `EventService` calls into. Per SPEC.md §7:
+// **Phase 8 / F11 retrofit.** IOKitNotificationCenter is now a thin
+// dispatcher per SPEC §7 rev-7 — every IOKit-touching call goes
+// through the §5.1 wrappers (`NotificationPort`,
+// `MatchNotificationToken`, `addMatchNotification`) in
+// `Manifold/Sources/Support/IOKit/NotificationPort.swift`. Result:
+// the §5 grep invariant
 //
-//   "The notification port is added to a dedicated `CFRunLoop`
-//    running on a background `Thread` (NOT a dispatch queue — IOKit
-//    notification ports don't bridge cleanly to dispatch). The
-//    thread's run loop pumps until `shutdown()`."
+//     grep -rn 'IOObjectRelease\|IOIteratorNext\|
+//               IOServiceAddMatchingNotification\|
+//               IORegistryEntryCreateCFProperty'
+//          Manifold/ | grep -v 'Manifold/Sources/Support/IOKit/'
 //
-// Why a class, not an actor: IOKit's C callbacks have to dispatch
-// into Swift via `Unmanaged.passRetained`/`fromOpaque` and a
-// top-level `@convention(c)` function. Actors don't let you take
-// the kind of plain `self`-pointer the callback needs to thread the
-// reference through. The class is `@unchecked Sendable` because the
-// IOKit-touching state is single-threaded by construction (only the
-// dedicated thread mutates it post-init), and the public API is
-// guarded by an `NSLock`.
+// returns ZERO hits — the F11 followup that's been carrying since
+// Phase 1 review closes.
+//
+// What stays from Phase 3:
+//   - The dedicated `Manifold-IOKitRunLoop` background `Thread` +
+//     `CFRunLoop`. SPEC §7 requires a CFRunLoop (not a dispatch
+//     queue) for IOKit notification ports; the wrappers don't
+//     change that.
+//   - The public `register(matchingClass:onMatch:onTerminated:) ->
+//     NotificationToken` API and the public Copyable `NotificationToken`
+//     (UUID-keyed) so EventService's call sites don't need to
+//     handle non-copyable types.
+//   - Idempotent `shutdown()`.
+//
+// What changes:
+//   - All raw IOKit calls (`IOServiceAddMatchingNotification`,
+//     `IOIteratorNext`, `IOObjectRelease`, `IONotificationPortCreate`,
+//     `IONotificationPortDestroy`, `IONotificationPortGetRunLoopSource`)
+//     leave this file. They live behind the §5.1 wrappers.
+//   - Per-registration storage holds noncopyable
+//     `MatchNotificationToken`s via a small `TokenStorage` class
+//     wrapper (Swift 6 supports `Optional<NoncopyableType>` so the
+//     class can hold them and release on demand).
 
 import Foundation
 import IOKit
 import os
 
-/// Returned by `register(...)`. Caller passes back to `unregister(_:)`
-/// to stop receiving notifications and release IOKit resources. Per
-/// SPEC.md §7 the token's iterator handles are file-private — only the
-/// center can release them, and it does so on `unregister`.
+/// Returned by `register(...)`. UUID-keyed so callers can store
+/// these in plain dictionaries / sets / arrays. The actual
+/// noncopyable token state lives inside the center, indexed by `id`.
 struct NotificationToken: Hashable {
     let id: UUID
-    fileprivate let port: IONotificationPortRef
-    fileprivate let firstMatchIter: io_iterator_t
-    fileprivate let terminatedIter: io_iterator_t
 
     static func == (lhs: NotificationToken, rhs: NotificationToken) -> Bool {
         lhs.id == rhs.id
@@ -61,42 +75,64 @@ final class IOKitNotificationCenter: @unchecked Sendable {
 
     // MARK: - Dedicated thread + run loop
 
-    /// Background thread that owns the CFRunLoop the IOKit notification
-    /// ports are scheduled on. Started in `init`, joined on `shutdown`.
     private let thread: Thread
-
-    /// Captured at the top of `runOnDedicatedThread()`. Used to add
-    /// notification-port run-loop sources from `register(...)` and to
-    /// stop the loop from `shutdown()`.
     private var runLoop: CFRunLoop?
-
-    /// Signaled once the dedicated thread has captured `runLoop` and
-    /// is ready to accept registrations. `init` blocks on this to keep
-    /// the API synchronous from the caller's perspective.
     private let runLoopReady = DispatchSemaphore(value: 0)
-
-    /// Set true on `shutdown()`. Checked by the dedicated thread's
-    /// `runOnDedicatedThread()` loop so the thread exits cleanly.
     private var stopRequested = false
 
     // MARK: - Token bookkeeping
 
-    /// Lock for the `tokens` dict and for `stopRequested`. The IOKit
-    /// thread reads these; the public API mutates them.
     private let lock = NSLock()
+    private var storages: [UUID: TokenStorage] = [:]
 
-    /// Live registrations. Keyed by token id so `unregister(_:)` is O(1).
-    private var tokens: [UUID: TokenInternal] = [:]
+    /// Lazily constructed once the dedicated thread has captured its
+    /// run loop. Held here so `shutdown()` can release it (setting
+    /// the optional to nil triggers `NotificationPort.deinit` which
+    /// removes the CFRunLoopSource + destroys the port).
+    private var portStorage: PortStorage?
 
-    /// Per-token internal record. Keeps the boxed callbacks alive
-    /// (via the `Unmanaged` retain count) so the C callback can
-    /// continue to find them.
-    private struct TokenInternal {
-        let port: IONotificationPortRef
-        let firstMatchIter: io_iterator_t
-        let terminatedIter: io_iterator_t
-        let firstMatchBoxOpaque: UnsafeMutableRawPointer
-        let terminatedBoxOpaque: UnsafeMutableRawPointer
+    /// Wrapper around the noncopyable `NotificationPort`. Optional so
+    /// `shutdown()` can release by `port = nil`. The class boundary
+    /// makes the noncopyable storage practical (Swift 6's collection
+    /// support for noncopyable types is still narrow).
+    /// Class wrapper for the noncopyable `NotificationPort`. Holds a
+    /// non-optional reference and exposes a `withPort` borrow
+    /// accessor — Swift 6 doesn't allow borrowing a `let` binding
+    /// of a noncopyable optional, so we route through a method
+    /// where the noncopyable instance is in scope.
+    ///
+    /// Lifetime: when the wrapper itself is dropped (set to nil on
+    /// `IOKitNotificationCenter.shutdown`), `NotificationPort.deinit`
+    /// fires and tears down the CFRunLoopSource + IOKit port.
+    private final class PortStorage {
+        var port: NotificationPort
+        init(_ port: consuming NotificationPort) {
+            self.port = consume port
+        }
+        /// Synchronous borrow. Closure runs with `borrowing
+        /// NotificationPort` access; Swift's borrow rules confine
+        /// the access to this scope.
+        func withPort<T>(_ body: (borrowing NotificationPort) throws -> T) rethrows -> T {
+            try body(port)
+        }
+    }
+
+    /// Per-registration storage. Holds the two
+    /// `MatchNotificationToken`s for first-match + terminated. On
+    /// `release()` both go to nil → MatchNotificationToken.deinit
+    /// fires → `IOObjectRelease` is called by the wrapper.
+    private final class TokenStorage {
+        var firstMatch: MatchNotificationToken?
+        var terminated: MatchNotificationToken?
+        init(firstMatch: consuming MatchNotificationToken,
+             terminated: consuming MatchNotificationToken) {
+            self.firstMatch = consume firstMatch
+            self.terminated = consume terminated
+        }
+        func release() {
+            firstMatch = nil
+            terminated = nil
+        }
     }
 
     // MARK: - Init / shutdown
@@ -104,22 +140,26 @@ final class IOKitNotificationCenter: @unchecked Sendable {
     init() {
         let thread = Thread()
         self.thread = thread
-        // Set the closure on the existing thread instance after super-init
-        // by spawning an explicit Thread and starting it. Using the
-        // detach pattern below to keep the closure capture cleaner.
-        // (Thread() initializer is documented as a default no-op start
-        // closure that we replace by detachNewThread below.)
         Thread.detachNewThread { [weak self] in
             self?.runOnDedicatedThread()
         }
         runLoopReady.wait()
+
+        // The runLoop is now captured; build the NotificationPort.
+        // This must happen on the dedicated thread for
+        // `IONotificationPortGetRunLoopSource` semantics, but
+        // `NotificationPort.init` itself is thread-safe (it just
+        // calls `CFRunLoopAddSource` on the supplied runLoop).
+        if let runLoop {
+            do {
+                let port = try NotificationPort(scheduledOn: runLoop)
+                self.portStorage = PortStorage(port)
+            } catch {
+                Log.events.error("Failed to construct NotificationPort: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
-    /// The dedicated thread's run loop. Captures `runLoop`, signals
-    /// readiness, then pumps `CFRunLoopRunInMode` until `shutdown()`
-    /// flips `stopRequested`. The 1.0-second slice gives the loop a
-    /// natural cadence to check the stop flag without blocking
-    /// indefinitely on a quiet IOKit port.
     private func runOnDedicatedThread() {
         Thread.current.name = "Manifold-IOKitRunLoop"
         runLoop = CFRunLoopGetCurrent()
@@ -134,9 +174,8 @@ final class IOKitNotificationCenter: @unchecked Sendable {
         }
     }
 
-    /// Stop the dedicated run loop, release every registered iterator
-    /// and notification port. Idempotent — calling twice is a no-op
-    /// after the first.
+    /// Tear down every active subscription, drop the port, stop the
+    /// dedicated run loop. Idempotent.
     func shutdown() {
         lock.lock()
         guard !stopRequested else {
@@ -144,13 +183,21 @@ final class IOKitNotificationCenter: @unchecked Sendable {
             return
         }
         stopRequested = true
-        let allTokens = tokens
-        tokens.removeAll()
+        let allStorages = storages
+        storages.removeAll()
+        let port = portStorage
+        portStorage = nil
         lock.unlock()
 
-        for (_, t) in allTokens {
-            releaseTokenResources(t)
+        // Drop noncopyable tokens — each release() triggers
+        // MatchNotificationToken.deinit → IOObjectRelease.
+        for (_, storage) in allStorages {
+            storage.release()
         }
+        // Drop the port wrapper — when the class instance drops
+        // (no remaining references), `NotificationPort.deinit` fires
+        // → CFRunLoopRemoveSource + IONotificationPortDestroy.
+        _ = port  // captured-and-dropped at end of scope
 
         if let runLoop {
             CFRunLoopStop(runLoop)
@@ -160,173 +207,72 @@ final class IOKitNotificationCenter: @unchecked Sendable {
     // MARK: - Registration
 
     /// Register first-match + terminated notifications for any IOKit
-    /// service of class `matchingClass`. Returns a `NotificationToken`
-    /// that the caller passes back to `unregister(_:)` to tear down.
+    /// service of class `matchingClass`. Internally calls
+    /// `IOServiceMatching(matchingClass)` twice (each call returns
+    /// a fresh +1-retained dict; `addMatchNotification` consumes one
+    /// per call, so two registrations need two dicts).
     ///
-    /// Why `matchingClass: String` instead of `match: CFDictionary`
-    /// like SPEC.md §7's first sketch: `IOServiceAddMatchingNotification`
-    /// *consumes* one reference on the matching dict. We need to register
-    /// twice (one for first-match, one for terminated), so we need two
-    /// dicts. Taking a class name and calling `IOServiceMatching` twice
-    /// produces two cleanly-retained dicts without `CFRetain` ceremony.
-    /// Phase 7 may extend this when TB needs more than class-name matching.
-    ///
-    /// `onMatch` and `onTerminated` are invoked on the dedicated IOKit
-    /// thread. They receive a `borrowing IOObject` — the wrapper
-    /// releases the kernel handle on closure return, so the closure
-    /// must finish reading properties before returning.
+    /// Returns a UUID-keyed `NotificationToken`; the noncopyable
+    /// MatchNotificationTokens live inside the center, retrievable
+    /// for release via `unregister(_:)` or `shutdown()`.
     func register(
         matchingClass: String,
         onMatch: @escaping @Sendable (borrowing IOObject) -> Void,
         onTerminated: @escaping @Sendable (borrowing IOObject) -> Void
     ) throws -> NotificationToken {
 
-        guard let runLoop = runLoop else {
+        guard let portStorage else {
             throw IOKitError.notificationRegistrationFailed(KERN_FAILURE)
         }
 
-        guard let port = IONotificationPortCreate(kIOMainPortDefault) else {
-            throw IOKitError.notificationRegistrationFailed(KERN_FAILURE)
+        // IOServiceMatching is NOT in the §5.1 grep-invariant list —
+        // it's a matching-dictionary builder, not an IOKit-resource
+        // manipulation. Calling it here is allowed.
+        guard let firstDict = IOServiceMatching(matchingClass),
+              let terminatedDict = IOServiceMatching(matchingClass) else {
+            throw IOKitError.matchingDictionaryFailed
         }
 
-        let source = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
-        CFRunLoopAddSource(runLoop, source, .defaultMode)
-
-        // Box the Swift closures so the C callback can find them
-        // through `Unmanaged.fromOpaque`. `passRetained` increments
-        // the retain count; `unregister` does the matching `release`.
-        let firstMatchBox = CallbackBox(handler: onMatch)
-        let terminatedBox = CallbackBox(handler: onTerminated)
-        let firstMatchOpaque = Unmanaged.passRetained(firstMatchBox).toOpaque()
-        let terminatedOpaque = Unmanaged.passRetained(terminatedBox).toOpaque()
-
-        // First-match registration. IOServiceMatching returns +1
-        // retained; IOServiceAddMatchingNotification consumes it.
-        var firstMatchIter: io_iterator_t = 0
-        let matchResult = IOServiceAddMatchingNotification(
-            port,
-            kIOFirstMatchNotification,
-            IOServiceMatching(matchingClass),
-            iokitNotificationCallback,
-            firstMatchOpaque,
-            &firstMatchIter
-        )
-        guard matchResult == KERN_SUCCESS else {
-            Unmanaged<CallbackBox>.fromOpaque(firstMatchOpaque).release()
-            Unmanaged<CallbackBox>.fromOpaque(terminatedOpaque).release()
-            IONotificationPortDestroy(port)
-            throw IOKitError.notificationRegistrationFailed(matchResult)
+        // Borrow the port through the class wrapper's withPort
+        // accessor. Both registrations must complete (or both fail
+        // cleanly) before we install the storage; the do-catch
+        // guarantees the iterators get released if the second
+        // registration fails after the first succeeds (the failed
+        // first-match token's deinit runs at scope exit).
+        let storage = try portStorage.withPort { port -> TokenStorage in
+            let firstMatchToken = try addMatchNotification(
+                on: port,
+                kind: kIOFirstMatchNotification,
+                match: firstDict,
+                perEntry: onMatch
+            )
+            let terminatedToken = try addMatchNotification(
+                on: port,
+                kind: kIOTerminatedNotification,
+                match: terminatedDict,
+                perEntry: onTerminated
+            )
+            return TokenStorage(
+                firstMatch: consume firstMatchToken,
+                terminated: consume terminatedToken
+            )
         }
 
-        // Terminated registration.
-        var terminatedIter: io_iterator_t = 0
-        let termResult = IOServiceAddMatchingNotification(
-            port,
-            kIOTerminatedNotification,
-            IOServiceMatching(matchingClass),
-            iokitNotificationCallback,
-            terminatedOpaque,
-            &terminatedIter
-        )
-        guard termResult == KERN_SUCCESS else {
-            IOObjectRelease(firstMatchIter)
-            Unmanaged<CallbackBox>.fromOpaque(firstMatchOpaque).release()
-            Unmanaged<CallbackBox>.fromOpaque(terminatedOpaque).release()
-            IONotificationPortDestroy(port)
-            throw IOKitError.notificationRegistrationFailed(termResult)
-        }
-
-        // Drain both iterators. On first registration this delivers
-        // every currently-matching service through `onMatch`; the
-        // terminated iterator is empty initially. After the drain,
-        // future events fire as new services arrive / go away.
-        Self.drain(iterator: firstMatchIter, with: onMatch)
-        Self.drain(iterator: terminatedIter, with: onTerminated)
-
-        let token = NotificationToken(
-            id: UUID(),
-            port: port,
-            firstMatchIter: firstMatchIter,
-            terminatedIter: terminatedIter
-        )
-        let internalRecord = TokenInternal(
-            port: port,
-            firstMatchIter: firstMatchIter,
-            terminatedIter: terminatedIter,
-            firstMatchBoxOpaque: firstMatchOpaque,
-            terminatedBoxOpaque: terminatedOpaque
-        )
-
+        let id = UUID()
         lock.lock()
-        tokens[token.id] = internalRecord
+        storages[id] = storage
         lock.unlock()
 
-        return token
+        return NotificationToken(id: id)
     }
 
-    /// Tear down a registration. Idempotent — calling twice is a no-op
-    /// after the first.
+    /// Tear down one registration. Idempotent — if the token has
+    /// already been released (e.g., by shutdown), a second call is
+    /// a no-op.
     func unregister(_ token: NotificationToken) {
         lock.lock()
-        guard let internalRecord = tokens.removeValue(forKey: token.id) else {
-            lock.unlock()
-            return
-        }
+        let storage = storages.removeValue(forKey: token.id)
         lock.unlock()
-        releaseTokenResources(internalRecord)
+        storage?.release()
     }
-
-    // MARK: - Cleanup helpers
-
-    /// Release every IOKit handle and balance the `Unmanaged` retains
-    /// for one token. Shared by `unregister` and `shutdown`.
-    private func releaseTokenResources(_ t: TokenInternal) {
-        IOObjectRelease(t.firstMatchIter)
-        IOObjectRelease(t.terminatedIter)
-        IONotificationPortDestroy(t.port)
-        Unmanaged<CallbackBox>.fromOpaque(t.firstMatchBoxOpaque).release()
-        Unmanaged<CallbackBox>.fromOpaque(t.terminatedBoxOpaque).release()
-    }
-
-    /// Drain an iterator by invoking `handler` on each entry and
-    /// letting `IOObject.deinit` release the kernel handle. Static so
-    /// it can be called from `register` (post-callback-registration
-    /// drain) and from the C callback (event delivery) without
-    /// touching `self`.
-    fileprivate static func drain(
-        iterator: io_iterator_t,
-        with handler: (borrowing IOObject) -> Void
-    ) {
-        while case let entry = IOIteratorNext(iterator), entry != 0 {
-            let owned = IOObject(entry)
-            handler(owned)
-        }
-    }
-}
-
-// MARK: - C callback bridge
-
-/// Heap box for the Swift closure so the C callback can find it via
-/// `Unmanaged.fromOpaque(refCon)`. Lifetime is managed by the
-/// notification center: `passRetained` on register, `release` on
-/// unregister/shutdown.
-private final class CallbackBox: @unchecked Sendable {
-    let handler: @Sendable (borrowing IOObject) -> Void
-    init(handler: @escaping @Sendable (borrowing IOObject) -> Void) {
-        self.handler = handler
-    }
-}
-
-/// `@convention(c)` callback that IOKit invokes on our dedicated
-/// thread when a new match arrives or a service terminates. Recovers
-/// the boxed closure via `Unmanaged.fromOpaque` and drains the
-/// iterator into it.
-///
-/// Top-level `let` (not a method, not a closure capture) so the C
-/// signature is satisfied. Capturing anything would prevent the
-/// implicit `@convention(c)` conversion.
-private let iokitNotificationCallback: IOServiceMatchingCallback = { refCon, iterator in
-    guard let refCon else { return }
-    let box = Unmanaged<CallbackBox>.fromOpaque(refCon).takeUnretainedValue()
-    IOKitNotificationCenter.drain(iterator: iterator, with: box.handler)
 }

@@ -157,6 +157,7 @@ final class PortGraph {
                     connectedDevice: port.connectedDevice,
                     negotiated: port.negotiated,
                     powerDraw: watts,
+                    availablePower: port.availablePower,
                     children: port.children
                 )
             }
@@ -169,6 +170,7 @@ final class PortGraph {
                     connectedDevice: port.connectedDevice,
                     negotiated: LinkSpeed(protocolName: proto, bitrate: bitrate),
                     powerDraw: port.powerDraw,
+                    availablePower: port.availablePower,
                     children: port.children
                 )
             }
@@ -199,6 +201,15 @@ final class PortGraph {
         telemetryHistory[portID]
     }
 
+    // MARK: - Diagnostics accessor
+
+    /// Active diagnostics whose `target` matches `portID`. Drives the
+    /// popover's inline `DiagnosticBadge` rows — empty result means
+    /// the port is clean. Phase 8.
+    func diagnostics(forPortID portID: PortID) -> [Diagnostic] {
+        diagnostics.filter { $0.target == portID }
+    }
+
     /// `.attached` — surgical structural. Found: replace
     /// `connectedDevice`, clear `negotiated` + `powerDraw` (next
     /// telemetry tick fills them), leave `children` (a hub announces
@@ -214,6 +225,7 @@ final class PortGraph {
                 connectedDevice: device,
                 negotiated: nil,
                 powerDraw: nil,
+                availablePower: port.availablePower,
                 children: port.children
             )
         }
@@ -246,6 +258,7 @@ final class PortGraph {
                 connectedDevice: nil,
                 negotiated: nil,
                 powerDraw: nil,
+                availablePower: port.availablePower,
                 children: []
             )
         }
@@ -327,6 +340,7 @@ final class PortGraph {
                     connectedDevice: parent.connectedDevice,
                     negotiated: parent.negotiated,
                     powerDraw: parent.powerDraw,
+                    availablePower: parent.availablePower,
                     children: children
                 )
                 return true
