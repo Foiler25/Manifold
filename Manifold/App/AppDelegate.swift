@@ -17,12 +17,11 @@
 // ─────────────────────────────────────────────────────────────────────
 // AppDelegate.swift
 //
-// Owns the `NSStatusItem`, the popover, and the lifetime of the
-// `EventService` + `DiscoveryService` pair. Phase 3 swap-out: drops
-// the per-popover-open synchronous walk in favour of subscribing to
-// `EventService.events()` once and letting hot-plug events drive the
-// model. The popover-open path becomes a pure UI concern; live data
-// already arrived via the event stream.
+// Phase 4 trim-down: the menu bar / popover code moved to
+// `StatusItemController` + `PopoverRoot` per SPEC.md §3 file tree.
+// What's left here is app-lifecycle orchestration: own `EventService`,
+// `DiscoveryService`, `PortGraph`; subscribe to events; drive
+// `StatusItemController` (badge updates, toolbar actions).
 
 import AppKit
 import SwiftUI
@@ -32,43 +31,34 @@ import ManifoldKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    // MARK: - Status item & popover
+    // MARK: - Services + model
 
-    private var statusItem: NSStatusItem?
-    private var popover: NSPopover?
-
-    // MARK: - Discovery + events + model
-
-    /// Phase 2's discovery API. Phase 3 still uses it for the
-    /// `.fullRefresh`-triggered re-walk and for the initial seed.
     private let discoveryService = DiscoveryService()
-
-    /// Phase 3's event source. Lifetime owned by AppDelegate; torn
-    /// down in `applicationWillTerminate`.
     private var eventService: EventService?
-
-    /// Single source of truth for every UI surface.
     private let portGraph = PortGraph()
-
-    /// Handle to the long-running task that consumes `eventService.events()`.
-    /// Cancelled in `applicationWillTerminate` so the actor doesn't
-    /// leak past app shutdown.
+    private var statusItemController: StatusItemController?
     private var eventConsumerTask: Task<Void, Never>?
+    private var graphObservationTask: Task<Void, Never>?
 
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        installStatusItem()
+        let controller = StatusItemController(
+            graph: portGraph,
+            onOpenWindow: { [weak self] in self?.openMainWindow() },
+            onOpenSettings: { [weak self] in self?.openSettings() }
+        )
+        controller.install()
+        statusItemController = controller
 
         let service = EventService()
-        self.eventService = service
+        eventService = service
         startEventConsumer(service: service)
+        startBadgeObserver(controller: controller)
 
-        // Trigger the initial walk via .fullRefresh so the consumer
-        // path (walk → replace) is the same as for any subsequent
-        // refresh. The seed-attach events from EventService's initial
-        // notification drain are coalesced into this replace because
-        // they both update the same `portGraph` on MainActor in order.
+        // Seed the initial walk through the same .fullRefresh path as
+        // any subsequent refresh — keeps the consumer's behavior
+        // uniform.
         service.requestRefresh()
 
 #if DEBUG
@@ -78,38 +68,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         eventConsumerTask?.cancel()
+        graphObservationTask?.cancel()
         eventService?.shutdown()
-    }
-
-    // MARK: - Status item setup
-
-    private func installStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: AppConstants.statusItemLength)
-        guard let button = item.button else { return }
-
-        let image = NSImage(
-            systemSymbolName: AppConstants.menuBarIconSymbolName,
-            accessibilityDescription: NSLocalizedString(
-                "menubar.icon.accessibility",
-                comment: "Spoken description of the Manifold menu bar icon."
-            )
-        )
-        image?.isTemplate = true
-        button.image = image
-        button.target = self
-        button.action = #selector(statusItemClicked(_:))
-
-        statusItem = item
-        Log.app.info("NSStatusItem installed.")
     }
 
     // MARK: - Event consumer
 
-    /// Single MainActor `for await` loop. Each event hops to MainActor
-    /// here (the closure body runs on AppDelegate's actor) before
-    /// touching `PortGraph`. SPEC §18 Phase 3 acceptance "Notification
-    /// callbacks correctly hop to @MainActor before mutating PortGraph"
-    /// is satisfied by virtue of this consumer running on MainActor.
+    /// MainActor `for await` loop. Hop to MainActor happens by virtue
+    /// of the closure body running on AppDelegate's actor — satisfies
+    /// SPEC §18 Phase 3 acceptance #7.
     private func startEventConsumer(service: EventService) {
         eventConsumerTask = Task { @MainActor [weak self] in
             for await event in service.events() {
@@ -119,19 +86,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Per-event dispatch. `.fullRefresh` (and the not-found-attach
-    /// flag set by `PortGraph.apply(.attached)` per §4.6.1) trigger
-    /// a discovery walk + `replace`. Other events go straight to
-    /// `portGraph.apply` for the surgical mutation path.
     private func handle(event: PortEvent) async {
         switch event {
         case .fullRefresh:
             await rebuildGraph()
         default:
             portGraph.apply(event)
-            // §4.6.1: a not-found .attached sets needsFullRefresh.
-            // Acknowledge + re-walk so the next .attached for this
-            // port hits the surgical path.
             if portGraph.needsFullRefresh {
                 portGraph.acknowledgeRefreshRequest()
                 await rebuildGraph()
@@ -139,10 +99,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Walk via `DiscoveryService` and atomic-swap into `PortGraph`.
-    /// Errors logged and swallowed — a failed walk shouldn't crash the
-    /// app; the popover stays at its previous state until the next
-    /// successful walk.
     private func rebuildGraph() async {
         do {
             let hosts = try await discoveryService.walk()
@@ -152,49 +108,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Click handling
+    // MARK: - Badge observation
 
-    @objc
-    private func statusItemClicked(_ sender: Any?) {
-        togglePopover()
+    /// Watch `portGraph.totalDeviceCount` and push updates to the
+    /// status-item badge. Uses `Observation.withObservationTracking`
+    /// in a tight loop — the @Observable property reads inside the
+    /// `apply` block re-register on every iteration so changes
+    /// continue to fire updates.
+    private func startBadgeObserver(controller: StatusItemController) {
+        graphObservationTask = Task { @MainActor [weak self, weak controller] in
+            while !Task.isCancelled {
+                guard let self, let controller else { return }
+                let count = withObservationTracking {
+                    self.portGraph.totalDeviceCount
+                } onChange: { }
+                controller.setDeviceCount(count)
+                // Wait for the next observation tick. Yielding lets
+                // pending PortGraph mutations land before we re-read.
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
     }
 
-    /// Open the popover if closed, close if open. No walk-on-open
-    /// anymore — the event stream keeps `PortGraph` current.
-    private func togglePopover() {
-        let popover = popoverIfNeeded()
-        if popover.isShown {
-            popover.performClose(nil)
+    // MARK: - Toolbar actions
+
+    /// Activate the app + bring the standalone window forward. If the
+    /// user has closed the WindowGroup window entirely, the system's
+    /// `applicationShouldHandleReopen` semantics re-create it the
+    /// next time the user clicks the dock icon; from a popover button
+    /// we settle for activating + revealing whichever window is
+    /// already present. Phase 6 may swap to `@Environment(\.openWindow)`
+    /// once `MainWindow` lands.
+    private func openMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows where window.canBecomeKey {
+            window.makeKeyAndOrderFront(nil)
             return
         }
-        guard let button = statusItem?.button else { return }
-        popover.show(
-            relativeTo: button.bounds,
-            of: button,
-            preferredEdge: .minY
-        )
     }
 
-    private func popoverIfNeeded() -> NSPopover {
-        if let existing = popover { return existing }
-
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = true
-        popover.contentSize = AppConstants.popoverContentSize
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverContent(graph: portGraph)
-        )
-        self.popover = popover
-        return popover
+    /// Open Settings. SwiftUI's `Settings` scene registers a handler
+    /// for the standard `showSettingsWindow:` selector (older
+    /// `showPreferencesWindow:` on macOS 12 and earlier; we target
+    /// macOS 26 so `showSettingsWindow:` is the only path). The
+    /// runtime selector lookup avoids importing the SettingsLink
+    /// symbol indirectly.
+    private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        let selector = NSSelectorFromString("showSettingsWindow:")
+        NSApp.sendAction(selector, to: nil, from: nil)
     }
 
 #if DEBUG
-    /// DEBUG-only stress harness. Runs `discoveryService.walk()` N
-    /// times in a tight loop when `MANIFOLD_LEAK_BENCH` is set to a
-    /// positive integer. Phase 1's `leaks(1)` verification harness;
-    /// kept alive through Phase 3 so each phase's pipeline can be
-    /// re-leak-checked.
+    /// DEBUG-only stress harness retained from Phase 1 — re-run the
+    /// full Phase-4 pipeline (EventService → discovery walk → graph
+    /// replace → badge update) under `MANIFOLD_LEAK_BENCH=N` and
+    /// attach `leaks(1)` to verify zero leaked bytes.
     private func runLeakBenchIfRequested() {
         guard
             let raw = ProcessInfo.processInfo.environment["MANIFOLD_LEAK_BENCH"],
@@ -220,90 +189,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 #endif
-}
-
-// MARK: - Phase-2/3 popover view
-
-private struct PopoverContent: View {
-
-    @Bindable var graph: PortGraph
-
-    private var devices: [(host: ManifoldKit.Host, port: ManifoldKit.Port, device: Device)] {
-        graph.hosts.flatMap { host in
-            host.ports.compactMap { port in
-                port.connectedDevice.map { (host, port, $0) }
-            }
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(headerString(for: graph.totalDeviceCount))
-                .font(.headline)
-
-            Divider()
-
-            if devices.isEmpty {
-                Text("popover.devices.empty")
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        ForEach(devices, id: \.port.id) { entry in
-                            DeviceListRow(port: entry.port, device: entry.device)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .frame(
-            width: AppConstants.popoverContentSize.width,
-            height: AppConstants.popoverContentSize.height,
-            alignment: .topLeading
-        )
-    }
-
-    private func headerString(for count: Int) -> String {
-        String(
-            format: NSLocalizedString(
-                "popover.devices.count",
-                comment: "Phase 1/2/3 popover header: total connected devices."
-            ),
-            count
-        )
-    }
-}
-
-private struct DeviceListRow: View {
-
-    let port: ManifoldKit.Port
-    let device: Device
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(device.name.isEmpty ? fallbackName : device.name)
-                .font(.body)
-            Text(detailLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var fallbackName: String {
-        String(format: "Device %04X:%04X", device.vendorID, device.productID)
-    }
-
-    private var detailLine: String {
-        var segments: [String] = [
-            String(format: "%04X:%04X", device.vendorID, device.productID),
-            port.negotiated?.protocolName ?? "Unknown"
-        ]
-        if let watts = port.powerDraw {
-            segments.append(watts.formatted)
-        }
-        return segments.joined(separator: " · ")
-    }
 }

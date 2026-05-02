@@ -49,8 +49,80 @@
         }
       }
     },
-    "popover.devices.count" : {
-      "comment" : "Phase-1 popover header: pluralised count of connected USB devices. %lld is the count.",
+    "popover.device.accessibility" : {
+      "comment" : "VoiceOver label for one device row inside a port. %1$@ = port kind label, %2$lld = port position, %3$@ = device name, %4$@ = link protocol, %5$@ = power formatted.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$lld, %3$@, %4$@, %5$@"
+          }
+        }
+      }
+    },
+    "popover.device.unknown.power" : {
+      "comment" : "Fallback when no power reading is available.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "power unknown"
+          }
+        }
+      }
+    },
+    "popover.device.unknown.protocol" : {
+      "comment" : "Fallback link-protocol label when the OS doesn't report one.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unknown link"
+          }
+        }
+      }
+    },
+    "popover.empty.subtitle" : {
+      "comment" : "Phase-4 popover empty-state subtitle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discovering connected devices…"
+          }
+        }
+      }
+    },
+    "popover.empty.title" : {
+      "comment" : "Phase-4 popover empty-state title shown briefly during cold launch before the first walk completes.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hosts discovered"
+          }
+        }
+      }
+    },
+    "popover.host.accessibility" : {
+      "comment" : "VoiceOver label for the host header. %1$@ = host name, %2$@ = total power formatted, %3$@ = diagnostic count phrase.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ total power, %3$@"
+          }
+        }
+      }
+    },
+    "popover.host.diagnostics.count" : {
+      "comment" : "Plural-aware diagnostic count for the host header. %lld is the count.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -59,13 +131,13 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld device connected"
+                  "value" : "%lld diagnostic"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld devices connected"
+                  "value" : "%lld diagnostics"
                 }
               }
             }
@@ -73,14 +145,110 @@
         }
       }
     },
-    "popover.devices.empty" : {
-      "comment" : "Phase-1 popover empty state shown when no USB devices are detected.",
+    "popover.host.diagnostics.none" : {
+      "comment" : "Host-header label when there are no active diagnostics.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No USB devices detected."
+            "value" : "No diagnostics"
+          }
+        }
+      }
+    },
+    "popover.port.empty" : {
+      "comment" : "Inline label for an empty port slot. %lld = port position.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port %lld — Empty"
+          }
+        }
+      }
+    },
+    "popover.port.empty.accessibility" : {
+      "comment" : "VoiceOver label for an empty port. %1$@ = port kind label, %2$lld = position.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$lld, empty"
+          }
+        }
+      }
+    },
+    "popover.port.kind.audio" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio Port" } } }
+    },
+    "popover.port.kind.ethernet" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Ethernet Port" } } }
+    },
+    "popover.port.kind.hdmi" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "HDMI Port" } } }
+    },
+    "popover.port.kind.magsafe" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MagSafe Port" } } }
+    },
+    "popover.port.kind.sd" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SD Card Slot" } } }
+    },
+    "popover.port.kind.thunderbolt" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Thunderbolt Port" } } }
+    },
+    "popover.port.kind.unknown" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port" } } }
+    },
+    "popover.port.kind.usbA" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB Port" } } }
+    },
+    "popover.port.kind.usbC" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB-C Port" } } }
+    },
+    "popover.toolbar.openSettings.accessibility" : {
+      "comment" : "VoiceOver label for the popover toolbar's Settings button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "popover.toolbar.openWindow" : {
+      "comment" : "Popover toolbar label for the button that opens the standalone window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Manifold"
+          }
+        }
+      }
+    },
+    "popover.toolbar.openWindow.accessibility" : {
+      "comment" : "VoiceOver label for the popover toolbar's Open Manifold button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Manifold window"
           }
         }
       }
