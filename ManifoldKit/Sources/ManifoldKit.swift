@@ -37,8 +37,10 @@ public enum ManifoldKitInfo {
     /// SPEC.md revision this module's types correspond to.
     ///
     /// Bumped by the Builder whenever the data model lands an update
-    /// callers should care about. Phase 2 ships the full §4 type set
-    /// against SPEC rev 3 (which incorporated Phase-1 license/repo and
-    /// Phase-2 fallback-key amendments).
-    public static let specRevision: Int = 3
+    /// callers should care about. Phase 2 shipped the full §4 type
+    /// set against SPEC rev 3; SPEC rev 4 added §4.6.1 (PortGraph
+    /// mutation pattern) without altering the data types themselves.
+    /// Bumped to 4 in Phase 6 to keep the sentinel current with the
+    /// SPEC's published revision (per Reviewer F3).
+    public static let specRevision: Int = 4
 }

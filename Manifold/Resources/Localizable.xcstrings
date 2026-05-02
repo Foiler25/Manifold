@@ -252,6 +252,206 @@
           }
         }
       }
+    },
+
+    "popover.device.fallback.name" : {
+      "comment" : "Fallback name when a device exposes no USB product/vendor strings. %1$@ = pre-formatted VID hex (4 digits), %2$@ = pre-formatted PID hex (4 digits). Caller pre-formats with String(format: \"%04X\", ...) since xcstrings symbol generation doesn't support %04X. (Phase 6 Reviewer F14.)",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Device %1$@:%2$@" } } }
+    },
+
+    "window.sidebar.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold" } } }
+    },
+    "window.sidebar.section.hosts" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hosts" } } }
+    },
+    "window.sidebar.host.accessibility" : {
+      "comment" : "VoiceOver label for one host row in the sidebar. %1$@ = host name, %2$@ = model identifier, %3$@ = total power.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@, %2$@, %3$@ total power" } } }
+    },
+
+    "window.tab.topology.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Topology" } } }
+    },
+    "window.tab.history.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History" } } }
+    },
+    "window.tab.diagnostics.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } } }
+    },
+
+    "window.topology.summary.devices" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Devices" } } }
+    },
+    "window.topology.summary.ports" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Ports" } } }
+    },
+    "window.topology.summary.totalDraw" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Total Draw" } } }
+    },
+    "window.topology.emptyState.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Select a host" } } }
+    },
+    "window.topology.emptyState.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick a host from the sidebar to see its connected devices." } } }
+    },
+
+    "window.tab.history.placeholder.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History coming in Phase 10" } } }
+    },
+    "window.tab.history.placeholder.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "GRDB-backed event and telemetry history will appear here once persistence lands." } } }
+    },
+    "window.tab.history.placeholder.accessibility" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History coming in Phase 10" } } }
+    },
+
+    "window.tab.diagnostics.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "All clear" } } }
+    },
+    "window.tab.diagnostics.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No active diagnostics. Diagnostic rules begin firing in Phase 8." } } }
+    },
+
+    "window.inspector.section.identity" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Identity" } } }
+    },
+    "window.inspector.section.connection" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Connection" } } }
+    },
+    "window.inspector.section.telemetry" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Telemetry" } } }
+    },
+    "window.inspector.section.display" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Display" } } }
+    },
+    "window.inspector.field.vendor" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Vendor ID" } } }
+    },
+    "window.inspector.field.product" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Product ID" } } }
+    },
+    "window.inspector.field.serial" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Serial" } } }
+    },
+    "window.inspector.field.usbVersion" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB Version" } } }
+    },
+    "window.inspector.field.host" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Host" } } }
+    },
+    "window.inspector.field.portPosition" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port" } } }
+    },
+    "window.inspector.value.portPosition" : {
+      "comment" : "Inspector value for port position. %lld = position number.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "P%lld" } } }
+    },
+    "window.inspector.field.protocol" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Protocol" } } }
+    },
+    "window.inspector.field.bitrate" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Bitrate" } } }
+    },
+    "window.inspector.field.power" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+    },
+    "window.inspector.telemetry.caption" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 60 seconds of power draw." } } }
+    },
+    "window.inspector.field.resolution" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Resolution" } } }
+    },
+    "window.inspector.value.resolution" : {
+      "comment" : "Inspector value for display resolution. %1$lld = width, %2$lld = height.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$lld × %2$lld" } } }
+    },
+    "window.inspector.field.refreshRate" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh Rate" } } }
+    },
+    "window.inspector.value.refreshRate" : {
+      "comment" : "Inspector value for refresh rate. %@ = number, e.g. 60. Trailing Hz unit kept inside the value.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%.0f Hz" } } }
+    },
+    "window.inspector.field.panelType" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Panel" } } }
+    },
+    "window.inspector.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Select a device" } } }
+    },
+    "window.inspector.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Click a device in the topology to see its details, telemetry, and event history." } } }
+    },
+    "window.inspector.kind.audio" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Audio" } } }
+    },
+    "window.inspector.kind.display" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Display" } } }
+    },
+    "window.inspector.kind.input" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Input" } } }
+    },
+    "window.inspector.kind.storage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Storage" } } }
+    },
+    "window.inspector.kind.hub" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hub" } } }
+    },
+    "window.inspector.kind.video" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Video" } } }
+    },
+    "window.inspector.kind.networking" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Networking" } } }
+    },
+    "window.inspector.kind.other" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Other" } } }
     }
   },
   "version" : "1.0"

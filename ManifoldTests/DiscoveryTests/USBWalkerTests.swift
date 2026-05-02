@@ -154,6 +154,45 @@ final class USBWalkerTests: XCTestCase {
         XCTAssertTrue(USBDiscoveryConstants.speedName(for: 99).contains("USB ?"))
     }
 
+    // MARK: - bcdUSB → Speed code (Reviewer F13)
+
+    /// Per-cluster pin test for `LiveIOKitUSBSource.deriveSpeedFromBcd`.
+    /// Phase 2's F5 fallback chain depends on this when canonical
+    /// `Speed` is nil (the M1 Max boot SSD case). Directly testing
+    /// each USB-version cluster catches off-by-one regressions in the
+    /// switch ranges that the live-walk acceptance check would only
+    /// surface for Brandon's specific boot SSD.
+    func test_deriveSpeedFromBcd_usb1_returnsFullSpeed() {
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0100), 1)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0110), 1)
+    }
+
+    func test_deriveSpeedFromBcd_usb2_returnsHighSpeed() {
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0200), 2)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0210), 2)
+    }
+
+    func test_deriveSpeedFromBcd_usb3Range_returnsSuperSpeed() {
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0300), 3)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0310), 3)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0320), 3)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x03FF), 3)
+    }
+
+    func test_deriveSpeedFromBcd_usb4Range_returnsSuperSpeedPlus() {
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0400), 4)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0450), 4)
+        XCTAssertEqual(LiveIOKitUSBSource.deriveSpeedFromBcd(0x04FF), 4)
+    }
+
+    /// nil input → nil output (no false positive). Vendor-extended
+    /// BCDs we don't recognise also return nil → "Unknown" in UI.
+    func test_deriveSpeedFromBcd_unknownAndNil_returnsNil() {
+        XCTAssertNil(LiveIOKitUSBSource.deriveSpeedFromBcd(nil))
+        XCTAssertNil(LiveIOKitUSBSource.deriveSpeedFromBcd(0x0500))   // not yet mapped
+        XCTAssertNil(LiveIOKitUSBSource.deriveSpeedFromBcd(0xFFFF))
+    }
+
     // MARK: - Helpers
 
     private func makeWalker() throws -> USBWalker {

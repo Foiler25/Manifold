@@ -18,14 +18,14 @@
 // ManifoldApp.swift
 //
 // SwiftUI `App` entry point. Hosts two scenes:
-//   • `WindowGroup` — the standalone window app (Phase 6 fills it out).
-//   • `Settings`    — the settings pane (Phase 14 fills it out).
+//   • `WindowGroup` — Phase 6's `MainWindow` (NavigationSplitView,
+//     three-pane host/topology/inspector).
+//   • `Settings`    — Phase 0 placeholder; Phase 14 fills it out.
 //
-// The menu bar `NSStatusItem` is owned by `AppDelegate`, attached here via
-// `@NSApplicationDelegateAdaptor`. We pick the AppDelegate-shimmed approach
-// rather than `MenuBarExtra` per DECISIONS.md D1/D15 — `MenuBarExtra` cannot
-// render the numeric badge over the menu bar icon that Manifold needs from
-// Phase 4 onward.
+// The menu bar `NSStatusItem` is owned by `AppDelegate`, attached
+// here via `@NSApplicationDelegateAdaptor`. AppDelegate exposes its
+// `PortGraph` and the lifecycle bridge so the WindowGroup body can
+// reach them without touching AppKit globals directly.
 
 import SwiftUI
 
@@ -33,44 +33,26 @@ import SwiftUI
 struct ManifoldApp: App {
 
     /// Bridges the SwiftUI app lifecycle to the AppKit `NSStatusItem`.
-    /// The adaptor instantiates `AppDelegate` once per app lifetime and
-    /// keeps it alive for the duration of the process.
+    /// The adaptor instantiates `AppDelegate` once per app lifetime
+    /// and keeps it alive for the duration of the process.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        // Phase 0: an empty placeholder window. Phase 6 replaces this with
-        // the three-pane `NavigationSplitView` (sidebar / topology / inspector)
-        // described in SPEC.md §13.
         WindowGroup {
-            PlaceholderRootView()
+            MainWindow(
+                graph: appDelegate.publishedPortGraph,
+                onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
+                onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
+            )
         }
+        .defaultSize(MainWindowConstants.defaultWindowSize)
+        .windowResizability(.contentMinSize)
 
-        // Phase 0: empty Settings scene so `cmd-,` doesn't crash.
-        // Phase 14 builds out General/Notifications/History/Updates/About panes.
+        // Phase 0: empty Settings scene. Phase 14 builds out the
+        // General/Notifications/History/Updates/About panes.
         Settings {
             PlaceholderSettingsView()
         }
-    }
-}
-
-/// Phase-0 stand-in for the main window's content. Replaced wholesale in
-/// Phase 6 by `MainWindow` from `Manifold/UI/Window/`.
-private struct PlaceholderRootView: View {
-    var body: some View {
-        // Strings live in `Localizable.xcstrings` per builder.md ("no
-        // hardcoded strings in views"). The keys are typed-in literals that
-        // SwiftUI's `LocalizedStringKey` initializer resolves against the
-        // catalog at runtime.
-        VStack(spacing: 12) {
-            Text("placeholder.window.title")
-                .font(.title2)
-                .bold()
-            Text("placeholder.window.subtitle")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-        }
-        .frame(minWidth: 480, minHeight: 320)
     }
 }
 

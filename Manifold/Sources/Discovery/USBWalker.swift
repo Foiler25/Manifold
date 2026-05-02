@@ -262,7 +262,14 @@ struct LiveIOKitUSBSource: USBRegistrySource {
     /// Map `bcdUSB` to an IOKit Speed enum code. Returns nil for
     /// values we don't recognise (vendor-extended BCDs) so callers can
     /// fall through to "Unknown" rather than reporting a wrong speed.
-    private static func deriveSpeedFromBcd(_ bcdUSB: UInt16?) -> UInt32? {
+    ///
+    /// Internal (was private) for direct unit-test coverage per
+    /// Reviewer F13 — the BCD → Speed-code mapping is a pure
+    /// arithmetic table with several clusters (USB 1.x → 1, USB 2.x →
+    /// 2, USB 3.x → 3, USB4 → 4) and benefits from per-cluster pin
+    /// tests rather than only the indirect coverage from the live
+    /// USBWalker walk.
+    static func deriveSpeedFromBcd(_ bcdUSB: UInt16?) -> UInt32? {
         guard let bcd = bcdUSB else { return nil }
         switch bcd {
         case 0x0100, 0x0110: return 1   // USB 1.x → Full Speed

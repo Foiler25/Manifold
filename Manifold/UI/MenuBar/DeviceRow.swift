@@ -74,11 +74,24 @@ struct DeviceRow: View {
 
     /// Falls back to "Device VVVV:PPPP" when the device exposes no
     /// product strings — matches the format the popover used since
-    /// Phase 1.
+    /// Phase 1. Per Phase 6 Reviewer F14, the literal moves to
+    /// `Localizable.xcstrings` (`popover.device.fallback.name`) so a
+    /// future localisation pass can adapt the wording — the format
+    /// specifiers stay in the localised value.
     private var displayName: String {
-        device.name.isEmpty
-            ? String(format: "Device %04X:%04X", device.vendorID, device.productID)
-            : device.name
+        if !device.name.isEmpty { return device.name }
+        // Pre-format hex segments as String so the catalog entry can
+        // use %@ placeholders (xcstrings symbol generation rejects
+        // %04X). Equivalent output: "Device 0461:4E22".
+        let vid = String(format: "%04X", device.vendorID)
+        let pid = String(format: "%04X", device.productID)
+        return String(
+            format: NSLocalizedString(
+                "popover.device.fallback.name",
+                comment: "Fallback display name."
+            ),
+            vid, pid
+        )
     }
 
     /// "VID:PID · Protocol". Power lives in the trailing column above

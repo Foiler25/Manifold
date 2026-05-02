@@ -35,7 +35,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let discoveryService = DiscoveryService()
     private var eventService: EventService?
-    private let portGraph = PortGraph()
+
+    /// `internal` (default) so `ManifoldApp.body` can pass the graph
+    /// into `MainWindow`. The same instance is observed by the popover
+    /// and the standalone window — single source of truth per
+    /// SPEC §4.6.
+    let portGraph = PortGraph()
+
+    /// Public alias used by ManifoldApp; preserves the
+    /// "private model, exposed via published accessor" pattern even
+    /// though the underlying `portGraph` is internal-visible.
+    var publishedPortGraph: PortGraph { portGraph }
+
     private var statusItemController: StatusItemController?
     private var telemetrySampler: TelemetrySampler?
     private let samplerLifecycle = SamplerLifecycle()
@@ -142,6 +153,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
+    }
+
+    // MARK: - Window lifecycle hooks (Phase 6)
+
+    /// Called by `MainWindow.onAppear` so the SamplerLifecycle's
+    /// surface count tracks window visibility per SPEC §18 Phase 5
+    /// acceptance #3 ("pauses sampling when popover hidden AND window
+    /// not visible"). Phase 5 declared the lifecycle methods; Phase 6
+    /// wires them.
+    func notifyMainWindowDidAppear() {
+        samplerLifecycle.windowDidAppear()
+    }
+
+    func notifyMainWindowDidDisappear() {
+        samplerLifecycle.windowDidDisappear()
     }
 
     // MARK: - Toolbar actions
