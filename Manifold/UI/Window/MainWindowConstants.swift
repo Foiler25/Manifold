@@ -68,13 +68,22 @@ enum MainWindowConstants {
     /// Detail column reads this; nil → "select a device" empty state.
     static let sceneStorageSelectedDeviceKey = "manifold.window.selectedDevice"
 
-    /// `NSWindow.frameAutosaveName`. Setting this on the WindowGroup's
-    /// underlying NSWindow makes AppKit persist size + position to
-    /// `~/Library/Preferences/com.Loofa.Manifold.plist` automatically.
-    /// SwiftUI's `WindowGroup` inherits this via `.windowResizability`
-    /// and friends; we set it explicitly via the `windowToolbarStyle`
-    /// modifier in MainWindow.
-    static let windowFrameAutosaveName = "Manifold-MainWindow"
+    /// `NSWindow.frameAutosaveName`. AppKit persists window size +
+    /// position under the `defaults` key `"NSWindow Frame
+    /// ManifoldMainWindow"` whenever the user resizes or moves the
+    /// window, and restores from there on next launch.
+    ///
+    /// Per SPEC §18 Phase 6 rev-6 (and the §18.0 `WINDOW-FRAME-PERSISTS`
+    /// procedure), this MUST match the literal `"ManifoldMainWindow"`
+    /// (no hyphen) so the Reviewer's
+    /// `defaults read com.Loofa.Manifold "NSWindow Frame ManifoldMainWindow"`
+    /// verification step finds the key.
+    ///
+    /// Wired explicitly via AppKit from `AppDelegate.applicationDidFinishLaunching`'s
+    /// `installMainWindowFrameAutosaveName()` — NOT relying on
+    /// SwiftUI's `WindowGroup` automatic state save (which Phase 6
+    /// rev 6 explicitly forbids depending on).
+    static let windowFrameAutosaveName = "ManifoldMainWindow"
 }
 
 // MARK: - WindowTab enum

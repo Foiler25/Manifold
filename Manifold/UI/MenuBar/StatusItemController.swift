@@ -137,6 +137,15 @@ final class StatusItemController {
 
     @objc
     private func buttonClicked(_ sender: Any?) {
+        showPopover()
+    }
+
+    /// Open the popover programmatically. Used by `buttonClicked` and
+    /// (DEBUG-only) by `AppDelegate`'s `MANIFOLD_AUTOOPEN_POPOVER`
+    /// env-var hook so `PopoverUITests` can drive the popover without
+    /// menu-bar coordinate clicking. Idempotent — no-op if already
+    /// shown, performs close if already open.
+    func showPopover() {
         let popover = popoverIfNeeded()
         if popover.isShown {
             popover.performClose(nil)

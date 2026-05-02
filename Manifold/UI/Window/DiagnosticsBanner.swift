@@ -54,6 +54,7 @@ struct DiagnosticsBanner: View {
             Text("window.tab.diagnostics.empty.title")
                 .font(.title2)
                 .foregroundStyle(Color.manifoldText)
+                .accessibilityIdentifier("window.tab.diagnostics.empty.title")
             Text("window.tab.diagnostics.empty.subtitle")
                 .font(.body)
                 .foregroundStyle(.secondary)

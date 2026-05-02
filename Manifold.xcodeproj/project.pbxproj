@@ -42,6 +42,13 @@
 			remoteGlobalIDString = A100000000000000000010A1;
 			remoteInfo = Manifold;
 		};
+		A100000000000000000050F1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A100000000000000000000A1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A100000000000000000010A1;
+			remoteInfo = Manifold;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -74,6 +81,7 @@
 		A100000000000000000020B1 /* ManifoldKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ManifoldKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A100000000000000000030B1 /* ManifoldWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ManifoldWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A100000000000000000040B1 /* ManifoldTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ManifoldTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A100000000000000000050B1 /* ManifoldUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ManifoldUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -122,6 +130,11 @@
 			path = ManifoldTests;
 			sourceTree = "<group>";
 		};
+		A100000000000000000050B2 /* ManifoldUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ManifoldUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +168,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A100000000000000000050D2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -165,6 +185,7 @@
 				A100000000000000000020B2 /* ManifoldKit */,
 				A100000000000000000030B2 /* ManifoldWidget */,
 				A100000000000000000040B2 /* ManifoldTests */,
+				A100000000000000000050B2 /* ManifoldUITests */,
 				A100000000000000000000B2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -176,6 +197,7 @@
 				A100000000000000000020B1 /* ManifoldKit.framework */,
 				A100000000000000000030B1 /* ManifoldWidget.appex */,
 				A100000000000000000040B1 /* ManifoldTests.xctest */,
+				A100000000000000000050B1 /* ManifoldUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -269,6 +291,27 @@
 			productReference = A100000000000000000040B1 /* ManifoldTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		A100000000000000000050A1 /* ManifoldUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A100000000000000000050C0 /* Build configuration list for PBXNativeTarget "ManifoldUITests" */;
+			buildPhases = (
+				A100000000000000000050D1 /* Sources */,
+				A100000000000000000050D2 /* Frameworks */,
+				A100000000000000000050D3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A100000000000000000050E1 /* PBXTargetDependency on Manifold */,
+			);
+			fileSystemSynchronizedGroups = (
+				A100000000000000000050B2 /* ManifoldUITests */,
+			);
+			name = ManifoldUITests;
+			productName = ManifoldUITests;
+			productReference = A100000000000000000050B1 /* ManifoldUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -292,6 +335,10 @@
 						CreatedOnToolsVersion = 26.4.1;
 						TestTargetID = A100000000000000000010A1;
 					};
+					A100000000000000000050A1 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = A100000000000000000010A1;
+					};
 				};
 			};
 			buildConfigurationList = A100000000000000000000C0 /* Build configuration list for PBXProject "Manifold" */;
@@ -312,6 +359,7 @@
 				A100000000000000000020A1 /* ManifoldKit */,
 				A100000000000000000030A1 /* ManifoldWidget */,
 				A100000000000000000040A1 /* ManifoldTests */,
+				A100000000000000000050A1 /* ManifoldUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -332,6 +380,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A100000000000000000040D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A100000000000000000050D3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -379,6 +434,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A100000000000000000050D1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -401,6 +463,11 @@
 			isa = PBXTargetDependency;
 			target = A100000000000000000010A1 /* Manifold */;
 			targetProxy = A100000000000000000040F1 /* PBXContainerItemProxy */;
+		};
+		A100000000000000000050E1 /* PBXTargetDependency on Manifold */ = {
+			isa = PBXTargetDependency;
+			target = A100000000000000000010A1 /* Manifold */;
+			targetProxy = A100000000000000000050F1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -777,6 +844,60 @@
 			};
 			name = Release;
 		};
+		A100000000000000000050C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Loofa.ManifoldUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_INTERNAL_IMPORTS_BY_DEFAULT = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Manifold;
+			};
+			name = Debug;
+		};
+		A100000000000000000050C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Loofa.ManifoldUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES;
+				SWIFT_UPCOMING_FEATURE_INTERNAL_IMPORTS_BY_DEFAULT = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = Manifold;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -821,6 +942,15 @@
 			buildConfigurations = (
 				A100000000000000000040C1 /* Debug */,
 				A100000000000000000040C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A100000000000000000050C0 /* Build configuration list for PBXNativeTarget "ManifoldUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000000000000000050C1 /* Debug */,
+				A100000000000000000050C2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

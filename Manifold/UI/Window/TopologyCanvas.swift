@@ -85,6 +85,7 @@ struct TopologyCanvas: View {
             Text(host.model)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("window.topology.header.model")
             HStack {
                 summaryItem(
                     label: "window.topology.summary.devices",

@@ -34,6 +34,7 @@ struct HistoryView: View {
             Text("window.tab.history.placeholder.title")
                 .font(.title2)
                 .foregroundStyle(Color.manifoldText)
+                .accessibilityIdentifier("window.tab.history.placeholder.title")
             Text("window.tab.history.placeholder.subtitle")
                 .font(.body)
                 .foregroundStyle(.secondary)

@@ -56,6 +56,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Window-frame persistence wired explicitly via AppKit per
+        // SPEC §18 Phase 6 rev-6. WindowGroup may not have created
+        // the window yet by the time applicationDidFinishLaunching
+        // fires, so dispatch to the next run-loop tick — by then the
+        // SwiftUI scene has instantiated the NSWindow and we can find
+        // it in NSApp.windows.
+        DispatchQueue.main.async { [weak self] in
+            self?.installMainWindowFrameAutosaveName()
+        }
+
         let controller = StatusItemController(
             graph: portGraph,
             onOpenWindow: { [weak self] in self?.openMainWindow() },
@@ -87,8 +97,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 #if DEBUG
         runLeakBenchIfRequested()
+        autoOpenPopoverIfRequested()
 #endif
     }
+
+#if DEBUG
+    /// DEBUG-only hook for `PopoverUITests`: when launched with
+    /// `MANIFOLD_AUTOOPEN_POPOVER=1`, programmatically open the
+    /// popover on launch so the UI test can assert its contents
+    /// without driving the menu bar status item via screen coordinates
+    /// (brittle) or cross-app accessibility traversal (flaky in CI).
+    /// Production builds elide this entirely.
+    private func autoOpenPopoverIfRequested() {
+        guard ProcessInfo.processInfo.environment["MANIFOLD_AUTOOPEN_POPOVER"] != nil else {
+            return
+        }
+        // Defer to the next run-loop tick so the status item has had
+        // a chance to install before we ask it to open.
+        DispatchQueue.main.async { [weak self] in
+            self?.statusItemController?.showPopover()
+        }
+    }
+#endif
 
     func applicationWillTerminate(_ notification: Notification) {
         eventConsumerTask?.cancel()
@@ -152,6 +182,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // pending PortGraph mutations land before we re-read.
                 try? await Task.sleep(for: .milliseconds(50))
             }
+        }
+    }
+
+    // MARK: - Window-frame persistence (SPEC §18 Phase 6 rev-6)
+
+    /// Locate the main window in `NSApp.windows` and set its
+    /// `frameAutosaveName` to `MainWindowConstants.windowFrameAutosaveName`
+    /// (`"ManifoldMainWindow"`). AppKit then writes the window's
+    /// frame to `~/Library/Preferences/com.Loofa.Manifold.plist`
+    /// under the key `"NSWindow Frame ManifoldMainWindow"` on every
+    /// resize/move and restores from there on next launch.
+    ///
+    /// This is the AppKit-explicit wiring SPEC §18 Phase 6 rev-6
+    /// mandates — Phase 6's first round relied on SwiftUI's
+    /// WindowGroup automatic state save, which the spec rev
+    /// explicitly forbids ("NOT relying on SwiftUI WindowGroup
+    /// automatic state save"). The §18.0 `WINDOW-FRAME-PERSISTS`
+    /// procedure verifies this works at re-review.
+    ///
+    /// Heuristic for finding the main window: at this point in the
+    /// app lifecycle (one tick after applicationDidFinishLaunching),
+    /// the only `.titled + .resizable` window is the WindowGroup's
+    /// MainWindow. The Settings window is created lazily on Cmd-, ;
+    /// the popover doesn't have an NSWindow that matches
+    /// `.titled + .resizable`. Phase 7+ that adds more windows can
+    /// tighten the matcher (e.g., via a marker view).
+    private func installMainWindowFrameAutosaveName() {
+        guard let window = NSApp.windows.first(where: { window in
+            window.styleMask.contains(.titled) && window.styleMask.contains(.resizable)
+        }) else {
+            // Try once more on the next tick — under unusual launch
+            // conditions the WindowGroup may take >1 run-loop iteration
+            // to instantiate the window. After that, give up loudly.
+            Log.app.notice("Main window not found on first tick; retrying once.")
+            DispatchQueue.main.async { [weak self] in
+                self?.retryInstallMainWindowFrameAutosaveName()
+            }
+            return
+        }
+        applyAutosaveName(to: window)
+    }
+
+    /// Second-attempt lookup invoked from
+    /// `installMainWindowFrameAutosaveName` when the window wasn't
+    /// resolvable on the first run-loop tick. If still not found,
+    /// log an error and bail — frame persistence will silently fail
+    /// and the user will see fresh defaults on next launch. We don't
+    /// hard-crash on this because a missing main window mid-launch
+    /// is recoverable (the window may simply not be open yet).
+    private func retryInstallMainWindowFrameAutosaveName() {
+        guard let window = NSApp.windows.first(where: { window in
+            window.styleMask.contains(.titled) && window.styleMask.contains(.resizable)
+        }) else {
+            Log.app.error("Main window still not found on retry; frame persistence not wired.")
+            return
+        }
+        applyAutosaveName(to: window)
+    }
+
+    private func applyAutosaveName(to window: NSWindow) {
+        let didSet = window.setFrameAutosaveName(MainWindowConstants.windowFrameAutosaveName)
+        if didSet {
+            Log.app.notice("Main window frameAutosaveName set to \(MainWindowConstants.windowFrameAutosaveName, privacy: .public).")
+        } else {
+            // setFrameAutosaveName returns false if another window in
+            // the process already owns the same name — shouldn't
+            // happen for our single-main-window app, but worth
+            // logging if it does.
+            Log.app.error("setFrameAutosaveName returned false — name collision?")
         }
     }
 

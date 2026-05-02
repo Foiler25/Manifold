@@ -157,6 +157,11 @@ struct MainWindow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(LocalizedStringKey(tab.labelKey))
         .accessibilityAddTraits(active ? .isSelected : [])
+        // Stable identifier for `WindowUITests` queries — must match
+        // the values referenced by `WindowUITests.swift`. Format
+        // `window.tab.<rawValue>` keeps the binding obvious without a
+        // separate constants table.
+        .accessibilityIdentifier("window.tab.\(tab.rawValue)")
     }
 
     @ViewBuilder
