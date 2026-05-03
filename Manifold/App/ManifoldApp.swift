@@ -42,12 +42,24 @@ struct ManifoldApp: App {
             MainWindow(
                 graph: appDelegate.publishedPortGraph,
                 eventRepository: appDelegate.publishedEventRepository,
+                sampleRepository: appDelegate.publishedSampleRepository,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
             )
         }
         .defaultSize(MainWindowConstants.defaultWindowSize)
         .windowResizability(.contentMinSize)
+        .commands {
+            // Phase 11: File ▸ Export… (Cmd-E). Replaces the
+            // default `importExport` group so the menu reads
+            // "Export…" rather than the system's "Import from…".
+            CommandGroup(replacing: .importExport) {
+                Button("export.menu.item") {
+                    NotificationCenter.default.post(name: .manifoldShowExportSheet, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: [.command])
+            }
+        }
 
         // Phase 0: empty Settings scene. Phase 14 builds out the
         // General/Notifications/History/Updates/About panes.

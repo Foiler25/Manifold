@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// disable path); the consumers render an empty-state.
     var publishedEventRepository: EventRepository? { eventRepository }
     var publishedDeviceRepository: DeviceRepository? { deviceRepository }
+    var publishedSampleRepository: SampleRepository? { sampleRepository }
     var publishedDatabaseManager: DatabaseManager? { databaseManager }
     var publishedDownsamplingJob: DownsamplingJob? { downsamplingJob }
 
@@ -224,14 +225,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// is acceptable.
     private func persistEventIfPossible(_ event: PortEvent) {
         switch event {
-        case .attached(let device, _):
+        case .attached(let device, let portID):
             // Upsert the device row first so the event row's FK
             // resolves. F10 reconcile lives in DeviceRepository.
+            // Phase 11 F23 closure: snapshot the link protocol +
+            // watts at MainActor while we still hold the live graph
+            // reference, then thread them through to the persisted
+            // payload via AttachedExtras.
+            let extras = lookupAttachedExtras(forPortID: portID)
             if let devices = deviceRepository, let events = eventRepository {
                 Task {
                     do {
                         try await devices.upsert(device)
-                        try await events.write(event)
+                        try await events.write(event, attachedExtras: extras)
                     } catch {
                         Log.app.error("Persist .attached failed: \(String(describing: error), privacy: .public)")
                     }
@@ -266,6 +272,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for host in portGraph.hosts {
             if let device = findDeviceID(in: host.ports, portID: portID) {
                 return device
+            }
+        }
+        return nil
+    }
+
+    /// Phase 11 F23: snapshot the link protocol + watts the live
+    /// PortGraph holds for `portID` so the persisted `.attached`
+    /// payload carries them. Note that on `.attached` the apply
+    /// step hasn't run yet — for an already-known port the live
+    /// `negotiated` may reflect a prior device's link state. The
+    /// `.telemetry` tick that follows fills in the new device's
+    /// values; the `.attached` payload captures whatever the OS
+    /// reported at attach time, which is the right snapshot for
+    /// "what the user saw when this happened."
+    private func lookupAttachedExtras(forPortID portID: PortID) -> EventRepository.AttachedExtras {
+        for host in portGraph.hosts {
+            if let port = findPort(in: host.ports, portID: portID) {
+                return EventRepository.AttachedExtras(
+                    linkProtocol: port.negotiated?.protocolName,
+                    watts: port.powerDraw?.value
+                )
+            }
+        }
+        return EventRepository.AttachedExtras()
+    }
+
+    private func findPort(in ports: [ManifoldKit.Port], portID: PortID) -> ManifoldKit.Port? {
+        for port in ports {
+            if port.id == portID { return port }
+            if let inChild = findPort(in: port.children, portID: portID) {
+                return inChild
             }
         }
         return nil

@@ -51,6 +51,96 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Running @ USB 2.0" } } }
     },
+    "export.action.cancel" : {
+      "comment" : "Cancel button in the export sheet.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } } }
+    },
+    "export.action.save" : {
+      "comment" : "Save / export button in the export sheet.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export…" } } }
+    },
+    "export.error.repositoryUnavailable" : {
+      "comment" : "Shown when the user tries to export from a repository that failed to open.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Persistent history is unavailable on this run — nothing to export." } } }
+    },
+    "export.error.scopeNotFound" : {
+      "comment" : "Shown when the chosen scope (host / device) cannot be located in the live graph.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The selected host or device is no longer in the live graph." } } }
+    },
+    "export.field.kind" : {
+      "comment" : "Picker label — export kind.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export" } } }
+    },
+    "export.field.scope" : {
+      "comment" : "Picker label — scope (full / host / device).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Scope" } } }
+    },
+    "export.field.timeRange" : {
+      "comment" : "Picker label — time range (CSV exports).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Time range" } } }
+    },
+    "export.kind.events" : {
+      "comment" : "Export-kind picker — event log CSV.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Event log (CSV)" } } }
+    },
+    "export.kind.samples" : {
+      "comment" : "Export-kind picker — telemetry samples CSV.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Telemetry samples (CSV)" } } }
+    },
+    "export.kind.topology" : {
+      "comment" : "Export-kind picker — topology JSON snapshot.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Topology snapshot (JSON)" } } }
+    },
+    "export.menu.item" : {
+      "comment" : "File menu item label.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export…" } } }
+    },
+    "export.panel.title" : {
+      "comment" : "NSSavePanel title for the export.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export Manifold data" } } }
+    },
+    "export.range.24h" : {
+      "comment" : "Time-range picker — last 24 hours.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 24 hours" } } }
+    },
+    "export.range.30d" : {
+      "comment" : "Time-range picker — last 30 days.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 30 days" } } }
+    },
+    "export.range.7d" : {
+      "comment" : "Time-range picker — last 7 days.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last 7 days" } } }
+    },
+    "export.range.all" : {
+      "comment" : "Time-range picker — unfiltered.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "All time" } } }
+    },
+    "export.scope.full" : {
+      "comment" : "Scope picker — full topology.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Full topology" } } }
+    },
+    "export.sheet.title" : {
+      "comment" : "Title of the export sheet.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export Manifold data" } } }
+    },
     "menubar.icon.accessibility" : {
       "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",
       "extractionState" : "manual",

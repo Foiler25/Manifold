@@ -100,14 +100,35 @@ actor EventRepository {
 
     // MARK: - Write
 
+    /// Optional extras the caller (typically `AppDelegate`) snapshots
+    /// from the live PortGraph at event-arrival time and threads
+    /// through to the persisted payload. Phase 10 review F23
+    /// closure: previously `.attached` rows always serialized with
+    /// `linkProtocol: nil, watts: nil` because the encode site had
+    /// no port reference. Now the caller passes them explicitly.
+    struct AttachedExtras: Sendable {
+        var linkProtocol: String?
+        var watts: Double?
+        init(linkProtocol: String? = nil, watts: Double? = nil) {
+            self.linkProtocol = linkProtocol
+            self.watts = watts
+        }
+    }
+
     /// Persist `event`. No-ops for `.telemetry` and `.fullRefresh`
-    /// (those don't belong in the events log). Caller can `await`
-    /// to ensure write durability before returning, but in practice
-    /// callers use `Task { try? await repo.write(event) }` for
-    /// fire-and-forget — losing one row across an unclean exit is
-    /// acceptable.
-    func write(_ event: PortEvent, at timestamp: Date = .now) async throws {
-        guard let row = encode(event: event, timestamp: timestamp) else { return }
+    /// (those don't belong in the events log). `attachedExtras`
+    /// supplies the link-protocol + watts values for `.attached`
+    /// events when the caller has them; ignored for other event
+    /// kinds. Caller can `await` to ensure write durability before
+    /// returning, but in practice callers use
+    /// `Task { try? await repo.write(event) }` for fire-and-forget —
+    /// losing one row across an unclean exit is acceptable.
+    func write(
+        _ event: PortEvent,
+        at timestamp: Date = .now,
+        attachedExtras: AttachedExtras = .init()
+    ) async throws {
+        guard let row = encode(event: event, timestamp: timestamp, attachedExtras: attachedExtras) else { return }
         try await dbPool.write { db in
             try db.execute(
                 sql: """
@@ -168,13 +189,13 @@ actor EventRepository {
 
     /// Project a `PortEvent` to an insertable row. nil for events
     /// that should not be persisted.
-    private func encode(event: PortEvent, timestamp: Date) -> StoredEvent? {
+    private func encode(event: PortEvent, timestamp: Date, attachedExtras: AttachedExtras) -> StoredEvent? {
         switch event {
         case .attached(let device, at: let portID):
             let payload = EventPayload.attached(
                 deviceName: device.name,
-                linkProtocol: nil,    // populated by DiscoveryService at apply time; keeping nil here
-                watts: nil
+                linkProtocol: attachedExtras.linkProtocol,
+                watts: attachedExtras.watts
             )
             return StoredEvent(
                 id: 0,

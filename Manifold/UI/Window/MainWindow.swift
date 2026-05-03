@@ -46,8 +46,16 @@ struct MainWindow: View {
     /// tab can render an empty state instead of crashing.
     let eventRepository: EventRepository?
 
+    /// Phase 11: passed through to ExportSheet for the telemetry-CSV
+    /// export path. nil when persistence init failed.
+    let sampleRepository: SampleRepository?
+
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void
+
+    /// Phase 11: drives the File menu's "Export…" sheet. Toggled by
+    /// the menu command and by the Cmd-E shortcut.
+    @State private var isExportSheetPresented: Bool = false
 
     // MARK: - Persisted scene state
 
@@ -119,6 +127,16 @@ struct MainWindow: View {
         .background(Color.manifoldSurface)
         .onAppear { onWindowAppear() }
         .onDisappear { onWindowDisappear() }
+        .sheet(isPresented: $isExportSheetPresented) {
+            ExportSheet(
+                graph: graph,
+                eventRepository: eventRepository,
+                sampleRepository: sampleRepository
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .manifoldShowExportSheet)) { _ in
+            isExportSheetPresented = true
+        }
     }
 
     // MARK: - Content column with tabs
@@ -206,6 +224,7 @@ struct MainWindow: View {
     return MainWindow(
         graph: graph,
         eventRepository: nil,
+        sampleRepository: nil,
         onWindowAppear: {},
         onWindowDisappear: {}
     )
@@ -216,8 +235,21 @@ struct MainWindow: View {
     MainWindow(
         graph: PortGraph(),
         eventRepository: nil,
+        sampleRepository: nil,
         onWindowAppear: {},
         onWindowDisappear: {}
     )
     .frame(width: 920, height: 600)
+}
+
+// MARK: - Phase 11 menu signal
+
+extension Notification.Name {
+    /// Phase 11: posted by `ManifoldApp`'s File ▸ Export… `CommandGroup`
+    /// so any open MainWindow opens its ExportSheet. The
+    /// SwiftUI-`@FocusedValue` route would scope to the focused
+    /// scene, but we have a single WindowGroup so a process-wide
+    /// notification is simpler and doesn't require threading state
+    /// through the menu commands.
+    static let manifoldShowExportSheet = Notification.Name("com.Loofa.Manifold.showExportSheet")
 }
