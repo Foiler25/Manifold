@@ -20,7 +20,8 @@
 // SwiftUI `App` entry point. Hosts two scenes:
 //   • `WindowGroup` — Phase 6's `MainWindow` (NavigationSplitView,
 //     three-pane host/topology/inspector).
-//   • `Settings`    — Phase 0 placeholder; Phase 14 fills it out.
+//   • `SettingsScene` — Phase 14 TabView with five panes
+//     (General / Notifications / History / Updates / About).
 //
 // The menu bar `NSStatusItem` is owned by `AppDelegate`, attached
 // here via `@NSApplicationDelegateAdaptor`. AppDelegate exposes its
@@ -37,6 +38,13 @@ struct ManifoldApp: App {
     /// and keeps it alive for the duration of the process.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    /// Phase 14 theme picker. SwiftUI re-applies
+    /// `.preferredColorScheme(_:)` on the WindowGroup body the
+    /// moment this @AppStorage value changes, so a flip in the
+    /// General pane takes effect without a relaunch.
+    @AppStorage(SettingsKeys.themePreference)
+    private var themeRaw: String = ThemePreference.default.rawValue
+
     var body: some Scene {
         WindowGroup {
             MainWindow(
@@ -46,6 +54,7 @@ struct ManifoldApp: App {
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
             )
+            .preferredColorScheme(currentColorScheme)
         }
         .defaultSize(MainWindowConstants.defaultWindowSize)
         .windowResizability(.contentMinSize)
@@ -61,18 +70,24 @@ struct ManifoldApp: App {
             }
         }
 
-        // Phase 0: empty Settings scene. Phase 14 builds out the
-        // General/Notifications/History/Updates/About panes.
-        Settings {
-            PlaceholderSettingsView()
-        }
+        // Phase 14: Settings tab view per SPEC §13.
+        SettingsScene(
+            onSampleRateChange: { rate in
+                appDelegate.applySampleRate(rate)
+            },
+            loginItemController: LiveLoginItemController(),
+            databaseManager: appDelegate.publishedDatabaseManager,
+            downsamplingJob: appDelegate.publishedDownsamplingJob
+        )
     }
-}
 
-/// Phase-0 stand-in for the Settings scene. Replaced in Phase 14.
-private struct PlaceholderSettingsView: View {
-    var body: some View {
-        Text("placeholder.settings.title")
-            .padding(40)
+    /// Map the @AppStorage raw string to SwiftUI's
+    /// `ColorScheme?`. nil → follow the system setting.
+    private var currentColorScheme: ColorScheme? {
+        switch ThemePreference(rawValue: themeRaw) ?? .default {
+        case .system: return nil
+        case .light:  return .light
+        case .dark:   return .dark
+        }
     }
 }

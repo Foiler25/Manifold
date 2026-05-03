@@ -256,6 +256,176 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "When Device Connects" } } }
     },
+    "settings.about.copyright" : {
+      "comment" : "Copyright line shown in the About pane.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "© 2026 Brandon Villar — GPL-3.0" } } }
+    },
+    "settings.about.github" : {
+      "comment" : "Link label for the GitHub repository.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "GitHub repository" } } }
+    },
+    "settings.about.license" : {
+      "comment" : "Link label for the GPL-3.0 license.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "GPL-3.0 license" } } }
+    },
+    "settings.about.version.full" : {
+      "comment" : "About-pane version string. %1$@ short version, %2$@ build number.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Version %1$@ (%2$@)" } } }
+    },
+    "settings.about.version.short" : {
+      "comment" : "About-pane version string when only the short version is available. %1$@ short version.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Version %1$@" } } }
+    },
+    "settings.about.version.unknown" : {
+      "comment" : "About-pane fallback when neither version field is available.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Version unknown" } } }
+    },
+    "settings.general.appearance.section" : {
+      "comment" : "Section header for theme controls.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } } }
+    },
+    "settings.general.launchAtLogin.detail" : {
+      "comment" : "Caption under the launch-at-login toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Manifold automatically when you log in." } } }
+    },
+    "settings.general.launchAtLogin.error" : {
+      "comment" : "Shown when SMAppService.register/unregister fails.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn’t update login items. Check System Settings → General → Login Items." } } }
+    },
+    "settings.general.launchAtLogin.title" : {
+      "comment" : "Toggle label for launch at login.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Launch at login" } } }
+    },
+    "settings.general.sampleRate.detail" : {
+      "comment" : "Caption under the sample-rate slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "How often Manifold polls power and link telemetry. Higher rates use slightly more CPU." } } }
+    },
+    "settings.general.sampleRate.title" : {
+      "comment" : "Slider label for the telemetry sample rate.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sample rate" } } }
+    },
+    "settings.general.sampling.section" : {
+      "comment" : "Section header for sampling controls.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sampling" } } }
+    },
+    "settings.general.startup.section" : {
+      "comment" : "Section header for startup controls.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Startup" } } }
+    },
+    "settings.general.theme.dark" : {
+      "comment" : "Theme picker option — dark.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Dark" } } }
+    },
+    "settings.general.theme.detail" : {
+      "comment" : "Caption under the theme picker.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Override the system appearance for Manifold’s windows." } } }
+    },
+    "settings.general.theme.light" : {
+      "comment" : "Theme picker option — light.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Light" } } }
+    },
+    "settings.general.theme.system" : {
+      "comment" : "Theme picker option — follow system.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "System" } } }
+    },
+    "settings.general.theme.title" : {
+      "comment" : "Picker label for theme.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Appearance" } } }
+    },
+    "settings.tab.about" : {
+      "comment" : "Settings tab label — About.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About" } } }
+    },
+    "settings.tab.general" : {
+      "comment" : "Settings tab label — General.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "General" } } }
+    },
+    "settings.tab.history" : {
+      "comment" : "Settings tab label — History.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History" } } }
+    },
+    "settings.tab.notifications" : {
+      "comment" : "Settings tab label — Notifications.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notifications" } } }
+    },
+    "settings.tab.updates" : {
+      "comment" : "Settings tab label — Updates.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Updates" } } }
+    },
+    "settings.updates.channel.beta" : {
+      "comment" : "Update-channel picker option — beta.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Beta" } } }
+    },
+    "settings.updates.channel.detail" : {
+      "comment" : "Caption under the update-channel picker.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Beta builds get features earlier in exchange for more rough edges." } } }
+    },
+    "settings.updates.channel.section" : {
+      "comment" : "Section header for the update-channel picker.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Update channel" } } }
+    },
+    "settings.updates.channel.stable" : {
+      "comment" : "Update-channel picker option — stable.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Stable" } } }
+    },
+    "settings.updates.channel.title" : {
+      "comment" : "Picker label for update channel.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Channel" } } }
+    },
+    "settings.updates.check.button" : {
+      "comment" : "Button label — check for updates now.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Check for updates now" } } }
+    },
+    "settings.updates.check.section" : {
+      "comment" : "Section header for the update-check controls.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Update check" } } }
+    },
+    "settings.updates.lastCheck.never" : {
+      "comment" : "Shown when the user has never checked for updates.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Never" } } }
+    },
+    "settings.updates.lastCheck.title" : {
+      "comment" : "Label for the last-update-check timestamp.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last checked" } } }
+    },
+    "settings.updates.sparkleDeferred" : {
+      "comment" : "Caption explaining why the check button is disabled in Phase 14.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Update checks light up in Phase 15 when Sparkle is wired in." } } }
+    },
     "menubar.icon.accessibility" : {
       "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",
       "extractionState" : "manual",

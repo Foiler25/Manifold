@@ -160,6 +160,24 @@ actor EventRepository {
         }
     }
 
+    /// Most-recent `limit` events whose `ts >= since`. Phase 14
+    /// closure of F24 (Phase 11 review): the export-CSV path
+    /// previously fetched `recentEvents(limit: 100_000)` then
+    /// in-memory filtered by time range, which was bounded but
+    /// O(N) on the table. SQL-side `WHERE ts >= ?` is the cheap
+    /// shape; pass `.distantPast` for the legacy "no time filter"
+    /// behaviour. Ordered DESC by ts so callers don't need to
+    /// re-sort.
+    func events(since: Date, limit: Int = 100_000) async throws -> [StoredEvent] {
+        try await dbPool.read { db in
+            try Self.fetchAll(
+                db,
+                sql: "SELECT * FROM events WHERE ts >= ? ORDER BY ts DESC LIMIT ?",
+                arguments: [since, limit]
+            )
+        }
+    }
+
     /// Every event for one device, oldest first. Used by the
     /// per-device drill-down in History.
     func events(forDevice deviceID: DeviceID) async throws -> [StoredEvent] {

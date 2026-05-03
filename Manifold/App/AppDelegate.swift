@@ -63,6 +63,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var publishedDatabaseManager: DatabaseManager? { databaseManager }
     var publishedDownsamplingJob: DownsamplingJob? { downsamplingJob }
 
+    /// Phase 14: invoked by `SettingsScene`'s GeneralPane via the
+    /// closure threaded through ManifoldApp. Forwards the new
+    /// rate to TelemetrySampler whose `didSet` clamps to
+    /// `[0.5, 5.0]` and restarts the timer if it's running.
+    func applySampleRate(_ hz: Double) {
+        telemetrySampler?.sampleRate = hz
+    }
+
     private var statusItemController: StatusItemController?
     private var telemetrySampler: TelemetrySampler?
     private let samplerLifecycle = SamplerLifecycle()
@@ -143,6 +151,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // PortGraph.apply via the same consumer task.
         let sampler = TelemetrySampler(eventService: service)
         telemetrySampler = sampler
+        // Phase 14: apply the user's persisted sample-rate
+        // preference at boot. Falls back to the default (1.0 Hz)
+        // when the key is absent. The `didSet` clamps; an
+        // out-of-range stored value gets normalised on assignment.
+        let persistedRate = UserDefaults.standard.double(forKey: SettingsKeys.sampleRateHz)
+        if persistedRate > 0 {
+            sampler.sampleRate = persistedRate
+        }
         samplerLifecycle.attach(sampler: sampler)
 
         // Seed the initial walk through the same .fullRefresh path as

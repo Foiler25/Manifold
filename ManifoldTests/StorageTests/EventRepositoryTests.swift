@@ -136,6 +136,38 @@ final class EventRepositoryTests: XCTestCase {
         XCTAssertEqual(aEvents.first?.deviceID, deviceA.id)
     }
 
+    // MARK: - F24: SQL-side time-range filter
+
+    /// Phase 14 F24 closure pin: `events(since:)` filters at the
+    /// SQL layer (not in memory) so the export path doesn't need
+    /// to drag every retained row through the heap. Insert two
+    /// rows on either side of the cutoff; assert only the newer
+    /// one comes back. Pins both the predicate AND the DESC ts
+    /// ordering the caller relies on.
+    func test_eventsSince_filtersBySQLAndOrdersDescending() async throws {
+        let device = makeDevice()
+        try await deviceRepo.upsert(device)
+        try await repository.write(.attached(device, at: PortID("/old")), at: Date(timeIntervalSince1970: 100))
+        try await repository.write(.attached(device, at: PortID("/new1")), at: Date(timeIntervalSince1970: 200))
+        try await repository.write(.attached(device, at: PortID("/new2")), at: Date(timeIntervalSince1970: 300))
+
+        let scoped = try await repository.events(since: Date(timeIntervalSince1970: 150))
+        XCTAssertEqual(scoped.count, 2)
+        XCTAssertEqual(scoped[0].portID.rawValue, "/new2", "DESC ordering: newest first")
+        XCTAssertEqual(scoped[1].portID.rawValue, "/new1")
+    }
+
+    /// `since: .distantPast` returns every row (legacy "All time"
+    /// semantics ExportSheet relies on).
+    func test_eventsSince_distantPast_returnsEveryRow() async throws {
+        let device = makeDevice()
+        try await deviceRepo.upsert(device)
+        try await repository.write(.attached(device, at: PortID("/p")), at: Date(timeIntervalSince1970: 100))
+
+        let all = try await repository.events(since: .distantPast)
+        XCTAssertEqual(all.count, 1)
+    }
+
     // MARK: - Retention
 
     /// `deleteOlderThan` prunes only rows older than the cutoff.

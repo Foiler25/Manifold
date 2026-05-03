@@ -156,14 +156,12 @@ struct ExportSheet: View {
             guard let repo = eventRepository else {
                 throw ExportError.repositoryUnavailable
             }
-            // Pull rows respecting the time range. The repo's
-            // `recentEvents(limit:)` is by recency; for the
-            // explicit time-range we take a generous limit then
-            // filter to the cutoff so the SPEC §18 "filterable by
-            // time range" contract holds even when the user picks
-            // a narrow window.
-            let recent = try await repo.recentEvents(limit: 100_000)
-            let scoped = applyTimeRange(recent, picker: \.timestamp)
+            // F24 closure (Phase 11 review, due Phase 14): the
+            // repo's new `events(since:limit:)` filters at the SQL
+            // layer so a 30-day export doesn't have to drag every
+            // 1-year-retention row through memory first.
+            // `.distantPast` keeps the legacy "All time" semantics.
+            let scoped = try await repo.events(since: timeRange.cutoff(now: .now))
             return EventLogCSVExporter.encodeData(scoped)
 
         case .telemetryCSV:
@@ -198,13 +196,6 @@ struct ExportSheet: View {
         case .host(let id):      return .host(id)
         case .device(let id):    return .device(id)
         }
-    }
-
-    /// Filter rows by `timeRange.cutoff` against a date keypath.
-    private func applyTimeRange<T>(_ rows: [T], picker: KeyPath<T, Date>) -> [T] {
-        let cutoff = timeRange.cutoff(now: .now)
-        guard cutoff != .distantPast else { return rows }
-        return rows.filter { $0[keyPath: picker] >= cutoff }
     }
 
     /// Every port id in the graph (recursive) so the sample export
