@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Phase 8: registers + runs the SPEC §9 diagnostic rules between
     /// each discovery walk and the `portGraph.replace` commit.
     private let diagnosticEngine = DiagnosticEngine()
+    /// Phase 9: native notifications for connect/disconnect/diagnostic
+    /// events. Receives each `PortEvent` BEFORE `portGraph.apply` so
+    /// `.detached`'s device-name resolution sees the pre-apply graph.
+    private let notificationService = NotificationService()
 
     /// `internal` (default) so `ManifoldApp.body` can pass the graph
     /// into `MainWindow`. The same instance is observed by the popover
@@ -98,6 +102,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // uniform.
         service.requestRefresh()
 
+        // Phase 9: prompt for notification authorization once per
+        // install. Detached Task because requestAuthorization is
+        // async and we don't want to block app launch on the user's
+        // permission dialog response.
+        Task { [notificationService] in
+            await notificationService.requestAuthorizationIfNeeded()
+        }
+
 #if DEBUG
         runLeakBenchIfRequested()
         autoOpenPopoverIfRequested()
@@ -149,6 +161,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .fullRefresh:
             await rebuildGraph()
         default:
+            // Phase 9: notify BEFORE apply so `.detached` can still
+            // resolve the device name from the pre-apply graph.
+            notificationService.handle(event, graph: portGraph)
             portGraph.apply(event)
             if portGraph.needsFullRefresh {
                 portGraph.acknowledgeRefreshRequest()
@@ -161,9 +176,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let hosts = try await discoveryService.walk()
             let diagnostics = diagnosticEngine.diagnostics(for: hosts)
+            // Phase 9: fire one notification per *newly-appearing*
+            // diagnostic (compared to the prior set, dedup'd by
+            // `(target, ruleIdentifier)`). Existing diagnostics that
+            // re-evaluate clean stay quiet; existing ones that
+            // re-fire stay quiet too — the user already saw them.
+            // Replacement happens AFTER the diff so the builder reads
+            // the pre-replace `portGraph.hosts` for port summaries
+            // (or, if hosts aren't in the graph yet on first walk,
+            // the new `hosts` array directly).
+            let priorKeys = Set(portGraph.diagnostics.map(DiagnosticKey.init))
+            for diag in diagnostics where !priorKeys.contains(DiagnosticKey(diag)) {
+                notificationService.handle(.diagnostic(diag), graph: portGraph)
+            }
             portGraph.replace(hosts: hosts, diagnostics: diagnostics)
         } catch {
             Log.discovery.error("rebuildGraph walk failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Dedup key for diagnostic notification gating — matches the
+    /// `(target, ruleIdentifier)` pair `PortGraph.applyDiagnostic`
+    /// uses internally so the notification side and the badge side
+    /// agree on "this is the same finding".
+    private struct DiagnosticKey: Hashable {
+        let target: PortID
+        let ruleIdentifier: String
+        init(_ diagnostic: Diagnostic) {
+            self.target = diagnostic.target
+            self.ruleIdentifier = diagnostic.ruleIdentifier
         }
     }
 

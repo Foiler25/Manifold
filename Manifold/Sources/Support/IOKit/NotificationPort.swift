@@ -103,16 +103,18 @@ struct MatchNotificationToken: ~Copyable {
     fileprivate let context: AnyObject  // CallbackBox — keeps the closure alive
 
     deinit {
+        // IOObjectRelease first: after this returns, IOKit won't
+        // deliver any more callbacks for this iterator, so it's safe
+        // for ARC to free the closure box at end-of-deinit.
         if iterator != 0 {
             IOObjectRelease(iterator)
         }
-        // `context` is dropped here via ARC; the underlying CallbackBox
-        // was passed to IOKit via Unmanaged.passRetained when the
-        // notification was registered. The `context` AnyObject reference
-        // we hold is the same object — when we drop, the retain count
-        // goes from 1 to 0 and the box is freed. (No separate
-        // `Unmanaged.release()` needed because we hold a strong ARC
-        // reference, not an Unmanaged one.)
+        // The box is kept alive by `context`'s strong ARC reference —
+        // the IOKit refcon was registered with `passUnretained`, so
+        // there is no unmanaged retain to balance. Phase 8 review F20
+        // closure: an earlier `passRetained` pairing would have left
+        // a permanent +1 retain that this deinit could not balance
+        // without an awkward downcast.
     }
 }
 
@@ -137,13 +139,20 @@ func addMatchNotification(
 ) throws -> MatchNotificationToken {
 
     // Box the Swift closure so the C callback can recover it through
-    // `Unmanaged.fromOpaque(refcon)`. Strong reference held by the
-    // returned token via `context: AnyObject`; the IOKit retain via
-    // `Unmanaged.passRetained` is balanced by the matching unmanaged
-    // release in the C callback (NOT done here — the C callback never
-    // releases the box; the box lives until the token drops).
+    // `Unmanaged.fromOpaque(refcon)`. The box's lifetime is owned by
+    // the returned token's `context: AnyObject` strong reference —
+    // `passUnretained` here means IOKit treats the refcon as a
+    // borrowed pointer, NOT a retained one, so no balancing release
+    // is needed when the token drops. (Phase 8 review F20 closure:
+    // an earlier `passRetained` left a permanent +1 retain that
+    // could never be balanced from a Swift `~Copyable` deinit.)
+    //
+    // Lifetime contract: the C callback uses `takeUnretainedValue()`
+    // and is only ever called while the iterator is live; the
+    // iterator is released in `MatchNotificationToken.deinit` BEFORE
+    // ARC drops the box, so no callback can fire on a dead box.
     let box = NotificationPortCallbackBox(perEntry: perEntry)
-    let refcon = Unmanaged.passRetained(box).toOpaque()
+    let refcon = Unmanaged.passUnretained(box).toOpaque()
 
     var iter: io_iterator_t = 0
     let result = IOServiceAddMatchingNotification(
@@ -155,9 +164,9 @@ func addMatchNotification(
         &iter
     )
     guard result == KERN_SUCCESS, iter != 0 else {
-        // Registration failed; balance the `passRetained` so the box
-        // doesn't leak.
-        Unmanaged<NotificationPortCallbackBox>.fromOpaque(refcon).release()
+        // Nothing to release here — `passUnretained` didn't bump
+        // the retain count. The local `box` simply goes out of
+        // scope after the throw.
         throw IOKitError.notificationRegistrationFailed(result)
     }
 
@@ -170,10 +179,8 @@ func addMatchNotification(
         box.perEntry(entry)
     }
 
-    // The `box` is held by both the IOKit refcon (one Unmanaged
-    // retain) AND the returned token (via `context: AnyObject`). When
-    // the token drops, ARC releases its reference. The Unmanaged
-    // retain is released by the token's deinit too — see below.
+    // The token's `context: AnyObject` becomes the sole owner of the
+    // box. When the token drops, ARC frees it.
     return MatchNotificationToken(iterator: iter, context: box)
 }
 

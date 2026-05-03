@@ -63,6 +63,31 @@
         }
       }
     },
+    "notification.connected.title" : {
+      "comment" : "Title for a device-connected notification.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Device connected" } } }
+    },
+    "notification.disconnected.subtitle.unknown" : {
+      "comment" : "Fallback subtitle when the disconnected device's name can't be resolved from the graph.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown device" } } }
+    },
+    "notification.disconnected.title" : {
+      "comment" : "Title for a device-disconnected notification.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Device disconnected" } } }
+    },
+    "notification.port.fallback" : {
+      "comment" : "Fallback when a notification's port can't be located in the graph.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port" } } }
+    },
+    "notification.port.summary" : {
+      "comment" : "Notification body. %1$@ port-kind label, %2$lld 1-indexed position.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ %2$lld" } } }
+    },
     "placeholder.settings.title" : {
       "comment" : "Phase-0 placeholder shown in the Settings scene before Phase 14 builds the real panes.",
       "extractionState" : "manual",
@@ -98,6 +123,41 @@
           }
         }
       }
+    },
+    "settings.notifications.connect.detail" : {
+      "comment" : "Subtitle under the connect-notifications toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show a banner when a USB or Thunderbolt device is connected." } } }
+    },
+    "settings.notifications.connect.title" : {
+      "comment" : "Connect-notifications toggle label.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notify on connect" } } }
+    },
+    "settings.notifications.diagnostic.detail" : {
+      "comment" : "Subtitle under the diagnostic-notifications toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show a banner when a diagnostic rule fires (power deficit, USB-2 fallback, etc.)." } } }
+    },
+    "settings.notifications.diagnostic.title" : {
+      "comment" : "Diagnostic-notifications toggle label.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notify on diagnostic" } } }
+    },
+    "settings.notifications.disconnect.detail" : {
+      "comment" : "Subtitle under the disconnect-notifications toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show a banner when a device is disconnected." } } }
+    },
+    "settings.notifications.disconnect.title" : {
+      "comment" : "Disconnect-notifications toggle label.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notify on disconnect" } } }
+    },
+    "settings.notifications.dnd.note" : {
+      "comment" : "Footnote explaining that macOS Focus / Do Not Disturb already filter Manifold's banners.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold respects Focus and Do Not Disturb. Banners are silenced automatically while either is active." } } }
     },
     "popover.device.accessibility" : {
       "comment" : "VoiceOver label for one device row inside a port. %1$@ = port kind label, %2$lld = port position, %3$@ = device name, %4$@ = link protocol, %5$@ = power formatted.",
