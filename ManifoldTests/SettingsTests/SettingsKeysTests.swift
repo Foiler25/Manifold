@@ -36,9 +36,10 @@ final class SettingsKeysTests: XCTestCase {
     func test_keyStrings_matchExpectedContract() {
         XCTAssertEqual(SettingsKeys.sampleRateHz,      "settings.general.sampleRateHz")
         XCTAssertEqual(SettingsKeys.themePreference,   "settings.general.themePreference")
-        XCTAssertEqual(SettingsKeys.launchAtLogin,     "settings.general.launchAtLogin")
-        XCTAssertEqual(SettingsKeys.updateChannel,     "settings.updates.channel")
-        XCTAssertEqual(SettingsKeys.lastUpdateCheckISO, "settings.updates.lastCheckISO")
+        XCTAssertEqual(SettingsKeys.launchAtLogin,       "settings.general.launchAtLogin")
+        XCTAssertEqual(SettingsKeys.updateChannel,       "settings.updates.channel")
+        XCTAssertEqual(SettingsKeys.lastUpdateCheckISO,  "settings.updates.lastCheckISO")
+        XCTAssertEqual(SettingsKeys.onboardingCompleted, "settings.onboarding.completed")
     }
 
     // MARK: - ThemePreference

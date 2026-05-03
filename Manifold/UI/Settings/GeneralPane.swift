@@ -58,6 +58,19 @@ struct GeneralPane: View {
     /// no effect.
     @State private var loginItemError: String?
 
+    /// F28 closure (Phase 14 review): suppresses the toggle's
+    /// `.onChange` from firing `applyLoginItem` while we're
+    /// either reconciling on `.task` (the OS state already
+    /// matches the desired value, no SMAppService call needed)
+    /// or reverting after a failure (the second `.onChange` for
+    /// the revert would otherwise call `apply(false)` on top of
+    /// the failed `apply(true)` and could in theory recurse if
+    /// both directions fail). Set true around any
+    /// programmatic mutation to `launchAtLogin`; the toggle's
+    /// onChange only triggers `applyLoginItem` when this is
+    /// false, i.e., when the user actually clicked the toggle.
+    @State private var isReconcilingLoginItem: Bool = false
+
     var body: some View {
         Form {
             Section("settings.general.sampling.section") {
@@ -98,6 +111,12 @@ struct GeneralPane: View {
             Section("settings.general.startup.section") {
                 Toggle("settings.general.launchAtLogin.title", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, new in
+                        // F28 guard: skip the SMAppService call
+                        // when the change came from `.task`
+                        // reconciliation or the failure-revert path.
+                        // Only user-driven toggle clicks should hit
+                        // the framework.
+                        guard !isReconcilingLoginItem else { return }
                         applyLoginItem(new)
                     }
                 Text("settings.general.launchAtLogin.detail")
@@ -116,11 +135,16 @@ struct GeneralPane: View {
         .task {
             // Reconcile UI with the actual OS state on appear so a
             // user who toggled login items via System Settings
-            // sees the right initial state.
+            // sees the right initial state. F28: wrap the mutation
+            // in `isReconcilingLoginItem = true` so the resulting
+            // `.onChange` doesn't call applyLoginItem (we'd be
+            // asking SMAppService to apply a state it's already in).
             if let controller = loginItemController {
                 let osState = controller.isCurrentlyEnabled
                 if launchAtLogin != osState {
+                    isReconcilingLoginItem = true
                     launchAtLogin = osState
+                    isReconcilingLoginItem = false
                 }
             }
         }
@@ -137,7 +161,13 @@ struct GeneralPane: View {
             // Revert the flag so the toggle reflects what the OS
             // actually did. Set the error string so the user sees
             // the failure rather than an unresponsive toggle.
+            // F28: the revert mutation must not re-trigger
+            // applyLoginItem, otherwise a double failure could
+            // recurse. The guard makes the failure path strictly
+            // one-shot.
+            isReconcilingLoginItem = true
             launchAtLogin = !enabled
+            isReconcilingLoginItem = false
             loginItemError = NSLocalizedString(
                 "settings.general.launchAtLogin.error",
                 comment: "Shown when SMAppService.register/unregister fails."

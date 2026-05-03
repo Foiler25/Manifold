@@ -41,11 +41,39 @@ struct Sparkline: View {
     let samples: [TelemetrySample]
 
     var body: some View {
-        if samples.isEmpty {
-            placeholder
-        } else {
-            chart
+        Group {
+            if samples.isEmpty {
+                placeholder
+            } else {
+                chart
+            }
         }
+        // Phase 15 #4: VoiceOver gets a one-line spoken summary
+        // ("Power: 0.5 watts current, 0.3 to 0.7 watts range over
+        // last N samples"). The chart's individual marks are
+        // intentionally NOT exposed — VO would read 60 separate
+        // "0.5", "0.51", "0.49"… which is useless. The summary
+        // collapses to the values a screen-reader user actually
+        // wants: current, range, sample count.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(NSLocalizedString("accessibility.sparkline.label", comment: ""))
+        .accessibilityValue(accessibilityValue)
+    }
+
+    /// One-line spoken summary derived from the samples. Empty state
+    /// returns "no data yet"; non-empty returns "current X W,
+    /// range Y to Z W over last N samples".
+    private var accessibilityValue: String {
+        let watts = samples.compactMap { $0.watts?.value }
+        guard let last = watts.last else {
+            return NSLocalizedString("accessibility.sparkline.empty", comment: "")
+        }
+        let minV = watts.min() ?? last
+        let maxV = watts.max() ?? last
+        return String(
+            format: NSLocalizedString("accessibility.sparkline.summary", comment: ""),
+            last, minV, maxV, watts.count
+        )
     }
 
     /// "No data yet" line — faint horizontal stroke at row vertical

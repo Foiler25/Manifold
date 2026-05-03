@@ -68,6 +68,39 @@ struct ManifoldApp: App {
                 }
                 .keyboardShortcut("e", modifiers: [.command])
             }
+            // Phase 15 #8 + F18: ⌘1 / ⌘2 / ⌘3 jump to Topology /
+            // History / Diagnostics. Sidebar group keeps these
+            // items grouped under View in the menu bar so the
+            // user can discover them via menu inspection too.
+            CommandGroup(after: .sidebar) {
+                Divider()
+                Button("window.tab.topology.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.topology.rawValue]
+                    )
+                }
+                .keyboardShortcut("1", modifiers: [.command])
+
+                Button("window.tab.history.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.history.rawValue]
+                    )
+                }
+                .keyboardShortcut("2", modifiers: [.command])
+
+                Button("window.tab.diagnostics.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.diagnostics.rawValue]
+                    )
+                }
+                .keyboardShortcut("3", modifiers: [.command])
+            }
         }
 
         // Phase 14: Settings tab view per SPEC §13.

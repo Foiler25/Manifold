@@ -296,6 +296,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // reference, then thread them through to the persisted
             // payload via AttachedExtras.
             let extras = lookupAttachedExtras(forPortID: portID)
+            // F25 closure (Phase 12 review): donate the
+            // WatchForDeviceConnectIntent with this device's
+            // identity so Siri / Shortcuts learns to suggest the
+            // intent when the user plugs the same device again.
+            // Donations are best-effort — failure logs + drops.
+            IntentDonor.donateAttachedDevice(device)
             if let devices = deviceRepository, let events = eventRepository {
                 Task {
                     do {

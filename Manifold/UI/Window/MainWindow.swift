@@ -57,6 +57,24 @@ struct MainWindow: View {
     /// the menu command and by the Cmd-E shortcut.
     @State private var isExportSheetPresented: Bool = false
 
+    /// Phase 15: tab-bar focus tracking. SPEC §18 Phase 15 #8 +
+    /// F18 close: the custom HStack-of-Buttons tabBar from Phase 6
+    /// gets focus-ring rendering, arrow-key navigation between
+    /// adjacent tabs, and ⌘1/⌘2/⌘3 jump bindings. SwiftUI's
+    /// `@FocusState` drives the focus ring; the keyboard handlers
+    /// move both the focus AND the selected-tab binding so VoiceOver
+    /// reads the change consistently.
+    @FocusState private var focusedTab: WindowTab?
+
+    /// Phase 15 #7: first-launch onboarding. Default false →
+    /// sheet presents on first MainWindow appearance; the sheet's
+    /// Done button flips it to true and dismisses. Subsequent
+    /// launches skip the sheet.
+    @AppStorage(SettingsKeys.onboardingCompleted)
+    private var onboardingCompleted: Bool = false
+
+    @State private var isOnboardingPresented: Bool = false
+
     // MARK: - Persisted scene state
 
     @SceneStorage(MainWindowConstants.sceneStorageSelectedTabKey)
@@ -134,8 +152,33 @@ struct MainWindow: View {
                 sampleRepository: sampleRepository
             )
         }
+        .sheet(isPresented: $isOnboardingPresented) {
+            OnboardingSheet()
+        }
+        .onAppear {
+            // Phase 15 #7: present the onboarding sheet on first
+            // appearance if the user hasn't completed it. Wrapping
+            // in `DispatchQueue.main.async` ensures the parent
+            // window has rendered before the sheet animates in.
+            if !onboardingCompleted {
+                DispatchQueue.main.async {
+                    isOnboardingPresented = true
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .manifoldShowExportSheet)) { _ in
             isExportSheetPresented = true
+        }
+        // Phase 15 #8 + F18: ⌘1/⌘2/⌘3 menu commands route through
+        // a process-wide notification (single-WindowGroup app, same
+        // pattern Phase 11 used for File ▸ Export). The userInfo
+        // payload carries the WindowTab.rawValue.
+        .onReceive(NotificationCenter.default.publisher(for: .manifoldSelectTab)) { note in
+            if let raw = note.userInfo?["tab"] as? String,
+               let tab = WindowTab(rawValue: raw) {
+                selectedTab.wrappedValue = tab
+                focusedTab = tab
+            }
         }
     }
 
@@ -159,12 +202,20 @@ struct MainWindow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(Color.manifoldCard)
+        // Phase 15 #8 + F18: arrow-key navigation between tabs.
+        // SwiftUI dispatches the keypress to the focused descendant
+        // first; if no tab has focus we still respond here so the
+        // user can hit Left/Right after Tabbing to the bar.
+        .onKeyPress(.leftArrow, action: { advanceFocus(by: -1) })
+        .onKeyPress(.rightArrow, action: { advanceFocus(by: 1) })
     }
 
     private func tabButton(for tab: WindowTab) -> some View {
         let active = selectedTab.wrappedValue == tab
+        let position = (WindowTab.allCases.firstIndex(of: tab) ?? 0) + 1
         return Button {
             selectedTab.wrappedValue = tab
+            focusedTab = tab
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: tab.systemImageName)
@@ -177,13 +228,44 @@ struct MainWindow: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        // Phase 15 #8 + F18: focus ring rendering. The default
+        // `.plain` button style + `@FocusState` produces a system
+        // focus ring around the active button when it's the
+        // keyboard focus target.
+        .focused($focusedTab, equals: tab)
+        // VoiceOver reads "Topology, tab, 1 of 3" style. Position
+        // text is localized via the `accessibility.tab.position`
+        // key with `%1$lld` of `%2$lld`.
         .accessibilityLabel(LocalizedStringKey(tab.labelKey))
-        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(
+            String(
+                format: NSLocalizedString("accessibility.tab.position", comment: ""),
+                position,
+                WindowTab.allCases.count
+            )
+        )
+        .accessibilityAddTraits(active ? [.isSelected, .isHeader] : .isHeader)
         // Stable identifier for `WindowUITests` queries — must match
         // the values referenced by `WindowUITests.swift`. Format
         // `window.tab.<rawValue>` keeps the binding obvious without a
         // separate constants table.
         .accessibilityIdentifier("window.tab.\(tab.rawValue)")
+    }
+
+    /// F18 closure helper. `delta = +1` for Right-Arrow, `-1` for
+    /// Left-Arrow. Wraps at the ends so the user doesn't get
+    /// stuck on the first/last tab (matches NSTabView native
+    /// behaviour). Updates BOTH `selectedTab` (so the content
+    /// column re-renders) and `focusedTab` (so the focus ring
+    /// follows).
+    private func advanceFocus(by delta: Int) -> KeyPress.Result {
+        let cases = WindowTab.allCases
+        let current = focusedTab ?? selectedTab.wrappedValue
+        guard let i = cases.firstIndex(of: current) else { return .ignored }
+        let next = cases[(i + delta + cases.count) % cases.count]
+        focusedTab = next
+        selectedTab.wrappedValue = next
+        return .handled
     }
 
     @ViewBuilder
@@ -252,4 +334,10 @@ extension Notification.Name {
     /// notification is simpler and doesn't require threading state
     /// through the menu commands.
     static let manifoldShowExportSheet = Notification.Name("com.Loofa.Manifold.showExportSheet")
+
+    /// Phase 15 #8 + F18: posted by the View ▸ ⌘1/⌘2/⌘3 menu
+    /// commands so MainWindow updates `selectedTab` + `focusedTab`.
+    /// `userInfo["tab"]` carries the WindowTab.rawValue. Same
+    /// process-wide pattern Phase 11 used for the Export sheet.
+    static let manifoldSelectTab = Notification.Name("com.Loofa.Manifold.selectTab")
 }

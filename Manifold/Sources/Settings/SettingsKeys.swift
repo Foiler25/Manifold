@@ -66,6 +66,15 @@ enum SettingsKeys {
     /// AppStorage can drive it directly (Date isn't AppStorage-
     /// compatible without a wrapper).
     static let lastUpdateCheckISO = "settings.updates.lastCheckISO"
+
+    // MARK: - Onboarding (Phase 15 #7)
+
+    /// Set to true after the user dismisses the OnboardingSheet.
+    /// Default false → first-launch presentation. The sheet's Done
+    /// button is the only writer; once true, it stays true for the
+    /// life of the install (the UI offers no "show onboarding
+    /// again" affordance — Phase 15 ships the simplest shape).
+    static let onboardingCompleted = "settings.onboarding.completed"
 }
 
 // MARK: - ThemePreference

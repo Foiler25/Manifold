@@ -256,6 +256,71 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "When Device Connects" } } }
     },
+    "accessibility.sparkline.empty" : {
+      "comment" : "Spoken value for the sparkline when no samples have arrived yet.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "no data yet" } } }
+    },
+    "accessibility.sparkline.label" : {
+      "comment" : "Spoken label for a sparkline chart inside a device row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power chart" } } }
+    },
+    "accessibility.sparkline.summary" : {
+      "comment" : "Spoken value for the sparkline. %1$.2f current watts, %2$.2f min, %3$.2f max, %4$lld sample count.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "current %1$.2f watts, range %2$.2f to %3$.2f over last %4$lld samples" } } }
+    },
+    "accessibility.tab.position" : {
+      "comment" : "VoiceOver position-in-set string for the tab buttons. %1$lld 1-indexed position, %2$lld total tabs.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "tab, %1$lld of %2$lld" } } }
+    },
+    "onboarding.done" : {
+      "comment" : "Onboarding sheet primary action — dismiss + mark complete.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Got it" } } }
+    },
+    "onboarding.menubar.detail" : {
+      "comment" : "Detail under the menu bar onboarding row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Click the menu bar icon for the live device list. Open this window for history, charts, and exports." } } }
+    },
+    "onboarding.menubar.title" : {
+      "comment" : "Menu bar onboarding row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Lives in the menu bar" } } }
+    },
+    "onboarding.notifications.detail" : {
+      "comment" : "Detail under the notifications onboarding row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "macOS will ask once. Pick which event types fire later in Settings." } } }
+    },
+    "onboarding.notifications.title" : {
+      "comment" : "Notifications onboarding row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Notifies on connect / disconnect" } } }
+    },
+    "onboarding.privacy.detail" : {
+      "comment" : "Detail under the privacy onboarding row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold reads USB and Thunderbolt topology directly. Nothing leaves your Mac unless you explicitly export." } } }
+    },
+    "onboarding.privacy.title" : {
+      "comment" : "Privacy onboarding row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Local-only, no telemetry" } } }
+    },
+    "onboarding.welcome.subtitle" : {
+      "comment" : "Onboarding subtitle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "A live, no-bullshit view of every USB and Thunderbolt connection on this Mac." } } }
+    },
+    "onboarding.welcome.title" : {
+      "comment" : "Onboarding title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Welcome to Manifold" } } }
+    },
     "settings.about.copyright" : {
       "comment" : "Copyright line shown in the About pane.",
       "extractionState" : "manual",
@@ -858,6 +923,21 @@
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History" } } }
     },
     "window.tab.diagnostics.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } } }
+    },
+    "window.tab.topology.menu" : {
+      "comment" : "View menu item — ⌘ 1 jumps to Topology tab.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Topology" } } }
+    },
+    "window.tab.history.menu" : {
+      "comment" : "View menu item — ⌘ 2 jumps to History tab.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History" } } }
+    },
+    "window.tab.diagnostics.menu" : {
+      "comment" : "View menu item — ⌘ 3 jumps to Diagnostics tab.",
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } } }
     },
