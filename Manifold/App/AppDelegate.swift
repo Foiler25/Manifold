@@ -81,6 +81,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sampleRepository: SampleRepository?
     private var downsamplingJob: DownsamplingJob?
 
+    // MARK: - Phase 13 Widget snapshot
+
+    /// Debounced snapshot writer. Constructed in `applicationDidFinishLaunching`
+    /// once `portGraph` is wired. nil only on the unlikely path
+    /// where the App-Support container resolution fails (Phase 13
+    /// deviation: no App Group entitlement, so the path is
+    /// `~/Library/Application Support/com.Loofa.Manifold/`).
+    private var snapshotCoordinator: SnapshotCoordinator?
+
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -159,6 +168,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             eventRepository: eventRepository
         )
 
+        // Phase 13: snapshot coordinator. Debounced writes (≤2 Hz)
+        // + WidgetCenter.reloadAllTimelines on each successful
+        // write. Initial write fires after the first walk completes
+        // via the same `requestSnapshotUpdate()` path the event
+        // consumer uses.
+        snapshotCoordinator = SnapshotCoordinator(graph: portGraph)
+        snapshotCoordinator?.requestUpdate()
+
 #if DEBUG
         runLeakBenchIfRequested()
         autoOpenPopoverIfRequested()
@@ -190,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         samplerLifecycle.shutdown()
         eventService?.shutdown()
         downsamplingJob?.stop()
+        snapshotCoordinator?.shutdown()
     }
 
     // MARK: - Event consumer
@@ -224,6 +242,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 portGraph.acknowledgeRefreshRequest()
                 await rebuildGraph()
             }
+            // Phase 13: schedule a debounced snapshot write. The
+            // 500 ms debounce means a 1 Hz telemetry tick + a
+            // hot-plug event in the same window collapse to one
+            // snapshot file + one widget reload.
+            recordEventForSnapshot(event)
+            snapshotCoordinator?.requestUpdate()
+        }
+    }
+
+    /// Stamp `lastEventAt` on the snapshot coordinator for
+    /// user-visible events. Telemetry + fullRefresh aren't
+    /// "events" in the user-facing sense; they don't update the
+    /// snapshot's `lastEventAt` field.
+    private func recordEventForSnapshot(_ event: PortEvent) {
+        switch event {
+        case .attached, .detached, .diagnostic:
+            snapshotCoordinator?.recordEventTimestamp(.now)
+        case .telemetry, .fullRefresh:
+            break
         }
     }
 
@@ -356,6 +393,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 notificationService.handle(.diagnostic(diag), graph: portGraph)
             }
             portGraph.replace(hosts: hosts, diagnostics: diagnostics)
+            // Phase 13: post-rebuild snapshot. The event-consumer
+            // path covers per-event updates; this covers the cold
+            // launch + the `.fullRefresh` re-walk path where no
+            // per-event handler runs.
+            snapshotCoordinator?.requestUpdate()
         } catch {
             Log.discovery.error("rebuildGraph walk failed: \(String(describing: error), privacy: .public)")
         }

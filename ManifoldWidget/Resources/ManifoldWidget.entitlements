@@ -3,13 +3,16 @@
 <plist version="1.0">
 <dict>
 	<!--
-	    Phase 0 widget entitlements. Same baseline as Manifold.entitlements:
-	    sandbox + JIT off. App Group declaration deferred to Phase 13 to keep
-	    ad-hoc signing working — see Manifold.entitlements for the full
-	    explanation. When Phase 13 lands, both entitlement files gain:
-
-	        <key>com.apple.security.application-groups</key>
-	        <array><string>group.com.Loofa.Manifold</string></array>
+	    Phase 13 widget entitlements: matches Manifold.entitlements.
+	    Sandbox stays off (DECISIONS.md D10) and JIT stays off (D5).
+	    App Group entitlement intentionally OMITTED — adding it
+	    requires a provisioning profile and breaks the ad-hoc signing
+	    flow (DECISIONS.md D11). Both Manifold and ManifoldWidget run
+	    unsandboxed as the user's uid, so the widget reads the
+	    snapshot directly from
+	    `~/Library/Application Support/com.Loofa.Manifold/snapshot.json`
+	    written by the host app. Same trick Phase 10 used for the
+	    GRDB database. Documented as a Phase 13 deviation.
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>

@@ -45,7 +45,11 @@ final class SamplerLifecycle {
 
     /// Pending widget-reload pulse tasks. Cancelled if `shutdown`
     /// fires while a 5 s window is still active.
-    private var pendingWidgetTasks: [Task<Void, Never>] = []
+    /// Pending widget-reload pulse tasks. Keyed by UUID so each task
+    /// can prune its own slot on completion (Task is a value type,
+    /// so ObjectIdentifier doesn't apply; UUID is the next-simplest
+    /// identifier). F15 closure (Phase 5 review).
+    private var pendingWidgetTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Has the lifecycle been shut down? Subsequent calls are no-ops
     /// after the first shutdown.
@@ -91,13 +95,19 @@ final class SamplerLifecycle {
     /// open), pausing the sampler.
     func widgetReloadRequested() {
         increment()
+        // F15 closure (Phase 5 review, due Phase 13): each pulse
+        // task removes its own dictionary slot on completion. The
+        // earlier `removeAll { $0.isCancelled }` only pruned
+        // cancelled tasks, leaking handles for every successful
+        // reload pulse.
+        let id = UUID()
         let task = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(SamplerLifecycleConstants.widgetReloadActiveWindow))
             guard let self else { return }
             self.decrement()
-            self.pendingWidgetTasks.removeAll { $0.isCancelled }
+            self.pendingWidgetTasks.removeValue(forKey: id)
         }
-        pendingWidgetTasks.append(task)
+        pendingWidgetTasks[id] = task
     }
 
     /// Cancel any pending widget pulse, drop count to zero, stop the
@@ -106,7 +116,7 @@ final class SamplerLifecycle {
     func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
-        for task in pendingWidgetTasks { task.cancel() }
+        for task in pendingWidgetTasks.values { task.cancel() }
         pendingWidgetTasks.removeAll()
         activeSurfaceCount = 0
         sampler?.stop()

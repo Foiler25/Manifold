@@ -3,20 +3,25 @@
 <plist version="1.0">
 <dict>
 	<!--
-	    Phase 0 entitlements. Match the DotZap baseline:
+	    Phase 13 entitlements:
 
-	      - Sandbox OFF, per BRIEF.md "Sandboxing: None — direct distribution
-	        gives full IOKit access" and DECISIONS.md D10.
-	      - JIT OFF — Sparkle does not require it as of 2.6.x; flip to true
-	        only if a future Sparkle release demands it (DECISIONS.md D5).
-
-	    The App Group `group.com.Loofa.Manifold` is *not* declared here yet.
-	    Adding App Groups to the entitlements file requires a provisioning
-	    profile, which breaks the ad-hoc signing flow (DECISIONS.md D11)
-	    that the build pipeline relies on. The App Group is added in Phase 13
-	    when the widget extension actually needs to read the snapshot file.
-	    Documented as a Phase-0 deviation in BUILD_LOG.md.
-	-->
+	      - Sandbox OFF, per BRIEF.md "Sandboxing: None — direct
+	        distribution gives full IOKit access" and DECISIONS.md D10.
+	      - JIT OFF — Sparkle does not require it as of 2.6.x; flip to
+	        true only if a future Sparkle release demands it
+	        (DECISIONS.md D5).
+	      - App Group declaration intentionally OMITTED. Adding the
+	        `com.apple.security.application-groups` entitlement requires
+	        a provisioning profile, which breaks the ad-hoc signing flow
+	        per DECISIONS.md D11. Phase 13 confirmed this attempt fails
+	        with `requires a provisioning profile`. Both processes are
+	        unsandboxed (this entitlement file + ManifoldWidget's), so
+	        they read/write the same path under
+	        `~/Library/Application Support/com.Loofa.Manifold/snapshot.json`
+	        directly — same trick Phase 10 used for the GRDB database.
+	        Documented as a Phase 13 deviation; revisit only if Brandon
+	        switches to a developer-account-signed distribution.
+	  -->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>

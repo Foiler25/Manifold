@@ -17,15 +17,24 @@
 // ─────────────────────────────────────────────────────────────────────
 // ManifoldWidgetBundle.swift
 //
-// `@main` entry for the widget extension target. The bundle aggregates
-// every widget the extension publishes to the system. Phase 13 fills it
-// with the four real widgets (PowerDraw, DeviceCount, TopDevices,
-// ControlCenter) per SPEC.md §3 and §18; Phase 0 ships a single
-// placeholder so the extension target builds cleanly.
+// Phase 13. The bundle aggregates every widget the extension
+// publishes to the system per SPEC §18 Phase 13:
 //
-// Why a placeholder widget rather than an empty bundle: `WidgetBundle`'s
-// `@WidgetBundleBuilder` body must produce at least one `Widget`. Phase 0
-// just needs the target to compile and link.
+//   - PowerWidget — lock-screen circular AND desktop small.
+//     Renders total power draw OR device count (Phase 13 default:
+//     total power; Phase 14+ Settings will toggle to device count
+//     per the SPEC §18 #4 "user-configurable" wording).
+//   - TopDevicesWidget — desktop medium. Top 4 devices by power
+//     with sparklines.
+//   - ControlCenterWidget — Control Center compact. Tap opens
+//     the menu bar popover (or main window as a fallback).
+//
+// **The widget extension does NOT import IOKit.** Per SPEC §18
+// Phase 13 #9. Builder verification: `nm` of the built widget
+// binary must not reference IOKit symbols. Source-level: every
+// widget file imports only WidgetKit + SwiftUI + ManifoldKit;
+// ManifoldKit itself is IOKit-free (the IOKit walkers live in
+// the Manifold app target).
 
 import WidgetKit
 import SwiftUI
@@ -33,64 +42,8 @@ import SwiftUI
 @main
 struct ManifoldWidgetBundle: WidgetBundle {
     var body: some Widget {
-        PlaceholderWidget()
-    }
-}
-
-/// Single Phase-0 placeholder. Removed in Phase 13 when the real widgets
-/// land. Renders a static label and never refreshes — `policy: .never`.
-struct PlaceholderWidget: Widget {
-    let kind = "ManifoldPlaceholderWidget"
-
-    var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: PlaceholderProvider()) { _ in
-            PlaceholderEntryView()
-                // Required from iOS 17 / macOS 14: every widget body must
-                // declare a `containerBackground`. Using `.fill.tertiary`
-                // gives the system a sensible default to render the widget
-                // chrome around.
-                .containerBackground(.fill.tertiary, for: .widget)
-        }
-        .configurationDisplayName("Manifold")
-        .description("Phase-0 placeholder. Real widgets arrive in Phase 13.")
-        .supportedFamilies([.systemSmall])
-    }
-}
-
-/// Minimal `TimelineEntry` carrying nothing but a timestamp. Replaced in
-/// Phase 13 by an entry type that decodes `ManifoldKit.Snapshot` from the
-/// shared App Group container.
-struct PlaceholderEntry: TimelineEntry {
-    let date: Date
-}
-
-/// Static `TimelineProvider`. Returns one entry that never expires —
-/// because Phase 0 has no live data to drive timeline refreshes yet.
-struct PlaceholderProvider: TimelineProvider {
-
-    func placeholder(in context: Context) -> PlaceholderEntry {
-        PlaceholderEntry(date: .now)
-    }
-
-    func getSnapshot(in context: Context, completion: @escaping (PlaceholderEntry) -> Void) {
-        completion(PlaceholderEntry(date: .now))
-    }
-
-    func getTimeline(in context: Context, completion: @escaping (Timeline<PlaceholderEntry>) -> Void) {
-        completion(Timeline(entries: [PlaceholderEntry(date: .now)], policy: .never))
-    }
-}
-
-/// Phase-0 view body for the placeholder widget. Pure SwiftUI, no IOKit
-/// references — the widget extension cannot link IOKit per SPEC.md §2.
-struct PlaceholderEntryView: View {
-    var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: "bolt.horizontal.circle.fill")
-                .font(.system(size: 28, weight: .regular))
-            Text("Manifold")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
+        PowerWidget()
+        TopDevicesWidget()
+        ControlCenterWidget()
     }
 }
