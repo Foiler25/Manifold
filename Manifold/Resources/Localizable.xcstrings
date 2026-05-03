@@ -124,6 +124,81 @@
         }
       }
     },
+    "settings.history.compact.button" : {
+      "comment" : "Label for the compact-database button in HistoryPane.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Compact database now" } } }
+    },
+    "settings.history.compact.done" : {
+      "comment" : "Status after a successful compact. %@ formatted bytes saved.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Compaction complete (saved %@)." } } }
+    },
+    "settings.history.compact.running" : {
+      "comment" : "Status while compaction is running.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Compacting database…" } } }
+    },
+    "settings.history.dbSize.title" : {
+      "comment" : "Label for the on-disk database size row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Database size" } } }
+    },
+    "settings.history.disabled.banner" : {
+      "comment" : "Shown when DatabaseManager init failed and the pane controls are disabled.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Persistent history is unavailable this run — the database could not be opened." } } }
+    },
+    "settings.history.maintenance.section" : {
+      "comment" : "Section header for the maintenance group.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Maintenance" } } }
+    },
+    "settings.history.retention.oneHour.detail" : {
+      "comment" : "Detail under the one-hour-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hour-bucket samples for long-range trend charts." } } }
+    },
+    "settings.history.retention.oneHour.title" : {
+      "comment" : "Title for the one-hour-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "1-hour aggregates" } } }
+    },
+    "settings.history.retention.oneMin.detail" : {
+      "comment" : "Detail under the one-minute-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Minute-bucket samples for medium-range charts." } } }
+    },
+    "settings.history.retention.oneMin.title" : {
+      "comment" : "Title for the one-minute-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "1-minute aggregates" } } }
+    },
+    "settings.history.retention.raw.detail" : {
+      "comment" : "Detail under the raw-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Per-second samples used by sparklines and recent history." } } }
+    },
+    "settings.history.retention.raw.title" : {
+      "comment" : "Title for the raw-retention slider.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Raw samples" } } }
+    },
+    "settings.history.retention.section" : {
+      "comment" : "Section header for retention sliders.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Retention" } } }
+    },
+    "settings.history.unit.days" : {
+      "comment" : "Slider unit label — days.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "days" } } }
+    },
+    "settings.history.unit.hours" : {
+      "comment" : "Slider unit label — hours.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "hours" } } }
+    },
     "settings.notifications.connect.detail" : {
       "comment" : "Subtitle under the connect-notifications toggle.",
       "extractionState" : "manual",
@@ -435,15 +510,35 @@
 
     "window.tab.history.placeholder.title" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History coming in Phase 10" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History unavailable" } } }
     },
     "window.tab.history.placeholder.subtitle" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "GRDB-backed event and telemetry history will appear here once persistence lands." } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The persistent-history database could not be opened on this run." } } }
     },
     "window.tab.history.placeholder.accessibility" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History coming in Phase 10" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Persistent history is unavailable" } } }
+    },
+    "window.tab.history.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No events yet" } } }
+    },
+    "window.tab.history.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Connect or disconnect a device to see it here." } } }
+    },
+    "window.tab.history.error.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "History query failed" } } }
+    },
+    "window.tab.history.filter.placeholder" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Filter by device, port, or text" } } }
+    },
+    "window.tab.history.refresh" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Refresh" } } }
     },
 
     "window.tab.diagnostics.empty.title" : {

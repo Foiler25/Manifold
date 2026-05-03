@@ -54,11 +54,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// though the underlying `portGraph` is internal-visible.
     var publishedPortGraph: PortGraph { portGraph }
 
+    /// Phase 10: read-only accessors for the History view + Settings
+    /// HistoryPane. nil when DatabaseManager init failed (silent
+    /// disable path); the consumers render an empty-state.
+    var publishedEventRepository: EventRepository? { eventRepository }
+    var publishedDeviceRepository: DeviceRepository? { deviceRepository }
+    var publishedDatabaseManager: DatabaseManager? { databaseManager }
+    var publishedDownsamplingJob: DownsamplingJob? { downsamplingJob }
+
     private var statusItemController: StatusItemController?
     private var telemetrySampler: TelemetrySampler?
     private let samplerLifecycle = SamplerLifecycle()
     private var eventConsumerTask: Task<Void, Never>?
     private var graphObservationTask: Task<Void, Never>?
+
+    // MARK: - Phase 10 Storage
+
+    /// Lazily constructed in `applicationDidFinishLaunching` so a
+    /// throwing init can fail-soft without crashing app launch.
+    /// nil-after-failure means persistence is disabled for this run;
+    /// every storage call site uses `if let` guards.
+    private var databaseManager: DatabaseManager?
+    private var deviceRepository: DeviceRepository?
+    private var eventRepository: EventRepository?
+    private var sampleRepository: SampleRepository?
+    private var downsamplingJob: DownsamplingJob?
 
     // MARK: - Lifecycle
 
@@ -85,6 +105,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let service = EventService()
         eventService = service
+        // Phase 10: open the GRDB store + spin up repositories. If
+        // it throws, persistence is silently disabled (the app
+        // still works in-memory); every storage call site below
+        // is wrapped in `if let`.
+        do {
+            let manager = try DatabaseManager()
+            databaseManager = manager
+            deviceRepository = DeviceRepository(dbPool: manager.dbPool)
+            let events = EventRepository(dbPool: manager.dbPool)
+            let samples = SampleRepository(dbPool: manager.dbPool)
+            eventRepository = events
+            sampleRepository = samples
+            let job = DownsamplingJob(sampleRepository: samples, eventRepository: events)
+            job.start()
+            downsamplingJob = job
+        } catch {
+            Log.app.error("DatabaseManager init failed; persistence disabled this run: \(String(describing: error), privacy: .public)")
+        }
         startEventConsumer(service: service)
         startBadgeObserver(controller: controller)
 
@@ -140,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         graphObservationTask?.cancel()
         samplerLifecycle.shutdown()
         eventService?.shutdown()
+        downsamplingJob?.stop()
     }
 
     // MARK: - Event consumer
@@ -164,6 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Phase 9: notify BEFORE apply so `.detached` can still
             // resolve the device name from the pre-apply graph.
             notificationService.handle(event, graph: portGraph)
+            // Phase 10: persist BEFORE apply for the same reason —
+            // `.attached` needs the upsert order (device row first,
+            // then event row referencing it via FK). Persistence is
+            // fire-and-forget (Task) so the consumer keeps draining.
+            persistEventIfPossible(event)
             portGraph.apply(event)
             if portGraph.needsFullRefresh {
                 portGraph.acknowledgeRefreshRequest()
@@ -172,9 +216,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Phase 10: write `.attached`/`.detached`/`.diagnostic` to GRDB
+    /// (events table) and `.telemetry` to the samples table. Each
+    /// kind no-ops if persistence is disabled (init-failure path).
+    /// Spawned in detached `Task`s so the consumer task isn't
+    /// blocked on disk I/O — losing one row across an unclean exit
+    /// is acceptable.
+    private func persistEventIfPossible(_ event: PortEvent) {
+        switch event {
+        case .attached(let device, _):
+            // Upsert the device row first so the event row's FK
+            // resolves. F10 reconcile lives in DeviceRepository.
+            if let devices = deviceRepository, let events = eventRepository {
+                Task {
+                    do {
+                        try await devices.upsert(device)
+                        try await events.write(event)
+                    } catch {
+                        Log.app.error("Persist .attached failed: \(String(describing: error), privacy: .public)")
+                    }
+                }
+            }
+        case .detached, .diagnostic:
+            if let events = eventRepository {
+                Task {
+                    do { try await events.write(event) }
+                    catch { Log.app.error("Persist event failed: \(String(describing: error), privacy: .public)") }
+                }
+            }
+        case .telemetry(let portID, let sample):
+            if let samples = sampleRepository {
+                let deviceID = lookupDeviceID(forPortID: portID)
+                Task {
+                    do { try await samples.write(sample, portID: portID, deviceID: deviceID) }
+                    catch { Log.app.error("Persist .telemetry failed: \(String(describing: error), privacy: .public)") }
+                }
+            }
+        case .fullRefresh:
+            break  // No event-log row for the internal coordination signal.
+        }
+    }
+
+    /// Walk the live PortGraph to find the deviceID currently
+    /// connected to `portID`. Used for telemetry persistence so
+    /// samples FK to the right device row. nil → port is empty
+    /// (still record the sample, but with NULL device_id per the
+    /// schema's nullable column).
+    private func lookupDeviceID(forPortID portID: PortID) -> DeviceID? {
+        for host in portGraph.hosts {
+            if let device = findDeviceID(in: host.ports, portID: portID) {
+                return device
+            }
+        }
+        return nil
+    }
+
+    private func findDeviceID(in ports: [ManifoldKit.Port], portID: PortID) -> DeviceID? {
+        for port in ports {
+            if port.id == portID { return port.connectedDevice?.id }
+            if let inChild = findDeviceID(in: port.children, portID: portID) {
+                return inChild
+            }
+        }
+        return nil
+    }
+
     private func rebuildGraph() async {
         do {
             let hosts = try await discoveryService.walk()
+            // Phase 10: upsert every device the walk found so the
+            // History view shows boot-time devices too (no .attached
+            // event fires for already-plugged devices on first walk).
+            // F10 reconcile preserves first_seen on subsequent walks.
+            if let devices = deviceRepository {
+                for device in Self.collectDevices(from: hosts) {
+                    do { try await devices.upsert(device) }
+                    catch { Log.app.error("Persist walk device failed: \(String(describing: error), privacy: .public)") }
+                }
+            }
             let diagnostics = diagnosticEngine.diagnostics(for: hosts)
             // Phase 9: fire one notification per *newly-appearing*
             // diagnostic (compared to the prior set, dedup'd by
@@ -193,6 +312,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             Log.discovery.error("rebuildGraph walk failed: \(String(describing: error), privacy: .public)")
         }
+    }
+
+    /// Phase 10 helper: flatten every connected `Device` across the
+    /// host trees. Static so it can be called from the rebuildGraph
+    /// path without capturing self.
+    private static func collectDevices(from hosts: [ManifoldKit.Host]) -> [Device] {
+        var out: [Device] = []
+        func walk(_ ports: [ManifoldKit.Port]) {
+            for port in ports {
+                if let device = port.connectedDevice {
+                    out.append(device)
+                }
+                walk(port.children)
+            }
+        }
+        for host in hosts { walk(host.ports) }
+        return out
     }
 
     /// Dedup key for diagnostic notification gating — matches the

@@ -41,6 +41,7 @@ struct ManifoldApp: App {
         WindowGroup {
             MainWindow(
                 graph: appDelegate.publishedPortGraph,
+                eventRepository: appDelegate.publishedEventRepository,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
             )

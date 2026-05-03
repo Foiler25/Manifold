@@ -42,6 +42,10 @@ struct MainWindow: View {
 
     @Bindable var graph: PortGraph
 
+    /// Phase 10: nil when persistence init failed, so the History
+    /// tab can render an empty state instead of crashing.
+    let eventRepository: EventRepository?
+
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void
 
@@ -175,7 +179,7 @@ struct MainWindow: View {
                 selectedDeviceID: selectedDeviceID
             )
         case .history:
-            HistoryView()
+            HistoryView(eventRepository: eventRepository)
         case .diagnostics:
             DiagnosticsBanner(graph: graph)
         }
@@ -201,6 +205,7 @@ struct MainWindow: View {
     graph.replace(hosts: [PreviewData.macBook])
     return MainWindow(
         graph: graph,
+        eventRepository: nil,
         onWindowAppear: {},
         onWindowDisappear: {}
     )
@@ -210,6 +215,7 @@ struct MainWindow: View {
 #Preview("MainWindow — empty (cold launch state)") {
     MainWindow(
         graph: PortGraph(),
+        eventRepository: nil,
         onWindowAppear: {},
         onWindowDisappear: {}
     )
