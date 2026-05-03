@@ -141,6 +141,121 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export Manifold data" } } }
     },
+    "intent.exportTopology.description" : {
+      "comment" : "Description for the Export Topology Snapshot intent in Shortcuts.app.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Captures the live host/device topology as a schema-versioned JSON file." } } }
+    },
+    "intent.exportTopology.error.dataSourceUnavailable" : {
+      "comment" : "Surfaced in Shortcuts.app when the intent runs before the app's bridge is ready.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold is still starting up — try again in a moment." } } }
+    },
+    "intent.exportTopology.error.encodeFailed" : {
+      "comment" : "Surfaced in Shortcuts.app when JSON encoding fails (rare).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "The topology snapshot could not be encoded." } } }
+    },
+    "intent.exportTopology.shortTitle" : {
+      "comment" : "Short label for the Export Topology shortcut tile.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export Topology" } } }
+    },
+    "intent.exportTopology.title" : {
+      "comment" : "Display title for the Export Topology Snapshot intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Export Topology Snapshot" } } }
+    },
+    "intent.getActiveDiagnostics.description" : {
+      "comment" : "Description for the Get Active Diagnostics intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Returns the list of diagnostic warnings currently active on the live graph." } } }
+    },
+    "intent.getActiveDiagnostics.shortTitle" : {
+      "comment" : "Short label for the Active Diagnostics shortcut tile.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Active Diagnostics" } } }
+    },
+    "intent.getActiveDiagnostics.title" : {
+      "comment" : "Display title for the Get Active Diagnostics intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Get Active Diagnostics" } } }
+    },
+    "intent.getConnectedDevices.description" : {
+      "comment" : "Description for the Get Connected Devices intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Returns the list of devices currently connected to all hosts." } } }
+    },
+    "intent.getConnectedDevices.shortTitle" : {
+      "comment" : "Short label for the Connected Devices shortcut tile.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Connected Devices" } } }
+    },
+    "intent.getConnectedDevices.title" : {
+      "comment" : "Display title for the Get Connected Devices intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Get Connected Devices" } } }
+    },
+    "intent.getPowerDraw.description" : {
+      "comment" : "Description for the Get Power Draw intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Returns the total power draw across the live graph, optionally scoped to a host or device." } } }
+    },
+    "intent.getPowerDraw.shortTitle" : {
+      "comment" : "Short label for the Power Draw shortcut tile.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power Draw" } } }
+    },
+    "intent.getPowerDraw.title" : {
+      "comment" : "Display title for the Get Power Draw intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Get Power Draw" } } }
+    },
+    "intent.parameter.filename" : {
+      "comment" : "Parameter label for the export filename.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Filename" } } }
+    },
+    "intent.parameter.filterByDevice" : {
+      "comment" : "Parameter label for the device filter on power-draw / watch intents.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Filter by device" } } }
+    },
+    "intent.parameter.filterByHost" : {
+      "comment" : "Parameter label for the host filter on connected-devices / power-draw intents.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Filter by host" } } }
+    },
+    "intent.parameter.matchByName" : {
+      "comment" : "Parameter label for the name-substring filter on the watcher intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Match by name (optional)" } } }
+    },
+    "intent.parameter.matchByProduct" : {
+      "comment" : "Parameter label for the productID filter on the watcher intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Match by Product ID (optional)" } } }
+    },
+    "intent.parameter.matchByVendor" : {
+      "comment" : "Parameter label for the vendorID filter on the watcher intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Match by Vendor ID (optional)" } } }
+    },
+    "intent.watchForDeviceConnect.description" : {
+      "comment" : "Description for the Watch for Device Connect intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Returns the most-recent attached device that matches the supplied filters." } } }
+    },
+    "intent.watchForDeviceConnect.shortTitle" : {
+      "comment" : "Short label for the Watch shortcut tile.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Watch for Device" } } }
+    },
+    "intent.watchForDeviceConnect.title" : {
+      "comment" : "Display title for the Watch for Device Connect intent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "When Device Connects" } } }
+    },
     "menubar.icon.accessibility" : {
       "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",
       "extractionState" : "manual",

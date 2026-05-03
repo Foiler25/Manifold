@@ -149,6 +149,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await notificationService.requestAuthorizationIfNeeded()
         }
 
+        // Phase 12: register the AppIntents data-source bridge so
+        // ManifoldShortcuts intents can reach the live graph + the
+        // event repository. IntentEnvironment is nil-checked by the
+        // queries / intents so a Shortcut invoked before app launch
+        // completes returns empty data instead of crashing.
+        IntentEnvironment.dataSource = LiveIntentDataSource(
+            graph: portGraph,
+            eventRepository: eventRepository
+        )
+
 #if DEBUG
         runLeakBenchIfRequested()
         autoOpenPopoverIfRequested()
