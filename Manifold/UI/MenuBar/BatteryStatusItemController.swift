@@ -23,17 +23,18 @@
 // install gate, observed graph property) and a sibling pattern keeps
 // the two file-local concerns isolated.
 //
-// Glyph: SF Symbol family `battery.0/.25/.50/.75/.100` switched on
-// the rounded `chargePercent` bucket. When charging, the same family
-// is replaced with its `.bolt` variant (e.g. `battery.50.bolt`) so
-// the menu bar reads "is charging" at a glance.
+// Glyph: a custom-drawn template image — battery body outline +
+// terminal nub + the percentage rendered centered inside the body.
+// One simple icon, no separate text label. Charge state is surfaced
+// in the popover (pill + subtitle), not in the menu bar slot, per
+// Brandon's UX feedback (2026-05-04).
 //
-// Title: percentage rendered as `attributedTitle` with a leading space
-// (matches the primary's spacing pattern from §13.1) and `imagePosition
-// = .imageLeft`. The accessibility summary is composed on every
-// `setBattery(_:)` via `DateComponentsFormatter` + a localized format
-// string — VoiceOver reads "Battery 84%, charging, fully charged in
-// 1 hour 24 minutes" rather than just "84%".
+// Template-mode means a single tint that follows the menu bar's
+// light/dark adaptation automatically. The accessibility summary is
+// composed on every `setBattery(_:)` via `DateComponentsFormatter`
+// + a localized format string — VoiceOver still reads "Battery 84%,
+// charging, fully charged in 1 hour 24 minutes" even though the
+// visible glyph just says "84".
 
 import AppKit
 import SwiftUI
@@ -105,7 +106,7 @@ final class BatteryStatusItemController {
             return
         }
 
-        button.image = makeBaseIcon(percent: 50, isCharging: false)
+        button.image = makeBatteryIcon(percent: 50)
         button.imagePosition = .imageOnly
         button.imageHugsTitle = true
         button.target = self
@@ -144,42 +145,30 @@ final class BatteryStatusItemController {
 
     // MARK: - Battery update
 
-    /// Update the glyph + percent. Called by AppDelegate's sampler
-    /// callback bridge each tick. Nil → fall back to the seed icon
-    /// (sampler hasn't reported yet, or hardware reported a transient
-    /// nil — keep the slot looking sensible).
+    /// Update the glyph. Called by AppDelegate's sampler callback
+    /// bridge each tick. Nil → fall back to a 0% seed icon (sampler
+    /// hasn't reported yet, or hardware reported a transient nil —
+    /// keep the slot looking sensible).
     func setBattery(_ info: BatteryInfo?) {
         guard let button = statusItem?.button else { return }
 
         guard let info else {
-            button.image = makeBaseIcon(percent: 50, isCharging: false)
+            button.image = makeBatteryIcon(percent: 0)
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString()
             return
         }
 
-        // Glyph: SF Symbol family chosen by the rounded bucket; the
-        // `.bolt` variant overlays a charging arrow when the state
-        // says so.
-        button.image = makeBaseIcon(
-            percent: info.chargePercent,
-            isCharging: info.chargeState == .charging
-        )
-
-        // Title: percent attributedString, leading space mirrors the
-        // primary's badge pattern from §13.1.
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.menuBarFont(ofSize: 0).withWeightApplied(.semibold),
-            .foregroundColor: NSColor.labelColor
-        ]
-        button.attributedTitle = NSAttributedString(
-            string: " \(info.chargePercent)%",
-            attributes: attrs
-        )
-        button.imagePosition = .imageLeft
+        // One image, no separate text label. The percentage lives
+        // inside the battery body so the slot stays a single compact
+        // icon at the menu bar scale.
+        button.image = makeBatteryIcon(percent: info.chargePercent)
+        button.imagePosition = .imageOnly
+        button.attributedTitle = NSAttributedString()
 
         // VoiceOver summary — formatted on every update so the
-        // assistive readout matches what's on screen.
+        // assistive readout matches what's on screen even though the
+        // visible glyph is a single tight icon.
         button.setAccessibilityLabel(accessibilitySummary(for: info))
     }
 
@@ -231,34 +220,87 @@ final class BatteryStatusItemController {
 
     // MARK: - Glyph
 
-    /// Pick the right SF Symbol from the `battery.{0,25,50,75,100}`
-    /// family by the rounded charge bucket, swapping in the `.bolt`
-    /// variant when charging.
-    private func makeBaseIcon(percent: Int, isCharging: Bool) -> NSImage? {
-        let bucket = roundedBucket(for: percent)
-        let suffix = isCharging ? ".bolt" : ""
-        let symbolName = "battery.\(bucket)\(suffix)"
-        let image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: NSLocalizedString(
-                AppConstants.menuBarBatteryIconAccessibilityKey,
-                comment: ""
-            )
-        )
-        image?.isTemplate = true
-        return image
-    }
+    /// Render a custom template image: a battery body outline + small
+    /// terminal nub on the right + the percentage drawn centered
+    /// inside the body. Single-color (template) so the menu bar tint
+    /// follows light/dark mode automatically.
+    ///
+    /// No internal fill bar, no charging overlay — the percentage
+    /// itself communicates the level, and charge state is surfaced in
+    /// the popover. Per Brandon's UX feedback (2026-05-04): "make it
+    /// a simple icon."
+    private func makeBatteryIcon(percent: Int) -> NSImage {
+        let width = BatteryStatusItemControllerConstants.iconWidth
+        let height = BatteryStatusItemControllerConstants.iconHeight
+        let bodyWidth = BatteryStatusItemControllerConstants.iconBodyWidth
+        let nubWidth = BatteryStatusItemControllerConstants.iconNubWidth
+        let nubHeight = BatteryStatusItemControllerConstants.iconNubHeight
+        let stroke = BatteryStatusItemControllerConstants.iconStrokeWidth
+        let cornerRadius = BatteryStatusItemControllerConstants.iconCornerRadius
+        let nubCornerRadius = BatteryStatusItemControllerConstants.iconNubCornerRadius
+        let fontSize = BatteryStatusItemControllerConstants.iconTextFontSize
 
-    /// Map a percent to the nearest battery-icon bucket. Matches the
-    /// thresholds Apple's own battery menu bar item uses.
-    private func roundedBucket(for percent: Int) -> Int {
-        switch percent {
-        case ..<BatteryStatusItemControllerConstants.bucket25Threshold:    return 0
-        case ..<BatteryStatusItemControllerConstants.bucket50Threshold:    return 25
-        case ..<BatteryStatusItemControllerConstants.bucket75Threshold:    return 50
-        case ..<BatteryStatusItemControllerConstants.bucket100Threshold:   return 75
-        default:                                                            return 100
+        let image = NSImage(
+            size: NSSize(width: width, height: height),
+            flipped: false
+        ) { _ in
+            // Battery body outline.
+            let bodyRect = NSRect(
+                x: stroke / 2,
+                y: stroke / 2,
+                width: bodyWidth - stroke,
+                height: height - stroke
+            )
+            let bodyPath = NSBezierPath(
+                roundedRect: bodyRect,
+                xRadius: cornerRadius,
+                yRadius: cornerRadius
+            )
+            bodyPath.lineWidth = stroke
+            NSColor.black.setStroke()
+            bodyPath.stroke()
+
+            // Terminal nub on the right edge.
+            let nubRect = NSRect(
+                x: bodyWidth,
+                y: (height - nubHeight) / 2,
+                width: nubWidth,
+                height: nubHeight
+            )
+            NSColor.black.setFill()
+            NSBezierPath(
+                roundedRect: nubRect,
+                xRadius: nubCornerRadius,
+                yRadius: nubCornerRadius
+            ).fill()
+
+            // Percentage text, centered in the body.
+            let text = "\(percent)" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.menuBarFont(ofSize: fontSize).withWeightApplied(.bold),
+                .foregroundColor: NSColor.black
+            ]
+            let textSize = text.size(withAttributes: attrs)
+            let textRect = NSRect(
+                x: bodyRect.midX - textSize.width / 2,
+                y: bodyRect.midY - textSize.height / 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+            text.draw(in: textRect, withAttributes: attrs)
+
+            return true
         }
+        // Template mode: AppKit retints the whole image to match menu
+        // bar appearance (white in dark mode, black in light mode).
+        // The `NSColor.black` calls above are placeholders — only the
+        // alpha channel matters under template tinting.
+        image.isTemplate = true
+        image.accessibilityDescription = NSLocalizedString(
+            AppConstants.menuBarBatteryIconAccessibilityKey,
+            comment: ""
+        )
+        return image
     }
 
     // MARK: - Accessibility summary
@@ -317,15 +359,40 @@ final class BatteryStatusItemController {
 // MARK: - Constants
 
 enum BatteryStatusItemControllerConstants {
-    /// Boundaries between the SF Symbol `battery.{0/.25/.50/.75/.100}`
-    /// buckets. A charge of 12% → bucket 0; 38% → bucket 25; 62% →
-    /// bucket 50; 88% → bucket 75; 95% → bucket 100. Matches the
-    /// thresholds Apple's own menu-bar battery icon uses, +/- a couple
-    /// of percent (Apple's exact thresholds aren't published; observed).
-    static let bucket25Threshold: Int = 13
-    static let bucket50Threshold: Int = 38
-    static let bucket75Threshold: Int = 63
-    static let bucket100Threshold: Int = 88
+    /// Total drawn-image width in points. Body width + nub width.
+    /// Sized so the menu bar slot stays compact while leaving room for
+    /// "100" inside the body without the digits crowding the outline.
+    static let iconWidth: CGFloat = 28
+
+    /// Total drawn-image height in points. Sized to read clearly in
+    /// the standard menu bar slot (~22pt tall) without dominating it.
+    static let iconHeight: CGFloat = 14
+
+    /// Width of the rounded-rectangle "body" portion (the inset of
+    /// `iconWidth` reserved for the percentage text). Remaining width
+    /// is the terminal nub.
+    static let iconBodyWidth: CGFloat = 26
+
+    /// Width of the right-side terminal nub.
+    static let iconNubWidth: CGFloat = 2
+
+    /// Height of the right-side terminal nub. ~half the body height —
+    /// matches the proportions of the SF Symbol battery family.
+    static let iconNubHeight: CGFloat = 6
+
+    /// Stroke width of the body outline.
+    static let iconStrokeWidth: CGFloat = 1
+
+    /// Corner radius of the rounded-rectangle body outline.
+    static let iconCornerRadius: CGFloat = 2
+
+    /// Corner radius of the terminal nub.
+    static let iconNubCornerRadius: CGFloat = 1
+
+    /// Point size of the percentage text drawn inside the body. Sized
+    /// so "100" fits within the body interior with breathing room on
+    /// either side.
+    static let iconTextFontSize: CGFloat = 9
 
     /// 1 minute → 60 seconds for `DateComponentsFormatter`.
     static let secondsPerMinute: Int = 60

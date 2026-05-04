@@ -44,15 +44,22 @@ struct ChargeBannerSection: View {
     let battery: BatteryInfo
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Large monospaced percent + charge-state pill.
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
-                Text("\(battery.chargePercent)%")
-                    .font(.system(size: 56, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.manifoldText)
-                ChargeStatePill(state: battery.chargeState)
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            // Percent on its own line. lineLimit + minimumScaleFactor
+            // keep "100%" / triple-digit values readable even on the
+            // narrow ~280pt popover where the prior 56pt size wrapped
+            // across two lines.
+            Text("\(battery.chargePercent)%")
+                .font(.system(size: 48, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Color.manifoldText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            // Charge-state pill stacked below the percent — keeps the
+            // % at full size in the narrow popover and groups status
+            // visually with the percentage rather than competing with
+            // it for horizontal space.
+            ChargeStatePill(state: battery.chargeState)
 
             // Subtitle: time-until-full or time-until-empty depending
             // on charge state. Falls back to a static "Fully charged"
@@ -61,11 +68,11 @@ struct ChargeBannerSection: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            // Segmented capacity bar — 10 segments, each lit if the
-            // chargePercent crosses its boundary. Reads as a static
-            // "battery icon" representation of the same percentage
-            // for at-a-glance pickup.
+            // Solid capacity bar — proportional fill rather than
+            // discrete segments. Reads as a clean "battery level"
+            // gauge at the tab's typical width.
             CapacityBar(percent: battery.chargePercent, isCharging: battery.chargeState == .charging)
+                .padding(.top, 4)
         }
     }
 
@@ -149,33 +156,32 @@ struct ChargeStatePill: View {
     }
 }
 
-/// Segmented "battery icon" capacity bar. 10 segments, lit per 10%.
-/// When charging, the bar tints accent green; when discharging or on
-/// battery, it tints the default text color so it doesn't fight the
-/// charge-state pill for attention.
+/// Solid capacity bar — proportional rectangle fill. When charging,
+/// tints accent green; when discharging or on battery, tints the
+/// default text color so it doesn't fight the charge-state pill for
+/// attention.
 struct CapacityBar: View {
     let percent: Int
     let isCharging: Bool
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<BatteryViewSectionsConstants.capacityBarSegments, id: \.self) { index in
-                Rectangle()
-                    .fill(fillColor(for: index))
-                    .frame(height: BatteryViewSectionsConstants.capacityBarHeight)
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
+                    .fill(Color.manifoldCard)
+                RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
+                    .fill(isCharging ? Color.manifoldAccent : Color.manifoldText)
+                    .frame(
+                        width: max(
+                            0,
+                            geo.size.width
+                                * CGFloat(min(percent, BatteryViewSectionsConstants.percentScale))
+                                / CGFloat(BatteryViewSectionsConstants.percentScale)
+                        )
+                    )
             }
         }
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func fillColor(for index: Int) -> Color {
-        let threshold = (index + 1) * (BatteryViewSectionsConstants.percentScale
-                                       / BatteryViewSectionsConstants.capacityBarSegments)
-        if percent >= threshold {
-            return isCharging ? Color.manifoldAccent : Color.manifoldText
-        }
-        return Color.manifoldCard
+        .frame(height: BatteryViewSectionsConstants.capacityBarHeight)
     }
 }
 
@@ -430,13 +436,14 @@ struct BatteryDetailRow: View {
 // MARK: - Constants
 
 enum BatteryViewSectionsConstants {
-    /// Number of segments in the capacity bar. 10 segments → each lit
-    /// per 10% of charge.
-    static let capacityBarSegments: Int = 10
-
-    /// Per-segment fixed height in points. Sized to read as a chunky
-    /// "battery icon" indicator at the tab's typical width.
+    /// Capacity bar height in points. Sized to read as a chunky
+    /// "battery level" gauge at the tab's typical width.
     static let capacityBarHeight: CGFloat = 16
+
+    /// Corner radius of the rounded rectangles used by the capacity
+    /// bar (background track + foreground fill). Matches the rest of
+    /// the Battery section card radii.
+    static let capacityBarCornerRadius: CGFloat = 4
 
     /// 0...100 percent scale (Int) — used so the per-segment threshold
     /// math stays in integer arithmetic.
