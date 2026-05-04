@@ -296,6 +296,36 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Got it" } } }
     },
+    "onboarding.next" : {
+      "comment" : "Onboarding step-1 advance button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Next" } } }
+    },
+    "onboarding.back" : {
+      "comment" : "Onboarding step-2 back-to-welcome button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Back" } } }
+    },
+    "onboarding.battery.title" : {
+      "comment" : "Step-2 title — battery monitor introduction.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery monitor" } } }
+    },
+    "onboarding.battery.subtitle" : {
+      "comment" : "Step-2 subtitle — explains the menu-bar battery feature.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold can show your battery's charge, health, and live power draw in the menu bar — updated up to five times per second when you open it." } } }
+    },
+    "onboarding.battery.toggle.title" : {
+      "comment" : "Step-2 toggle row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show battery in menu bar" } } }
+    },
+    "onboarding.battery.toggle.detail" : {
+      "comment" : "Step-2 toggle row detail.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Adds a second status item next to the device count. Auto-hidden on Macs without a battery. Toggle anytime in Settings → Menu Bar." } } }
+    },
     "onboarding.menubar.detail" : {
       "comment" : "Detail under the menu bar onboarding row.",
       "extractionState" : "manual",
