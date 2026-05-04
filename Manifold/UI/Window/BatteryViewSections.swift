@@ -59,8 +59,10 @@ struct ChargeBannerSection: View {
                 untilLabel
             }
 
-            // Charge-state pill stacked below the percent.
-            ChargeStatePill(state: battery.chargeState)
+            // Charge-state pill stacked below the percent. Pill tint
+            // tracks state + level — green charging/full, yellow on
+            // battery, red when very low.
+            ChargeStatePill(state: battery.chargeState, percent: battery.chargePercent)
 
             // Subtitle: time-until-full / time-until-empty / static
             // fallback. Decorated with a leading bolt when fully
@@ -176,9 +178,16 @@ struct ChargeBannerSection: View {
 }
 
 /// Charge-state pill — colored capsule matching the
-/// `DiagnosticBadge` shape (per the SPEC §20 plan).
+/// `DiagnosticBadge` shape (per the SPEC §20 plan). Pill tint is
+/// driven by the combined charge-state + level helper:
+///   - charging / fullyCharged → green (manifoldAccent)
+///   - discharging / notCharging → yellow (manifoldWarning) above
+///     the critical-low threshold, red (manifoldCritical) at or
+///     below it
+///   - unknown → secondary gray
 struct ChargeStatePill: View {
     let state: BatteryInfo.ChargeState
+    let percent: Int
 
     var body: some View {
         HStack(spacing: 4) {
@@ -204,12 +213,7 @@ struct ChargeStatePill: View {
     }
 
     private var tint: Color {
-        switch state {
-        case .charging, .fullyCharged: return Color.manifoldAccent
-        case .discharging:             return .secondary
-        case .notCharging:             return Color.manifoldWarning
-        case .unknown:                 return .secondary
-        }
+        BatteryViewSectionsConstants.chargeStateTint(state: state, percent: percent)
     }
 }
 
@@ -444,8 +448,11 @@ struct PowerElectricalSection: View {
         VStack(alignment: .leading, spacing: 12) {
             BatterySectionHeader(
                 titleKey: "window.battery.section.power",
-                statusIcon: "bolt.circle.fill",
-                statusTint: Color.manifoldAccent,
+                statusIcon: powerHeaderIcon,
+                statusTint: BatteryViewSectionsConstants.chargeStateTint(
+                    state: battery.chargeState,
+                    percent: battery.chargePercent
+                ),
                 infoTitleKey: "window.battery.info.power.title",
                 infoBodyKey: "window.battery.info.power.body",
                 isShown: $isInfoShown
@@ -492,12 +499,30 @@ struct PowerElectricalSection: View {
                         Text(LocalizedStringKey(powerStatusKey))
                             .font(.caption.weight(.medium))
                     }
-                    .foregroundStyle(Color.manifoldAccent)
+                    .foregroundStyle(
+                        BatteryViewSectionsConstants.chargeStateTint(
+                            state: battery.chargeState,
+                            percent: battery.chargePercent
+                        )
+                    )
                     Text("window.battery.voltageSubtitle.normal")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+
+    /// Section-header glyph mirrors the inline status pill icon — bolt
+    /// when charging, check when full, battery-icon when discharging,
+    /// pause when stuck on AC, "?" when unknown.
+    private var powerHeaderIcon: String {
+        switch battery.chargeState {
+        case .charging:      return "bolt.circle.fill"
+        case .fullyCharged:  return "checkmark.circle.fill"
+        case .discharging:   return "minus.circle.fill"
+        case .notCharging:   return "pause.circle.fill"
+        case .unknown:       return "questionmark.circle.fill"
         }
     }
 
@@ -767,6 +792,24 @@ enum BatteryViewSectionsConstants {
         case ...levelCriticalThreshold:                  return Color.manifoldCritical
         case (levelCriticalThreshold + 1)..<levelLowThreshold: return Color.manifoldWarning
         default:                                          return Color.manifoldAccent
+        }
+    }
+
+    /// Tint for charge-state-bearing UI (the top ChargeStatePill, the
+    /// Power & Electrical section icon, the Power section's right-hand
+    /// status badge). Combines charge state + battery level so the
+    /// surface reads green when charging or full, yellow on battery,
+    /// red when very low.
+    static func chargeStateTint(state: BatteryInfo.ChargeState, percent: Int) -> Color {
+        switch state {
+        case .charging, .fullyCharged:
+            return Color.manifoldAccent
+        case .discharging, .notCharging:
+            return percent <= levelCriticalThreshold
+                ? Color.manifoldCritical
+                : Color.manifoldWarning
+        case .unknown:
+            return .secondary
         }
     }
 
