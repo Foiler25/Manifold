@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Manifold Sparkle appcast.
+
+    Per SPEC §15: Sparkle's update feed lives at
+    https://raw.githubusercontent.com/Foiler25/Manifold/main/appcast.xml
+    The release-github.sh script appends a new <item> to this file on
+    every published release; this initial seed is the empty channel
+    Sparkle expects on first launch (no published versions yet → no
+    "update available" prompt).
+
+    Each <item> the publisher adds includes:
+      - <title>Version X.Y.Z</title>
+      - <pubDate> RFC-822 timestamp
+      - <enclosure url="…/Manifold-X.Y.Z.dmg" sparkle:edSignature="…"
+                   sparkle:version="…" length="…" type="application/octet-stream"/>
+      - <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      - Optional <description><![CDATA[release notes HTML]]></description>
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Manifold</title>
+    <link>https://github.com/Foiler25/Manifold</link>
+    <description>Live USB and Thunderbolt connection visualizer for macOS.</description>
+    <language>en</language>
+    <!-- No <item> entries yet — this is the Phase 16 initial seed.
+         release-github.sh prepends new <item> nodes above this comment. -->
+  </channel>
+</rss>

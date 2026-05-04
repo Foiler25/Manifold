@@ -14,9 +14,18 @@
 	    written by the host app. Same trick Phase 10 used for the
 	    GRDB database. Documented as a Phase 13 deviation.
 	-->
+	<!--
+	    Phase 16 F8 closure (mirror of Manifold.entitlements):
+	    disable library validation so the embedded ad-hoc-signed
+	    `ManifoldKit.framework` loads under hardened runtime. The
+	    widget extension also embeds Sparkle indirectly via the
+	    host app linkage; same constraint applies.
+	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<false/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 </dict>
 </plist>

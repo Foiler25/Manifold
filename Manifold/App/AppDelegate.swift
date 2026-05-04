@@ -98,6 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `~/Library/Application Support/com.Loofa.Manifold/`).
     private var snapshotCoordinator: SnapshotCoordinator?
 
+    // MARK: - Phase 16 Sparkle
+
+    /// Lazy so the SPUStandardUpdaterController construction cost
+    /// only lands when the user actually opens Settings ▸ Updates.
+    /// UpdatesPane reaches it via `publishedUpdaterController`.
+    private lazy var _updaterController: UpdaterController = UpdaterController()
+    var publishedUpdaterController: UpdaterController { _updaterController }
+
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {

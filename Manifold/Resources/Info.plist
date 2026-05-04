@@ -30,5 +30,30 @@
 	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
+	<!--
+	    Phase 16 Sparkle integration.
+	      - SUFeedURL: GitHub-hosted appcast.xml (SPEC §15).
+	        build-dmg.sh re-writes this on every release so a fork
+	        can override; the value here is the dev default so
+	        Sparkle can be exercised from a normal Xcode build
+	        without running the full DMG pipeline.
+	      - SUPublicEDKey: the public half of the EdDSA pair whose
+	        private key lives in `keyfile.txt` (gitignored).
+	        build-dmg.sh re-writes this too; the value here matches
+	        the build script's hard-coded production key so dev
+	        builds can validate signed appcast items.
+	      - SUEnableInstallerLauncherService /
+	        SUEnableDownloaderService FALSE because Manifold is
+	        unsandboxed (DECISIONS.md D10) and Sparkle's XPC
+	        service helpers aren't required outside the sandbox.
+	  -->
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/Foiler25/Manifold/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>xHtrtfBbFRxLC+T4BXzw64fpQw1EvpeoKiTRpT48CFk=</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<false/>
+	<key>SUEnableDownloaderService</key>
+	<false/>
 </dict>
 </plist>

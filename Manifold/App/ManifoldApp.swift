@@ -103,14 +103,17 @@ struct ManifoldApp: App {
             }
         }
 
-        // Phase 14: Settings tab view per SPEC §13.
+        // Phase 14: Settings tab view per SPEC §13. Phase 16
+        // adds the Sparkle UpdaterController for the Updates
+        // pane's "Check for updates now" button.
         SettingsScene(
             onSampleRateChange: { rate in
                 appDelegate.applySampleRate(rate)
             },
             loginItemController: LiveLoginItemController(),
             databaseManager: appDelegate.publishedDatabaseManager,
-            downsamplingJob: appDelegate.publishedDownsamplingJob
+            downsamplingJob: appDelegate.publishedDownsamplingJob,
+            updaterController: appDelegate.publishedUpdaterController
         )
     }
 

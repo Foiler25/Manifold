@@ -22,9 +22,21 @@
 	        Documented as a Phase 13 deviation; revisit only if Brandon
 	        switches to a developer-account-signed distribution.
 	  -->
+	<!--
+	    Phase 16 F8 closure: hardened runtime (`ENABLE_HARDENED_RUNTIME
+	    = YES`) enables library validation, which rejects the embedded
+	    ad-hoc-signed `ManifoldKit.framework` at dyld load time with
+	    "different Team IDs". Disabling library validation lets the
+	    ad-hoc-signed framework load. Acceptable for unsandboxed
+	    distribution per DECISIONS.md D10; the hardened-runtime
+	    constraints we DO want (no JIT, no DYLD_INSERT_LIBRARIES,
+	    no execution of unsigned code) remain in place.
+	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<false/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 </dict>
 </plist>

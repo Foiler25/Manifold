@@ -486,10 +486,10 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Last checked" } } }
     },
-    "settings.updates.sparkleDeferred" : {
-      "comment" : "Caption explaining why the check button is disabled in Phase 14.",
+    "settings.updates.previewDisabled" : {
+      "comment" : "Caption shown only in #Preview builds where Sparkle isn't wired in.",
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Update checks light up in Phase 15 when Sparkle is wired in." } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Update checks aren't available in this preview." } } }
     },
     "menubar.icon.accessibility" : {
       "comment" : "Spoken description of the Manifold menu bar icon for VoiceOver.",

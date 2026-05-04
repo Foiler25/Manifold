@@ -1,0 +1,85 @@
+# Manifold — CI workflow.
+#
+# Runs on every push + pull-request against main. Builds Manifold
+# (Debug + Release), runs the SPM ManifoldKit test target + the
+# Xcode ManifoldTests target, and runs the Phase 16 LeakBenchTests
+# harness that closes F7 (the per-PR replacement for the
+# Reviewer-deferred §18.0 LEAK-100x procedure).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-15  # latest GitHub-hosted macOS runner with Xcode 26
+    timeout-minutes: 30
+    env:
+      XCODE_PROJECT: Manifold.xcodeproj
+      XCODE_SCHEME: Manifold
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies -project "$XCODE_PROJECT"
+          # ManifoldKit's headless Package.swift — separate resolve.
+          (cd ManifoldKit && swift package resolve)
+
+      - name: Build (Debug)
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            build
+
+      - name: Build (Release)
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            build
+
+      - name: ManifoldKit SPM tests
+        run: |
+          (cd ManifoldKit && swift test)
+
+      - name: ManifoldTests (Xcode)
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'platform=macOS' \
+            -only-testing:ManifoldTests \
+            test
+
+      # F7 closure (Phase 1 review, due Phase 16): replaces the
+      # Reviewer-deferred §18.0 LEAK-100x procedure for IOKit-touching
+      # phases. The LeakBenchTests case runs DiscoveryService.walk()
+      # 100× through the full IOKit pipeline, then invokes leaks(1)
+      # against its own pid + asserts zero leaked bytes. UI tests
+      # are skipped — they need accessibility-permission setup that
+      # the GitHub-hosted runner doesn't support out of the box
+      # (carried as part of F7).
+      - name: Leak-bench (F7)
+        run: |
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'platform=macOS' \
+            -only-testing:ManifoldTests/LeakBenchTests \
+            test

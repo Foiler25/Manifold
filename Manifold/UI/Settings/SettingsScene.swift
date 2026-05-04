@@ -46,6 +46,10 @@ struct SettingsScene: Scene {
     let databaseManager: DatabaseManager?
     let downsamplingJob: DownsamplingJob?
 
+    /// Phase 16 Sparkle wrapper. Pushed in by ManifoldApp from
+    /// AppDelegate's lazy controller.
+    let updaterController: UpdaterController?
+
     var body: some Scene {
         Settings {
             TabView {
@@ -64,7 +68,7 @@ struct SettingsScene: Scene {
                 )
                 .tabItem { Label("settings.tab.history", systemImage: "clock") }
 
-                UpdatesPane()
+                UpdatesPane(updaterController: updaterController)
                     .tabItem { Label("settings.tab.updates", systemImage: "arrow.down.circle") }
 
                 AboutPane()
