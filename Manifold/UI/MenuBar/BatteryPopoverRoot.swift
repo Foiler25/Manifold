@@ -19,14 +19,18 @@
 //
 // Phase 18 — SwiftUI root for the battery popover (the secondary
 // menu-bar item). Per SPEC §20.6 / Plan §18d: a condensed
-// `BatteryView` without the info-popover `(i)` buttons and with a
-// single "Open Manifold" toolbar button — no Settings shortcut, since
-// the primary popover already exposes it.
+// `BatteryView` with a single "Open Manifold" toolbar button — no
+// Settings shortcut, since the primary popover already exposes it.
 //
-// Reuses the existing `ChargeBannerSection` / `BatteryDetailRow`
-// shapes from `BatteryViewSections.swift` so the two surfaces stay
-// visually synchronized — when one renames a row label or the
-// charge-state pill changes color, the other follows automatically.
+// 2026-05-04 UX revision: reaches Juicy parity. The charge banner
+// stays at the top (always visible). Below it, a "Battery Information"
+// `DisclosureGroup` wraps the four detail sections (Health,
+// Temperature, Power & Electrical, Capacity Details) so the user can
+// collapse the deep stats and keep the popover lean when they only
+// want the percent.
+//
+// Reuses the same `*Section` views as the Battery tab so a styling
+// change in either surface flows to both at once.
 
 import SwiftUI
 import ManifoldKit
@@ -40,50 +44,53 @@ struct BatteryPopoverRoot: View {
     /// the popover doesn't depend on AppKit globals directly.
     let onOpenWindow: () -> Void
 
+    /// Persists the disclosure-group state across popover open / close
+    /// cycles. Default expanded — the user opened the popover to see
+    /// the data, so the first impression should show it.
+    @AppStorage(BatteryPopoverRootConstants.infoExpandedKey)
+    private var isInfoExpanded: Bool = true
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let battery = graph.battery {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ChargeBannerSection(battery: battery)
+                            .padding(BatteryPopoverRootConstants.cardPadding)
+                            .background(
+                                RoundedRectangle(cornerRadius: BatteryPopoverRootConstants.cardCornerRadius)
+                                    .fill(Color.manifoldCard)
+                            )
 
-                        Divider()
-
-                        // Health snapshot — % + cycle count, no info
-                        // popover button (per the popover-content
-                        // contract).
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("window.battery.section.health")
-                                .font(.caption.smallCaps())
-                                .foregroundStyle(.secondary)
-                            HStack(alignment: .firstTextBaseline) {
-                                Text("\(battery.healthPercent)%")
-                                    .font(.title3.monospacedDigit().weight(.semibold))
-                                    .foregroundStyle(Color.manifoldText)
-                                ConditionBadge(condition: battery.healthCondition)
+                        DisclosureGroup(
+                            isExpanded: $isInfoExpanded
+                        ) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                BatteryHealthSection(battery: battery)
+                                Divider()
+                                TemperatureSection(battery: battery)
+                                Divider()
+                                PowerElectricalSection(battery: battery)
+                                Divider()
+                                CapacityDetailsSection(battery: battery)
                             }
-                            BatteryDetailRow(
-                                labelKey: "window.battery.field.cycleCount",
-                                value: String(battery.cycleCount)
-                            )
+                            .padding(.top, 12)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "info.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.manifoldAccent)
+                                Text("window.battery.info.section.title")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.manifoldText)
+                            }
                         }
-
-                        Divider()
-
-                        // Power snapshot — W + signed mA. Kept compact.
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("window.battery.section.power")
-                                .font(.caption.smallCaps())
-                                .foregroundStyle(.secondary)
-                            BatteryDetailRow(
-                                labelKey: "window.battery.field.power",
-                                value: String(format: "%.2f W", battery.powerWatts)
-                            )
-                            BatteryDetailRow(
-                                labelKey: "window.battery.field.current",
-                                value: String(format: "%+d mA", battery.amperageMilliamps)
-                            )
-                        }
+                        .tint(.secondary)
+                        .padding(BatteryPopoverRootConstants.cardPadding)
+                        .background(
+                            RoundedRectangle(cornerRadius: BatteryPopoverRootConstants.cardCornerRadius)
+                                .fill(Color.manifoldCard)
+                        )
                     }
                     .padding(16)
                 }
@@ -132,6 +139,25 @@ struct BatteryPopoverRoot: View {
         .padding(.vertical, 32)
         .padding(.horizontal, 16)
     }
+}
+
+// MARK: - Constants
+
+enum BatteryPopoverRootConstants {
+    /// `@AppStorage` key for the "Battery Information" disclosure-
+    /// group state. Stored under `settings.menubar.battery.*` so it
+    /// joins the existing Battery / Menu Bar settings family.
+    static let infoExpandedKey: String = "settings.menubar.battery.popoverInfoExpanded"
+
+    /// Padding inside each "card" container (Charge banner card +
+    /// Battery Information card). Sized to leave breathing room
+    /// around the section content without crowding the popover edges.
+    static let cardPadding: CGFloat = 14
+
+    /// Corner radius of each "card" container in the popover. Larger
+    /// than the capacity-bar radius so the cards read as elevated
+    /// surfaces, not as part of the bar grid.
+    static let cardCornerRadius: CGFloat = 12
 }
 
 #Preview("BatteryPopoverRoot — populated") {

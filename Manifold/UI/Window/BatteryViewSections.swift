@@ -18,22 +18,24 @@
 // BatteryViewSections.swift
 //
 // Phase 18 — five card subviews rendered inside the Battery tab:
-//   1. ChargeBannerSection (large %, "Until full / Until empty",
-//      charge-state pill, segmented capacity bar)
-//   2. BatteryHealthSection (health %, cycleCount, condition badge,
-//      info popover button)
-//   3. TemperatureSection (°C primary + °F secondary, color-graded,
-//      info popover button)
+//   1. ChargeBannerSection (large %, until-full/empty estimate,
+//      charge-state pill, solid capacity bar)
+//   2. BatteryHealthSection (health %, cycle count "X/1000", condition
+//      badge, info popover button — leading colored status icon)
+//   3. TemperatureSection (°C primary + °F secondary, thermometer
+//      glyph, condition pill with subtitle, info popover button)
 //   4. PowerElectricalSection (W, V, signed mA + charging arrow,
-//      info popover button)
+//      "Charging / Normal voltage" mini-status, info popover button)
 //   5. CapacityDetailsSection (Remaining / Full charge / Design mAh,
-//      health % ratio next to Full charge, info popover button)
+//      thousands-separator formatting, color-coded by row, refresh
+//      footnote, info popover button)
 //
-// Every section header has an info `(i)` button that opens a SwiftUI
-// `.popover(isPresented:)` (per Q15 — NOT NSPopover; the AppKit
-// popover is reserved for the menu-bar slot). The popovers explain
-// what each metric means in Manifold-voice copy (window.battery.info.*
-// keys per §20.8).
+// All section headers carry a leading colored icon (green check for
+// healthy, amber for warning, red for critical) so the user can scan
+// per-section condition at a glance — matches the Juicy parity goal
+// from the 2026-05-04 UX feedback. Every visible string is in
+// `Localizable.xcstrings`; every color is a `Color.manifold*` token
+// (no hardcoded values, per Reviewer rules).
 
 import SwiftUI
 import ManifoldKit
@@ -45,44 +47,110 @@ struct ChargeBannerSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Percent on its own line. lineLimit + minimumScaleFactor
-            // keep "100%" / triple-digit values readable even on the
-            // narrow ~280pt popover where the prior 56pt size wrapped
-            // across two lines.
-            Text("\(battery.chargePercent)%")
-                .font(.system(size: 48, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(Color.manifoldText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
+            // Top row: percent on the left, "Until full / Until empty"
+            // estimate on the right (or "∞" when fully charged).
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(battery.chargePercent)%")
+                    .font(.system(size: 48, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(percentTint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer()
+                untilLabel
+            }
 
-            // Charge-state pill stacked below the percent — keeps the
-            // % at full size in the narrow popover and groups status
-            // visually with the percentage rather than competing with
-            // it for horizontal space.
+            // Charge-state pill stacked below the percent.
             ChargeStatePill(state: battery.chargeState)
 
-            // Subtitle: time-until-full or time-until-empty depending
-            // on charge state. Falls back to a static "Fully charged"
-            // when isFullyCharged is true and no time field is set.
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            // Subtitle: time-until-full / time-until-empty / static
+            // fallback. Decorated with a leading bolt when fully
+            // charged so the dual signal (pill + caption) reads as
+            // intentional rather than redundant.
+            HStack(spacing: 6) {
+                if battery.chargeState == .fullyCharged {
+                    Image(systemName: "bolt.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.manifoldWarning)
+                }
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
-            // Solid capacity bar — proportional fill rather than
-            // discrete segments. Reads as a clean "battery level"
-            // gauge at the tab's typical width.
-            CapacityBar(percent: battery.chargePercent, isCharging: battery.chargeState == .charging)
+            // Solid proportional capacity bar. Charging or fully-
+            // charged tints accent green; otherwise the default text
+            // color so it doesn't fight the pill for attention.
+            CapacityBar(percent: battery.chargePercent,
+                        isAccentTinted: battery.chargeState == .charging
+                                     || battery.chargeState == .fullyCharged)
                 .padding(.top, 4)
         }
     }
 
-    /// "Until full in 24 minutes" / "Until empty in 3 hours 15 minutes" /
-    /// "Fully charged" / "Plugged in, not charging".
-    ///
-    /// `DateComponentsFormatter` does the localized minutes →
-    /// "1 hour 24 minutes" conversion on every call. `formatString` is
-    /// the format-key half of `String(localized:)` so pluralization +
-    /// language fallback land via the catalog.
+    /// Percent color: green when charging or fully charged, default
+    /// text color otherwise. Mirrors the capacity-bar tint so the
+    /// hero number and the bar agree on the live signal.
+    private var percentTint: Color {
+        switch battery.chargeState {
+        case .charging, .fullyCharged: return Color.manifoldAccent
+        case .discharging:             return Color.manifoldText
+        case .notCharging:             return Color.manifoldWarning
+        case .unknown:                 return Color.manifoldText
+        }
+    }
+
+    /// Right-aligned "UNTIL FULL / UNTIL EMPTY / ∞" caption. Pure
+    /// caption-smallcaps — sized to read as supplementary metadata,
+    /// not a competing headline.
+    @ViewBuilder
+    private var untilLabel: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            switch battery.chargeState {
+            case .charging:
+                Text("window.battery.untilFull.label")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                if let m = battery.timeUntilFullMinutes,
+                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
+                    Text(s)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(Color.manifoldText)
+                }
+            case .discharging:
+                Text("window.battery.untilEmpty.label")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                if let m = battery.timeUntilEmptyMinutes,
+                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
+                    Text(s)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(Color.manifoldText)
+                }
+            case .fullyCharged:
+                Text("window.battery.untilFull.label")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                Text("∞")
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            case .notCharging, .unknown:
+                EmptyView()
+            }
+        }
+    }
+
+    /// Compact `1h 24m` formatter for the right-aligned banner caption.
+    /// Different from the long-form formatter `subtitle` uses (which
+    /// favors localization completeness over compactness).
+    private static let shortFormatter: DateComponentsFormatter = {
+        let f = DateComponentsFormatter()
+        f.allowedUnits = [.hour, .minute]
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    /// Long-form subtitle — unchanged shape from the prior
+    /// implementation, just lifted into its own computed for clarity.
     private var subtitle: String {
         switch battery.chargeState {
         case .fullyCharged:
@@ -156,13 +224,12 @@ struct ChargeStatePill: View {
     }
 }
 
-/// Solid capacity bar — proportional rectangle fill. When charging,
-/// tints accent green; when discharging or on battery, tints the
-/// default text color so it doesn't fight the charge-state pill for
-/// attention.
+/// Solid capacity bar — proportional rectangle fill. When charging or
+/// fully charged the bar tints accent green; otherwise the default
+/// text color so it doesn't fight the charge-state pill for attention.
 struct CapacityBar: View {
     let percent: Int
-    let isCharging: Bool
+    let isAccentTinted: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -170,7 +237,7 @@ struct CapacityBar: View {
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
                     .fill(Color.manifoldCard)
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
-                    .fill(isCharging ? Color.manifoldAccent : Color.manifoldText)
+                    .fill(isAccentTinted ? Color.manifoldAccent : Color.manifoldText)
                     .frame(
                         width: max(
                             0,
@@ -196,21 +263,48 @@ struct BatteryHealthSection: View {
         VStack(alignment: .leading, spacing: 12) {
             BatterySectionHeader(
                 titleKey: "window.battery.section.health",
+                statusIcon: healthIcon,
+                statusTint: healthTint,
                 infoTitleKey: "window.battery.info.health.title",
                 infoBodyKey: "window.battery.info.health.body",
                 isShown: $isInfoShown
             )
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("\(battery.healthPercent)%")
                     .font(.title.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(Color.manifoldText)
+                    .foregroundStyle(healthTint)
                 ConditionBadge(condition: battery.healthCondition)
                 Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(battery.cycleCount)/\(BatteryViewSectionsConstants.ratedMaxCycles)")
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.manifoldText)
+                    Text("window.battery.field.cycleCount")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            BatteryDetailRow(
-                labelKey: "window.battery.field.cycleCount",
-                value: String(battery.cycleCount)
-            )
+            // Health bar — separate from the charge-capacity bar so
+            // the user reads the two ratios independently.
+            CapacityBar(percent: battery.healthPercent, isAccentTinted: true)
+        }
+    }
+
+    /// Health icon matches the condition band — green check when the
+    /// battery is in the safe zone, amber/red otherwise.
+    private var healthIcon: String {
+        switch battery.healthCondition {
+        case .excellent, .good: return "checkmark.circle.fill"
+        case .fair:             return "exclamationmark.triangle.fill"
+        case .poor, .veryPoor:  return "wrench.and.screwdriver.fill"
+        }
+    }
+
+    private var healthTint: Color {
+        switch battery.healthCondition {
+        case .excellent, .good: return Color.manifoldAccent
+        case .fair:             return Color.manifoldWarning
+        case .poor, .veryPoor:  return Color.manifoldCritical
         }
     }
 }
@@ -248,26 +342,48 @@ struct TemperatureSection: View {
         VStack(alignment: .leading, spacing: 12) {
             BatterySectionHeader(
                 titleKey: "window.battery.section.temperature",
+                statusIcon: temperatureIcon,
+                statusTint: temperatureColor,
                 infoTitleKey: "window.battery.info.temperature.title",
                 infoBodyKey: "window.battery.info.temperature.body",
                 isShown: $isInfoShown
             )
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(String(format: "%.1f°C", battery.temperatureCelsius))
-                    .font(.title2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(temperatureColor)
-                Text(String(format: "(%.1f°F)", celsiusToFahrenheit(battery.temperatureCelsius)))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "thermometer.medium")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(temperatureColor)
+                        Text(String(format: "%.1f°C", battery.temperatureCelsius))
+                            .font(.title2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(temperatureColor)
+                    }
+                    Text(String(format: "%.1f°F", celsiusToFahrenheit(battery.temperatureCelsius)))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Image(systemName: temperatureIcon)
+                            .font(.caption2.weight(.semibold))
+                        Text(LocalizedStringKey(temperatureBandKey))
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(temperatureColor, in: Capsule())
+                    Text(LocalizedStringKey(temperatureSubtitleKey))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
 
-    /// Color-graded threshold readouts. <30°C reads as healthy accent
-    /// green; 30–40°C as default text (ordinary warm operation);
-    /// 40–45°C as warning amber; ≥45°C as critical red. Matches the
-    /// rough contour of macOS's own battery temperature warnings.
+    /// Temperature band: <30 healthy, 30–40 ordinary, 40–45 warm,
+    /// ≥45 hot. Matches macOS's own thermal signaling contour.
     private var temperatureColor: Color {
         let c = battery.temperatureCelsius
         switch c {
@@ -279,6 +395,43 @@ struct TemperatureSection: View {
             return Color.manifoldWarning
         default:
             return Color.manifoldCritical
+        }
+    }
+
+    private var temperatureIcon: String {
+        let c = battery.temperatureCelsius
+        switch c {
+        case ..<BatteryViewSectionsConstants.temperatureWarningStart:
+            return "checkmark.circle.fill"
+        case BatteryViewSectionsConstants.temperatureWarningStart..<BatteryViewSectionsConstants.temperatureCriticalStart:
+            return "exclamationmark.triangle.fill"
+        default:
+            return "flame.fill"
+        }
+    }
+
+    private var temperatureBandKey: String {
+        let c = battery.temperatureCelsius
+        switch c {
+        case ..<BatteryViewSectionsConstants.temperatureWarmStart:    return "window.battery.temperatureBand.normal"
+        case BatteryViewSectionsConstants.temperatureWarmStart..<BatteryViewSectionsConstants.temperatureWarningStart:
+            return "window.battery.temperatureBand.normal"
+        case BatteryViewSectionsConstants.temperatureWarningStart..<BatteryViewSectionsConstants.temperatureCriticalStart:
+            return "window.battery.temperatureBand.warm"
+        default:
+            return "window.battery.temperatureBand.hot"
+        }
+    }
+
+    private var temperatureSubtitleKey: String {
+        let c = battery.temperatureCelsius
+        switch c {
+        case ..<BatteryViewSectionsConstants.temperatureWarningStart:
+            return "window.battery.temperatureSubtitle.normal"
+        case BatteryViewSectionsConstants.temperatureWarningStart..<BatteryViewSectionsConstants.temperatureCriticalStart:
+            return "window.battery.temperatureSubtitle.warm"
+        default:
+            return "window.battery.temperatureSubtitle.hot"
         }
     }
 
@@ -298,36 +451,95 @@ struct PowerElectricalSection: View {
         VStack(alignment: .leading, spacing: 12) {
             BatterySectionHeader(
                 titleKey: "window.battery.section.power",
+                statusIcon: "bolt.circle.fill",
+                statusTint: Color.manifoldAccent,
                 infoTitleKey: "window.battery.info.power.title",
                 infoBodyKey: "window.battery.info.power.body",
                 isShown: $isInfoShown
             )
-            BatteryDetailRow(
-                labelKey: "window.battery.field.power",
-                value: String(format: "%.2f W", battery.powerWatts)
-            )
-            BatteryDetailRow(
-                labelKey: "window.battery.field.voltage",
-                value: String(format: "%.2f V", battery.voltageVolts)
-            )
-            HStack(alignment: .firstTextBaseline) {
-                Text("window.battery.field.current")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            // Two-column grid: Power / Voltage on top row, Current /
+            // mini-status on bottom row. Mirrors the Juicy layout for
+            // at-a-glance pickup.
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("window.battery.field.power")
+                        .font(.caption.smallCaps())
+                        .foregroundStyle(.secondary)
+                    Text(String(format: "%.2f W", battery.powerWatts))
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.manifoldText)
+                }
                 Spacer()
-                if battery.amperageMilliamps > 0 {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.manifoldAccent)
-                } else if battery.amperageMilliamps < 0 {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.caption)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("window.battery.field.voltage")
+                        .font(.caption.smallCaps())
+                        .foregroundStyle(.secondary)
+                    Text(String(format: "%.2f V", battery.voltageVolts))
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.manifoldText)
+                }
+            }
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("window.battery.field.current")
+                        .font(.caption.smallCaps())
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text(String(format: "%+d mA", battery.amperageMilliamps))
+                            .font(.title3.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(Color.manifoldText)
+                        currentArrow
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Image(systemName: powerStatusIcon)
+                            .font(.caption2.weight(.semibold))
+                        Text(LocalizedStringKey(powerStatusKey))
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(Color.manifoldAccent)
+                    Text("window.battery.voltageSubtitle.normal")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Text(String(format: "%+d mA", battery.amperageMilliamps))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(Color.manifoldText)
             }
+        }
+    }
+
+    /// Direction arrow next to the signed mA value: up = charging,
+    /// down = discharging, hidden when the current is zero (idle).
+    @ViewBuilder
+    private var currentArrow: some View {
+        if battery.amperageMilliamps > 0 {
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Color.manifoldAccent)
+        } else if battery.amperageMilliamps < 0 {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Color.manifoldWarning)
+        }
+    }
+
+    private var powerStatusIcon: String {
+        switch battery.chargeState {
+        case .charging:      return "bolt.fill"
+        case .fullyCharged:  return "checkmark.circle.fill"
+        case .discharging:   return "battery.50"
+        case .notCharging:   return "pause.fill"
+        case .unknown:       return "questionmark"
+        }
+    }
+
+    private var powerStatusKey: String {
+        switch battery.chargeState {
+        case .charging:      return "host.battery.chargeState.charging"
+        case .fullyCharged:  return "host.battery.chargeState.fullyCharged"
+        case .discharging:   return "host.battery.chargeState.discharging"
+        case .notCharging:   return "host.battery.chargeState.notCharging"
+        case .unknown:       return "host.battery.chargeState.unknown"
         }
     }
 }
@@ -343,52 +555,141 @@ struct CapacityDetailsSection: View {
         VStack(alignment: .leading, spacing: 12) {
             BatterySectionHeader(
                 titleKey: "window.battery.section.capacity",
+                statusIcon: "battery.100",
+                statusTint: Color.manifoldAccent,
                 infoTitleKey: "window.battery.info.capacity.title",
                 infoBodyKey: "window.battery.info.capacity.body",
                 isShown: $isInfoShown
             )
-            BatteryDetailRow(
+            BatteryCapacityRow(
                 labelKey: "window.battery.field.remaining",
-                value: String(format: "%d mAh", battery.currentCapacityMAh)
+                valueMilliampHours: battery.currentCapacityMAh,
+                tint: Color.manifoldAccent
             )
-            HStack(alignment: .firstTextBaseline) {
-                Text("window.battery.field.fullCharge")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(String(format: "%d mAh (%d%%)", battery.nominalCapacityMAh, battery.healthPercent))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(Color.manifoldText)
-            }
-            BatteryDetailRow(
+            BatteryCapacityRow(
+                labelKey: "window.battery.field.fullCharge",
+                valueMilliampHours: battery.nominalCapacityMAh,
+                tint: Color.manifoldAccent.opacity(0.85),
+                trailingCaption: String(format: "%d%%", battery.healthPercent)
+            )
+            BatteryCapacityRow(
                 labelKey: "window.battery.field.design",
-                value: String(format: "%d mAh", battery.designCapacityMAh)
+                valueMilliampHours: battery.designCapacityMAh,
+                tint: .secondary
             )
+            Text("window.battery.capacity.refresh.note")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }
 
+/// Single "label → value mAh" row used by `CapacityDetailsSection`.
+/// Formats the value with thousands separators (5,073 mAh) and tints
+/// the value per `tint` so the three rows read as a small bar chart
+/// of "remaining (live) / current full / design".
+struct BatteryCapacityRow: View {
+    let labelKey: LocalizedStringKey
+    let valueMilliampHours: Int
+    let tint: Color
+    let trailingCaption: String?
+
+    init(
+        labelKey: LocalizedStringKey,
+        valueMilliampHours: Int,
+        tint: Color,
+        trailingCaption: String? = nil
+    ) {
+        self.labelKey = labelKey
+        self.valueMilliampHours = valueMilliampHours
+        self.tint = tint
+        self.trailingCaption = trailingCaption
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(labelKey)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer()
+            HStack(spacing: 6) {
+                Text(formattedValue)
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(tint)
+                Text("window.battery.unit.mAh")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                if let trailingCaption {
+                    Text("(\(trailingCaption))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var formattedValue: String {
+        Self.numberFormatter.string(from: NSNumber(value: valueMilliampHours))
+            ?? String(valueMilliampHours)
+    }
+
+    /// Thousands-separator formatter shared across rows. `decimal`
+    /// style with 0 fraction digits → "5,073". Cached as a static so
+    /// each row update is allocation-free.
+    private static let numberFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        return f
+    }()
+}
+
 // MARK: - Shared section header
 
-/// Section header with a title in caption smallcaps + an `(i)` info
-/// button that opens a SwiftUI popover (per Q15 — NOT NSPopover; the
-/// AppKit popover is reserved for the menu-bar slot).
+/// Section header with an optional leading colored status icon, a
+/// title in caption smallcaps, and an `(i)` info button that opens a
+/// SwiftUI popover (per Q15 — NOT NSPopover; the AppKit popover is
+/// reserved for the menu-bar slot).
 struct BatterySectionHeader: View {
     let titleKey: LocalizedStringKey
+    let statusIcon: String?
+    let statusTint: Color
     let infoTitleKey: LocalizedStringKey
     let infoBodyKey: LocalizedStringKey
     @Binding var isShown: Bool
 
+    init(
+        titleKey: LocalizedStringKey,
+        statusIcon: String? = nil,
+        statusTint: Color = Color.manifoldAccent,
+        infoTitleKey: LocalizedStringKey,
+        infoBodyKey: LocalizedStringKey,
+        isShown: Binding<Bool>
+    ) {
+        self.titleKey = titleKey
+        self.statusIcon = statusIcon
+        self.statusTint = statusTint
+        self.infoTitleKey = infoTitleKey
+        self.infoBodyKey = infoBodyKey
+        self._isShown = isShown
+    }
+
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 8) {
+            if let statusIcon {
+                Image(systemName: statusIcon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(statusTint)
+            }
             Text(titleKey)
-                .font(.caption.smallCaps())
-                .foregroundStyle(.secondary)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.manifoldText)
+            Spacer()
             Button {
                 isShown.toggle()
             } label: {
                 Image(systemName: "info.circle")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -403,7 +704,6 @@ struct BatterySectionHeader: View {
                 .frame(width: BatteryViewSectionsConstants.infoPopoverWidth)
                 .padding()
             }
-            Spacer()
         }
     }
 }
@@ -468,4 +768,12 @@ enum BatteryViewSectionsConstants {
     /// header. Matches the readable-line-length guideline (~60 ch) so
     /// the body copy doesn't read as a single long line.
     static let infoPopoverWidth: CGFloat = 320
+
+    /// Manufacturer-rated maximum charge cycles for modern Apple
+    /// silicon Macs (and Intel Macs from 2016+). Used as the
+    /// denominator in the `BatteryHealthSection` "X / Y" cycle-count
+    /// readout. Older Intel Macs (≤2015) were rated lower (300 / 500),
+    /// but they predate the `MACOSX_DEPLOYMENT_TARGET = 26.0` gate
+    /// and aren't a concern.
+    static let ratedMaxCycles: Int = 1000
 }

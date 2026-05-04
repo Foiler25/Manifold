@@ -47,21 +47,67 @@ struct BatteryView: View {
 
     private func populated(battery: BatteryInfo) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 16) {
+                // Charge banner — always full-width, hero card.
                 ChargeBannerSection(battery: battery)
-                Divider()
+                    .padding(BatteryViewConstants.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: BatteryViewConstants.cardCornerRadius)
+                            .fill(Color.manifoldCard)
+                    )
+
+                // Detail cards — each its own elevated surface so the
+                // section affordances (icon + title + (i)) read as a
+                // grouped unit rather than a long flowing column.
                 BatteryHealthSection(battery: battery)
-                Divider()
+                    .padding(BatteryViewConstants.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: BatteryViewConstants.cardCornerRadius)
+                            .fill(Color.manifoldCard)
+                    )
+
                 TemperatureSection(battery: battery)
-                Divider()
+                    .padding(BatteryViewConstants.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: BatteryViewConstants.cardCornerRadius)
+                            .fill(Color.manifoldCard)
+                    )
+
                 PowerElectricalSection(battery: battery)
-                Divider()
+                    .padding(BatteryViewConstants.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: BatteryViewConstants.cardCornerRadius)
+                            .fill(Color.manifoldCard)
+                    )
+
                 CapacityDetailsSection(battery: battery)
+                    .padding(BatteryViewConstants.cardPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: BatteryViewConstants.cardCornerRadius)
+                            .fill(Color.manifoldCard)
+                    )
             }
             .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("window.tab.battery.populated")
+    }
+
+    // MARK: - Constants
+
+    private enum BatteryViewConstants {
+        /// Padding inside each tab card — slightly more generous than
+        /// the popover so the larger window's airier baseline reads
+        /// as native.
+        static let cardPadding: CGFloat = 16
+
+        /// Corner radius of each tab card. Matches the popover's
+        /// card radius so the two surfaces feel visually unified.
+        static let cardCornerRadius: CGFloat = 12
     }
 
     // MARK: - Empty state (desktop Mac path, §20.10)

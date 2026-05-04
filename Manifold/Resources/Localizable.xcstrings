@@ -1494,6 +1494,54 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold could not find an internal battery. This is normal on a Mac mini, Mac Studio, or Mac Pro." } } }
     },
+    "window.battery.info.section.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery Information" } } }
+    },
+    "window.battery.untilFull.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Until full" } } }
+    },
+    "window.battery.untilEmpty.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Until empty" } } }
+    },
+    "window.battery.temperatureBand.normal" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Normal" } } }
+    },
+    "window.battery.temperatureBand.warm" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Warm" } } }
+    },
+    "window.battery.temperatureBand.hot" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Hot" } } }
+    },
+    "window.battery.temperatureSubtitle.normal" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Optimal performance" } } }
+    },
+    "window.battery.temperatureSubtitle.warm" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Throttling possible" } } }
+    },
+    "window.battery.temperatureSubtitle.hot" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cool down required" } } }
+    },
+    "window.battery.voltageSubtitle.normal" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Normal voltage" } } }
+    },
+    "window.battery.unit.mAh" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "mAh" } } }
+    },
+    "window.battery.capacity.refresh.note" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery health refreshes every two minutes." } } }
+    },
     "menubar.battery.icon.accessibility" : {
       "comment" : "VoiceOver-only base label set on the secondary menubar button before each setBattery(_:) updates it with a percentage-aware summary.",
       "extractionState" : "manual",

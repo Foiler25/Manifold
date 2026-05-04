@@ -126,12 +126,30 @@ enum BatterySnapshotReader {
             return nil
         }
 
+        // -- Discrete state ------------------------------------------
+        // Read state flags first so the charge-percent math can honor
+        // `FullyCharged` (Apple's Optimized Battery Charging stops the
+        // raw ratio at ~80–98 % to extend battery life while reporting
+        // the battery as full — macOS and Juicy display 100 % in this
+        // state, and so do we).
+        let cycleCount = readInt(properties, key: "CycleCount") ?? 0
+        let isCharging = readBool(properties, key: "IsCharging") ?? false
+        let isFullyCharged = readBool(properties, key: "FullyCharged") ?? false
+        let isExternalConnected = readBool(properties, key: "ExternalConnected") ?? false
+
         // -- Charge / health math ------------------------------------
-        let chargePercent = clamp(
+        let rawChargePercent = clamp(
             Int((Double(currentCapacity) / Double(maxCapacity) * BatterySnapshotReaderConstants.percentScale).rounded()),
             min: 0,
             max: BatterySnapshotReaderConstants.percentMax
         )
+        // Pin to 100 when the firmware has flagged the battery as full.
+        // The raw ratio can sit at 96–99 % indefinitely under Optimized
+        // Battery Charging — surfacing that as "98 %" while the menu
+        // bar / Juicy / System Settings all say "100 %" reads as a bug.
+        let chargePercent = isFullyCharged
+            ? BatterySnapshotReaderConstants.percentMax
+            : rawChargePercent
 
         // Health % = nominal / design × 100, rounded + clamped 0...100.
         let healthPercent = clamp(
@@ -139,12 +157,6 @@ enum BatterySnapshotReader {
             min: 0,
             max: BatterySnapshotReaderConstants.percentMax
         )
-
-        // -- Discrete state ------------------------------------------
-        let cycleCount = readInt(properties, key: "CycleCount") ?? 0
-        let isCharging = readBool(properties, key: "IsCharging") ?? false
-        let isFullyCharged = readBool(properties, key: "FullyCharged") ?? false
-        let isExternalConnected = readBool(properties, key: "ExternalConnected") ?? false
 
         // -- Continuous values ---------------------------------------
         // Temperature is published in centi-degrees (e.g. 3240 → 32.4).

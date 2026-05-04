@@ -71,6 +71,16 @@ final class BatteryStatusItemController {
     /// `StatusItemController.swift` (per D17 + SPEC §20.6).
     private var popoverDelegate: PopoverDelegateAdapter?
 
+    /// Global click-outside monitor token. NSPopover's `.transient`
+    /// behavior auto-installs a click-outside watcher, but elevating
+    /// the popover's host window to `.popUpMenu` level (which we do in
+    /// `configurePopoverWindowForFullscreenOverlay()` so the popover
+    /// floats over fullscreen apps) defeats that watcher — clicks
+    /// outside the popover go to the underlying app instead of closing
+    /// us. We re-add a manual watcher so the click-to-dismiss UX
+    /// survives the level elevation.
+    private var clickOutsideMonitor: Any?
+
     // MARK: - Init
 
     init(
@@ -135,6 +145,7 @@ final class BatteryStatusItemController {
     /// `menubarBatteryItemVisible` to false.
     func uninstall() {
         guard let item = statusItem else { return }
+        removeClickOutsideMonitor()
         NSStatusBar.system.removeStatusItem(item)
         statusItem = nil
         popover?.performClose(nil)
@@ -189,6 +200,33 @@ final class BatteryStatusItemController {
         guard let button = statusItem?.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         configurePopoverWindowForFullscreenOverlay()
+        installClickOutsideMonitor()
+    }
+
+    /// Add a global click-watcher that closes the popover when the
+    /// user clicks anywhere outside it. Compensates for NSPopover's
+    /// own transient watcher being defeated by the elevated window
+    /// level. Idempotent — re-installing is a no-op.
+    private func installClickOutsideMonitor() {
+        guard clickOutsideMonitor == nil else { return }
+        clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.popover?.performClose(nil)
+            }
+        }
+    }
+
+    /// Remove the global click-watcher. Called from
+    /// `popoverDidClose`-bridge so the watcher's lifetime mirrors the
+    /// popover's visible state — keeps idle CPU at zero when the
+    /// popover is hidden.
+    private func removeClickOutsideMonitor() {
+        if let monitor = clickOutsideMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickOutsideMonitor = nil
+        }
     }
 
     /// Lifts the popover's underlying NSWindow to a level + collection
@@ -208,9 +246,21 @@ final class BatteryStatusItemController {
             graph: graph,
             onOpenWindow: onOpenWindow
         )
+        // Wrap `onPopoverDidClose` so the click-outside monitor is
+        // torn down whenever the popover hides — including the
+        // user's outside-click path AND the AppDelegate-driven
+        // sampler-lifecycle path. Avoids leaking the global monitor
+        // when the popover is dismissed any way other than re-clicking
+        // the status item button.
+        let onClose = onPopoverDidClose
         let delegate = PopoverDelegateAdapter(
             onShow: onPopoverDidShow,
-            onClose: onPopoverDidClose
+            onClose: { [weak self] in
+                Task { @MainActor in
+                    self?.removeClickOutsideMonitor()
+                }
+                onClose()
+            }
         )
         popover.delegate = delegate
         self.popoverDelegate = delegate
