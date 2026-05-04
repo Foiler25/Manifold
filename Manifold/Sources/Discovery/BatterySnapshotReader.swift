@@ -39,6 +39,7 @@
 
 import Foundation
 import IOKit
+import IOKit.ps
 import ManifoldKit
 
 enum BatterySnapshotReader {
@@ -65,6 +66,19 @@ enum BatterySnapshotReader {
             return nil
         }
 
+        // Read the IOPS-API smoothed values up front. These match
+        // exactly what macOS shows in its menubar — kIOPSCurrentCapacity
+        // is the *displayed* percent (not the raw AppleSmartBattery
+        // ratio), and IOPSGetTimeRemainingEstimate is the *displayed*
+        // time-until-full / time-until-empty. Without these overrides
+        // we'd surface 95 % when macOS says 100 % (Optimized Battery
+        // Charging gap) and 105 hours of remaining time when macOS
+        // says 5 hours (raw AvgTimeToEmpty over-extrapolates at near-
+        // idle current draw). The IORegistry properties are still the
+        // source of truth for everything else (cycle count, voltage,
+        // temperature, capacity in mAh).
+        let smoothed = readIPSValues()
+
         var snapshot: BatteryInfo?
         withMatchingServices(matching) { iter in
             // `forEachEntry` takes ownership of each `IOObject` and
@@ -75,10 +89,113 @@ enum BatterySnapshotReader {
             forEachEntry(in: iter) { entry in
                 guard snapshot == nil else { return }
                 let properties = readAllProperties(of: entry)
-                snapshot = parse(properties: properties, at: Date())
+                snapshot = parse(
+                    properties: properties,
+                    at: Date(),
+                    smoothedChargePercent: smoothed.percent,
+                    smoothedTimeUntilFullMinutes: smoothed.timeUntilFullMinutes,
+                    smoothedTimeUntilEmptyMinutes: smoothed.timeUntilEmptyMinutes
+                )
             }
         }
         return snapshot
+    }
+
+    /// Smoothed charge percent + time-remaining tuple sourced from
+    /// `IOPSCopyPowerSourcesInfo` / `IOPSGetTimeRemainingEstimate`.
+    /// Each field independently nullable — if the IOPS API doesn't
+    /// publish a value (no battery, calculating, or kIOPSTimeRemaining-
+    /// Unlimited sentinel) the field stays nil and the caller falls
+    /// back to the raw IORegistry values from `parse(properties:)`.
+    ///
+    /// IOPS is a higher-level macOS power-source API that wraps a
+    /// large family of platform sources (AppleSmartBattery, UPS,
+    /// dock-power adapters) behind a stable shape. The values it
+    /// returns are the same ones the macOS menubar / Battery system
+    /// pane / Juicy display, so preferring IOPS over the raw IOKit
+    /// registry properties produces UI that matches every other
+    /// macOS surface.
+    ///
+    /// `IOPSGetPowerSourceDescription` returns an unretained
+    /// CFDictionary owned by `blob`; `IOPSCopyPowerSourcesInfo` and
+    /// `IOPSCopyPowerSourcesList` are caller-owned (`takeRetainedValue`).
+    /// This is a different API surface from the §5 IORegistry safe
+    /// wrappers — IOPS doesn't traffic in `io_object_t` handles, so
+    /// it's outside the §5 grep invariant by definition.
+    nonisolated private static func readIPSValues()
+        -> (percent: Int?, timeUntilFullMinutes: Int?, timeUntilEmptyMinutes: Int?)
+    {
+        var result: (percent: Int?, timeUntilFullMinutes: Int?, timeUntilEmptyMinutes: Int?)
+            = (nil, nil, nil)
+
+        guard let blobRef = IOPSCopyPowerSourcesInfo() else { return result }
+        let blob = blobRef.takeRetainedValue()
+
+        guard let listRef = IOPSCopyPowerSourcesList(blob) else { return result }
+        let list = listRef.takeRetainedValue() as Array
+
+        for sourceAny in list {
+            let source = sourceAny as CFTypeRef
+            guard let descRef = IOPSGetPowerSourceDescription(blob, source) else { continue }
+            // `IOPSGetPowerSourceDescription` returns an unretained
+            // reference owned by `blob` — Get*, not Copy*.
+            guard let desc = descRef.takeUnretainedValue() as? [String: Any] else { continue }
+
+            // Skip any non-internal source (UPS, dock-passthrough,
+            // attached battery accessories) — only the laptop's main
+            // battery feeds the percent / time-remaining display.
+            if let type = desc[kIOPSTypeKey as String] as? String,
+               type != (kIOPSInternalBatteryType as String) {
+                continue
+            }
+
+            if let p = desc[kIOPSCurrentCapacityKey as String] as? Int,
+               (0...BatterySnapshotReaderConstants.percentMax).contains(p) {
+                result.percent = p
+            }
+
+            // IOPS publishes time-to-empty / time-to-full as integer
+            // minutes. Negative or sentinel-large values mean
+            // "calculating" / "unknown" → keep nil so the UI shows
+            // the static "On Battery" / "Charging" pill instead of
+            // a misleading "X minutes" caption.
+            if let t = desc[kIOPSTimeToEmptyKey as String] as? Int, t > 0,
+               t < BatterySnapshotReaderConstants.timeRemainingSentinel {
+                result.timeUntilEmptyMinutes = t
+            }
+            if let t = desc[kIOPSTimeToFullChargeKey as String] as? Int, t > 0,
+               t < BatterySnapshotReaderConstants.timeRemainingSentinel {
+                result.timeUntilFullMinutes = t
+            }
+        }
+
+        // `IOPSGetTimeRemainingEstimate` is the same number macOS's
+        // menubar shows. It returns a `CFTimeInterval` in *seconds*:
+        //   kIOPSTimeRemainingUnlimited (-2): plugged in or full,
+        //                                     no countdown applies.
+        //   kIOPSTimeRemainingUnknown   (-1): not enough samples yet.
+        //   positive: seconds remaining.
+        // We use it as a more-authoritative override of the per-
+        // source kIOPSTimeToEmpty/Full keys (which can lag) — when it
+        // gives a real positive number, copy into whichever field
+        // matches the discharge direction we already inferred.
+        let estimate = IOPSGetTimeRemainingEstimate()
+        if estimate > 0 {
+            let estimatedMinutes = Int(estimate
+                                       / Double(BatterySnapshotReaderConstants.secondsPerMinute))
+            // Direction: if we already saw a time-to-empty from a
+            // source dict, the system thinks we're discharging; if a
+            // time-to-full, we're charging. Otherwise leave the
+            // estimate parked — the parser will pick whichever field
+            // matches the IORegistry-derived charge state.
+            if result.timeUntilEmptyMinutes != nil {
+                result.timeUntilEmptyMinutes = estimatedMinutes
+            } else if result.timeUntilFullMinutes != nil {
+                result.timeUntilFullMinutes = estimatedMinutes
+            }
+        }
+
+        return result
     }
 
     /// All IORegistry property keys this reader consults. Centralized
@@ -109,11 +226,24 @@ enum BatterySnapshotReader {
     /// `[String: Any]` keyed on the `AppleSmartBattery` IORegistry
     /// property names listed in SPEC §20.3.
     ///
+    /// The optional `smoothed*` parameters carry overrides sourced
+    /// from the IOPS API (see `readIPSValues`). When a smoothed
+    /// override is non-nil it wins over the IORegistry-derived
+    /// computation — this is how the live `currentSnapshot()` path
+    /// matches macOS's displayed values exactly. Tests pass nil
+    /// (the default) and exercise the pure IORegistry math.
+    ///
     /// Returns nil only when the dict is missing the bare-minimum
     /// fields needed to build a meaningful snapshot (capacity for the
     /// charge percent, design + nominal capacity for the health
     /// percent). Optional fields (time-until-full, etc.) flow as nil.
-    static func parse(properties: [String: Any], at sampledAt: Date) -> BatteryInfo? {
+    static func parse(
+        properties: [String: Any],
+        at sampledAt: Date,
+        smoothedChargePercent: Int? = nil,
+        smoothedTimeUntilFullMinutes: Int? = nil,
+        smoothedTimeUntilEmptyMinutes: Int? = nil
+    ) -> BatteryInfo? {
         // -- Required ------------------------------------------------
         guard
             let designCapacity = readInt(properties, key: "DesignCapacity"),
@@ -143,13 +273,23 @@ enum BatterySnapshotReader {
             min: 0,
             max: BatterySnapshotReaderConstants.percentMax
         )
-        // Pin to 100 when the firmware has flagged the battery as full.
-        // The raw ratio can sit at 96–99 % indefinitely under Optimized
-        // Battery Charging — surfacing that as "98 %" while the menu
-        // bar / Juicy / System Settings all say "100 %" reads as a bug.
-        let chargePercent = isFullyCharged
-            ? BatterySnapshotReaderConstants.percentMax
-            : rawChargePercent
+        // Three-tier resolution for the displayed percentage:
+        //   1. IOPS-smoothed value (matches macOS / Juicy exactly).
+        //   2. Pin to 100 when the firmware flagged FullyCharged
+        //      (handles the just-unplugged moment where IOPS may not
+        //      have refreshed yet).
+        //   3. Raw IORegistry ratio.
+        // Tests pass nil for the smoothed override and validate (3).
+        let chargePercent: Int
+        if let smoothed = smoothedChargePercent {
+            chargePercent = clamp(smoothed,
+                                  min: 0,
+                                  max: BatterySnapshotReaderConstants.percentMax)
+        } else if isFullyCharged {
+            chargePercent = BatterySnapshotReaderConstants.percentMax
+        } else {
+            chargePercent = rawChargePercent
+        }
 
         // Health % = nominal / design × 100, rounded + clamped 0...100.
         let healthPercent = clamp(
@@ -177,8 +317,15 @@ enum BatterySnapshotReader {
             / BatterySnapshotReaderConstants.milliampsPerAmp
 
         // -- Time remaining sentinels --------------------------------
-        let timeUntilFullMinutes = parseTimeRemaining(properties["AvgTimeToFull"])
-        let timeUntilEmptyMinutes = parseTimeRemaining(properties["AvgTimeToEmpty"])
+        // Same three-tier resolution as chargePercent. The raw
+        // `AvgTimeToFull` / `AvgTimeToEmpty` can over-extrapolate
+        // dramatically at near-idle current draw (e.g. surfacing 105
+        // hours of remaining time on a freshly-unplugged laptop); the
+        // IOPS-smoothed override fixes that.
+        let timeUntilFullMinutes = smoothedTimeUntilFullMinutes
+            ?? parseTimeRemaining(properties["AvgTimeToFull"])
+        let timeUntilEmptyMinutes = smoothedTimeUntilEmptyMinutes
+            ?? parseTimeRemaining(properties["AvgTimeToEmpty"])
 
         // -- Charge-state dispatch (§20.3, priority order) -----------
         let chargeState: BatteryInfo.ChargeState = {
@@ -363,4 +510,9 @@ enum BatterySnapshotReaderConstants {
     /// IOKit time-remaining sentinel threshold. `AvgTimeToFull` /
     /// `AvgTimeToEmpty` ≥ this means "uninitialized" / "not estimable".
     static let timeRemainingSentinel: Int = 65535
+
+    /// 1 minute → 60 seconds. Used for the IOPSGetTimeRemainingEstimate
+    /// → minutes conversion (the IOPS API returns CFTimeInterval in
+    /// seconds; Manifold's UI surfaces minutes).
+    static let secondsPerMinute: Int = 60
 }

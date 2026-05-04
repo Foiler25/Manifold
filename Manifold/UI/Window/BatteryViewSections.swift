@@ -52,7 +52,7 @@ struct ChargeBannerSection: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("\(battery.chargePercent)%")
                     .font(.system(size: 48, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(percentTint)
+                    .foregroundStyle(BatteryViewSectionsConstants.levelTint(percent: battery.chargePercent))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 Spacer()
@@ -77,25 +77,14 @@ struct ChargeBannerSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Solid proportional capacity bar. Charging or fully-
-            // charged tints accent green; otherwise the default text
-            // color so it doesn't fight the pill for attention.
-            CapacityBar(percent: battery.chargePercent,
-                        isAccentTinted: battery.chargeState == .charging
-                                     || battery.chargeState == .fullyCharged)
-                .padding(.top, 4)
-        }
-    }
-
-    /// Percent color: green when charging or fully charged, default
-    /// text color otherwise. Mirrors the capacity-bar tint so the
-    /// hero number and the bar agree on the live signal.
-    private var percentTint: Color {
-        switch battery.chargeState {
-        case .charging, .fullyCharged: return Color.manifoldAccent
-        case .discharging:             return Color.manifoldText
-        case .notCharging:             return Color.manifoldWarning
-        case .unknown:                 return Color.manifoldText
+            // Solid proportional capacity bar — tinted by charge level
+            // so a healthy battery reads green whether plugged in or
+            // on battery. Drops to amber under 20% and red under 10%.
+            CapacityBar(
+                percent: battery.chargePercent,
+                tint: BatteryViewSectionsConstants.levelTint(percent: battery.chargePercent)
+            )
+            .padding(.top, 4)
         }
     }
 
@@ -224,12 +213,13 @@ struct ChargeStatePill: View {
     }
 }
 
-/// Solid capacity bar — proportional rectangle fill. When charging or
-/// fully charged the bar tints accent green; otherwise the default
-/// text color so it doesn't fight the charge-state pill for attention.
+/// Solid capacity bar — proportional rectangle fill. The fill color
+/// is supplied by the caller (level-based green / amber / red) so the
+/// gauge tracks the level rather than the charge state — a healthy
+/// 95% on battery still reads green.
 struct CapacityBar: View {
     let percent: Int
-    let isAccentTinted: Bool
+    let tint: Color
 
     var body: some View {
         GeometryReader { geo in
@@ -237,7 +227,7 @@ struct CapacityBar: View {
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
                     .fill(Color.manifoldCard)
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
-                    .fill(isAccentTinted ? Color.manifoldAccent : Color.manifoldText)
+                    .fill(tint)
                     .frame(
                         width: max(
                             0,
@@ -285,8 +275,10 @@ struct BatteryHealthSection: View {
                 }
             }
             // Health bar — separate from the charge-capacity bar so
-            // the user reads the two ratios independently.
-            CapacityBar(percent: battery.healthPercent, isAccentTinted: true)
+            // the user reads the two ratios independently. Tinted by
+            // the section's health-condition color (green / amber /
+            // red) so the bar fill agrees with the condition pill.
+            CapacityBar(percent: battery.healthPercent, tint: healthTint)
         }
     }
 
@@ -382,15 +374,17 @@ struct TemperatureSection: View {
         }
     }
 
-    /// Temperature band: <30 healthy, 30–40 ordinary, 40–45 warm,
-    /// ≥45 hot. Matches macOS's own thermal signaling contour.
+    /// Temperature band: <40 normal (green), 40–45 warm (amber),
+    /// ≥45 hot (red). The previous middle "ordinary white" band
+    /// mapped to `Color.manifoldText` which collided with the pill's
+    /// white text and rendered the badge unreadable around 30–40°C
+    /// (which is the steady-state operating temperature for most
+    /// laptops). Collapsing the bottom two bands into one fixes that.
     private var temperatureColor: Color {
         let c = battery.temperatureCelsius
         switch c {
-        case ..<BatteryViewSectionsConstants.temperatureWarmStart:
+        case ..<BatteryViewSectionsConstants.temperatureWarningStart:
             return Color.manifoldAccent
-        case BatteryViewSectionsConstants.temperatureWarmStart..<BatteryViewSectionsConstants.temperatureWarningStart:
-            return Color.manifoldText
         case BatteryViewSectionsConstants.temperatureWarningStart..<BatteryViewSectionsConstants.temperatureCriticalStart:
             return Color.manifoldWarning
         default:
@@ -413,8 +407,7 @@ struct TemperatureSection: View {
     private var temperatureBandKey: String {
         let c = battery.temperatureCelsius
         switch c {
-        case ..<BatteryViewSectionsConstants.temperatureWarmStart:    return "window.battery.temperatureBand.normal"
-        case BatteryViewSectionsConstants.temperatureWarmStart..<BatteryViewSectionsConstants.temperatureWarningStart:
+        case ..<BatteryViewSectionsConstants.temperatureWarningStart:
             return "window.battery.temperatureBand.normal"
         case BatteryViewSectionsConstants.temperatureWarningStart..<BatteryViewSectionsConstants.temperatureCriticalStart:
             return "window.battery.temperatureBand.warm"
@@ -752,13 +745,30 @@ enum BatteryViewSectionsConstants {
     /// `1 minute → 60 seconds` for `DateComponentsFormatter` round-trips.
     static let secondsPerMinute: Int = 60
 
-    /// Color-grading thresholds for `TemperatureSection`. Below 30°C
-    /// reads as healthy; 30–40 ordinary; 40–45 warning; ≥45 critical.
-    /// Numbers reflect the rough contour of macOS's own battery
-    /// temperature alerts (no public API; observed empirically).
-    static let temperatureWarmStart: Double = 30
+    /// Color-grading thresholds for `TemperatureSection`. Below 40°C
+    /// reads as healthy (typical operating range); 40–45°C warning;
+    /// ≥45°C critical. Numbers reflect the rough contour of macOS's
+    /// own battery temperature alerts (no public API; observed
+    /// empirically).
     static let temperatureWarningStart: Double = 40
     static let temperatureCriticalStart: Double = 45
+
+    /// Level-based percent / bar color. ≥20% healthy (green), 11–19%
+    /// low (amber), ≤10% critical (red). Tracks the *level* of the
+    /// battery, not the charge state — a healthy 95% on battery
+    /// still reads green even though it's discharging. Inflection
+    /// points match the macOS native low-battery alert thresholds
+    /// (10% / 20% are the system-wide warning levels).
+    static let levelLowThreshold: Int = 20
+    static let levelCriticalThreshold: Int = 10
+
+    static func levelTint(percent: Int) -> Color {
+        switch percent {
+        case ...levelCriticalThreshold:                  return Color.manifoldCritical
+        case (levelCriticalThreshold + 1)..<levelLowThreshold: return Color.manifoldWarning
+        default:                                          return Color.manifoldAccent
+        }
+    }
 
     /// Celsius → Fahrenheit scale + offset.
     static let fahrenheitScale: Double = 1.8
