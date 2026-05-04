@@ -169,10 +169,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         samplerLifecycle.attach(sampler: sampler)
 
-        // Seed the initial walk through the same .fullRefresh path as
-        // any subsequent refresh — keeps the consumer's behavior
-        // uniform.
-        service.requestRefresh()
+        // Seed the initial walk by calling rebuildGraph directly.
+        // We previously routed through `service.requestRefresh()` for
+        // shape uniformity with subsequent refreshes, but that
+        // racy: `startEventConsumer` spawns a Task whose `for await
+        // event in service.events()` doesn't register its continuation
+        // until the Task body actually runs, which is later than the
+        // synchronous `requestRefresh()` emission. The `.fullRefresh`
+        // would fire into an empty continuation set + get dropped → the
+        // initial PortGraph populate never happened. Calling
+        // `rebuildGraph` directly closes the race; subsequent runtime
+        // refreshes still flow through `.fullRefresh` correctly because
+        // by then the consumer is established.
+        Task { @MainActor [weak self] in
+            await self?.rebuildGraph()
+        }
 
         // Phase 9: prompt for notification authorization once per
         // install. Detached Task because requestAuthorization is
@@ -232,6 +243,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()
+    }
+
+    /// Fires when the user clicks the dock icon (or our popover-button
+    /// `NSWorkspace.openApplication` re-trigger) while no main window
+    /// is visible. Returning true lets SwiftUI's WindowGroup default
+    /// behavior recreate the window from the scene definition.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        return true
     }
 
     // MARK: - Event consumer
@@ -542,6 +561,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyAutosaveName(to window: NSWindow) {
+        // Pin the NSWindow's minSize directly. SwiftUI's
+        // `.frame(minWidth:)` plus `.windowResizability(.contentMinSize)`
+        // is supposed to do this, but a stale autosaved frame from an
+        // earlier build with a smaller min could still restore below
+        // current values + leave SwiftUI in a sidebar-only collapsed
+        // state. Setting AppKit's minSize as a hard floor stops that.
+        window.minSize = MainWindowConstants.minimumWindowSize
+
+        // If the restored frame is smaller than the new floor, grow it
+        // back up to the minimum so the user doesn't see a clipped
+        // window on next launch.
+        var frame = window.frame
+        var needsResize = false
+        if frame.width < window.minSize.width {
+            frame.size.width = window.minSize.width
+            needsResize = true
+        }
+        if frame.height < window.minSize.height {
+            frame.size.height = window.minSize.height
+            needsResize = true
+        }
+        if needsResize {
+            window.setFrame(frame, display: true, animate: false)
+        }
+
         let didSet = window.setFrameAutosaveName(MainWindowConstants.windowFrameAutosaveName)
         if didSet {
             Log.app.notice("Main window frameAutosaveName set to \(MainWindowConstants.windowFrameAutosaveName, privacy: .public).")
@@ -571,31 +615,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Toolbar actions
 
-    /// Activate the app + bring the standalone window forward. If the
-    /// user has closed the WindowGroup window entirely, the system's
-    /// `applicationShouldHandleReopen` semantics re-create it the
-    /// next time the user clicks the dock icon; from a popover button
-    /// we settle for activating + revealing whichever window is
-    /// already present. Phase 6 may swap to `@Environment(\.openWindow)`
-    /// once `MainWindow` lands.
+    /// Activate the app + bring the standalone window forward. If no
+    /// titled+resizable window is present (user closed it entirely),
+    /// re-open the app bundle to trigger the
+    /// `applicationShouldHandleReopen` path that SwiftUI's WindowGroup
+    /// listens to, which recreates the window.
     private func openMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeKey {
-            window.makeKeyAndOrderFront(nil)
+        // Match the same heuristic `installMainWindowFrameAutosaveName`
+        // uses for the WindowGroup's NSWindow — the popover's
+        // _NSPopoverWindow is not .titled, the Settings window is
+        // typically not .resizable, so this isolates the main window.
+        let mainWindow = NSApp.windows.first(where: { window in
+            window.styleMask.contains(.titled)
+                && window.styleMask.contains(.resizable)
+        })
+
+        if let mainWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            if mainWindow.isMiniaturized { mainWindow.deminiaturize(nil) }
+            mainWindow.makeKeyAndOrderFront(nil)
             return
+        }
+
+        // Window has been closed entirely. Re-launching the bundle
+        // hits `applicationShouldHandleReopen` which SwiftUI's
+        // WindowGroup default behavior handles by re-creating the
+        // window. The completion handler runs off-main; logging only.
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(
+            at: Bundle.main.bundleURL,
+            configuration: config
+        ) { _, error in
+            if let error {
+                Log.app.error("openMainWindow re-open failed: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 
-    /// Open Settings. SwiftUI's `Settings` scene registers a handler
-    /// for the standard `showSettingsWindow:` selector (older
-    /// `showPreferencesWindow:` on macOS 12 and earlier; we target
-    /// macOS 26 so `showSettingsWindow:` is the only path). The
-    /// runtime selector lookup avoids importing the SettingsLink
-    /// symbol indirectly.
+    /// AppKit-side complement to `PopoverRoot`'s
+    /// `@Environment(\.openSettings)` action: activate the app so the
+    /// Settings window comes to the front when SwiftUI presents it
+    /// (the popover's `_NSPopoverWindow` is not key, so without an
+    /// explicit activate the new Settings window can open behind
+    /// whatever app was previously active).
     private func openSettings() {
         NSApp.activate(ignoringOtherApps: true)
-        let selector = NSSelectorFromString("showSettingsWindow:")
-        NSApp.sendAction(selector, to: nil, from: nil)
     }
 
 #if DEBUG

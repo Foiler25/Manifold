@@ -70,6 +70,34 @@ func intProperty(
     property(key, of: entry, as: NSNumber.self)?.intValue
 }
 
+/// Read a `Bool` (e.g. `ConnectionActive` on `AppleTCControllerType10`).
+/// IOKit Bools cross the CF bridge as `NSNumber` with `boolValue` ==
+/// `true` for `Yes` and `false` for `No`. Returns `nil` rather than
+/// `false` when missing so callers can distinguish "not advertised"
+/// from "advertised No" — the USB-C port walker uses this to detect
+/// schema drift.
+func boolProperty(
+    _ key: String,
+    of entry: borrowing IOObject
+) -> Bool? {
+    property(key, of: entry, as: NSNumber.self)?.boolValue
+}
+
+/// Read a `[String]` (e.g. `TransportsActive` on
+/// `AppleTCControllerType10`, which is a CF array of CF strings).
+/// Returns `nil` when the property is absent and `[]` when the
+/// property exists but is empty — distinct semantics that downstream
+/// callers care about.
+func stringArrayProperty(
+    _ key: String,
+    of entry: borrowing IOObject
+) -> [String]? {
+    guard let array = property(key, of: entry, as: NSArray.self) else {
+        return nil
+    }
+    return array.compactMap { $0 as? String }
+}
+
 /// Read a string property (e.g. `USB Product Name`, `USB Vendor Name`,
 /// `iSerialNumber`). Trims surrounding whitespace because some vendors
 /// ship product strings padded out to a fixed buffer length.

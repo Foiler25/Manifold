@@ -197,7 +197,16 @@ final class EventService: @unchecked Sendable {
         guard let snapshot = LiveIOKitUSBSource.makeSnapshot(from: entry) else {
             return
         }
-        let device = PortGraphBuilder.makeDevice(from: snapshot, timestamp: .now)
+        // Resolve mounted-volume names so a hot-plugged storage device's
+        // friendly name (e.g. "PlanckSSD") is populated on the very
+        // first `.attached` event, not delayed until the next walk.
+        // The DA enumeration is fast — a handful of mounted volumes.
+        let volumeNames = VolumeNameResolver.mountedVolumeNamesByDeviceModel()
+        let device = PortGraphBuilder.makeDevice(
+            from: snapshot,
+            volumeNames: volumeNames,
+            timestamp: .now
+        )
         let portID = PortID(snapshot.registryPath)
 
         Log.events.notice(

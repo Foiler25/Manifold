@@ -35,20 +35,39 @@ enum MainWindowConstants {
     static let defaultWindowSize: CGSize = CGSize(width: 920, height: 600)
 
     /// Minimum window size below which the three-pane layout collapses
-    /// uglily. Picked so each column has at least ~200 pt of usable
-    /// width.
-    static let minimumWindowSize: CGSize = CGSize(width: 720, height: 400)
+    /// uglily. Sized so that, with the sidebar + inspector at their
+    /// mins, the middle column still has ~240 pt of usable width.
+    static let minimumWindowSize: CGSize = CGSize(width: 780, height: 420)
 
-    /// Sidebar column ideal width. NavigationSplitView resolves it
-    /// against the user's resize gesture and the window's overall
-    /// width; this is the seed value.
-    static let sidebarIdealWidth: CGFloat = 200
-    static let sidebarMinWidth: CGFloat = 160
-    static let sidebarMaxWidth: CGFloat = 320
+    /// Sidebar column widths. The 220 pt minimum is the value the user
+    /// requested — host names longer than ~16 characters will tail-
+    /// truncate with an ellipsis at this width rather than clip past
+    /// the trailing edge (HostSidebarRow applies `.lineLimit(1)` +
+    /// `.truncationMode(.tail)` so the truncation is graceful).
+    static let sidebarIdealWidth: CGFloat = 240
+    static let sidebarMinWidth: CGFloat = 220
+    static let sidebarMaxWidth: CGFloat = 360
 
-    /// Detail column ideal width.
+    /// Legacy detail-column widths (used by the popover and any code
+    /// path that still treats the inspector as a NavigationSplitView
+    /// detail column). The native-polish refactor presents the inspector
+    /// via SwiftUI's `.inspector` modifier with the dedicated
+    /// `inspector*` widths below.
     static let detailIdealWidth: CGFloat = 280
     static let detailMinWidth: CGFloat = 240
+
+    /// Inspector / detail pane widths. Capped at 300 pt so the
+    /// device-detail pane stays a fixed slim column even on a wide
+    /// monitor — the topology canvas in the middle column is what
+    /// should absorb extra horizontal space, not the inspector.
+    static let inspectorMinWidth: CGFloat = 260
+    static let inspectorIdealWidth: CGFloat = 300
+    static let inspectorMaxWidth: CGFloat = 300
+
+    /// Ideal seed width for the middle (content) column. The actual
+    /// width flexes with the window size — sidebar and detail are
+    /// pinned within their own ranges, content absorbs the slack.
+    static let contentIdealWidth: CGFloat = 480
 
     // MARK: - Scene storage keys
 
@@ -67,6 +86,10 @@ enum MainWindowConstants {
     /// `@SceneStorage` key for the selected device's `DeviceID.rawValue`.
     /// Detail column reads this; nil → "select a device" empty state.
     static let sceneStorageSelectedDeviceKey = "manifold.window.selectedDevice"
+
+    /// `@SceneStorage` key for the inspector pane's visibility. Persisted
+    /// so a user who closes the inspector keeps it closed across launches.
+    static let sceneStorageInspectorVisibleKey = "manifold.window.inspectorVisible"
 
     /// `NSWindow.frameAutosaveName`. AppKit persists window size +
     /// position under the `defaults` key `"NSWindow Frame

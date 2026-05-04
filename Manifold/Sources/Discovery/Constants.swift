@@ -98,19 +98,26 @@ enum USBDiscoveryConstants {
 
         /// Tried in order when reading the device's requested power.
         ///
-        /// - `Requested Power` (canonical IOUSBHostDevice property,
-        ///   value in milliamps)
+        /// - `Requested Power` (legacy IOUSBHostDevice property,
+        ///   value in milliamps; absent on macOS 14+ / Apple Silicon)
         /// - `USB Power Required` (some legacy drivers expose it here)
         /// - `USBDeviceCurrent` (Apple T-series Mac internals
         ///   sometimes use this name)
+        /// - `UsbPowerSinkAllocation` (canonical key on macOS 14+ /
+        ///   Apple Silicon — the negotiated sink allocation in mA;
+        ///   verified on M-series with iPhone fast-charge = 2400 and
+        ///   USB-C SSDs reporting ~896. This is the only key that
+        ///   fires for most peripherals on current macOS, so without
+        ///   it every device's power column reads "—".)
         ///
         /// nil from every alternate means the device doesn't advertise
-        /// power requirements (uncommon for self-powered storage; very
-        /// common for built-in components).
+        /// power requirements (low-power HID receivers, hubs that
+        /// negotiate downstream).
         static let powerAlternates: [String] = [
             "Requested Power",
             "USB Power Required",
-            "USBDeviceCurrent"
+            "USBDeviceCurrent",
+            "UsbPowerSinkAllocation"
         ]
 
         /// Tried in order when reading the per-port available current

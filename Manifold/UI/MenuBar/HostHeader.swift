@@ -32,18 +32,39 @@ struct HostHeader: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(host.name)
+                Text(host.displayName)
                     .font(.headline)
                     .foregroundStyle(Color.manifoldText)
-                Text(host.model)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                // Show the bonjour hostname when we have a separate
+                // friendly name; otherwise fall back to the model so
+                // the subtitle row is never empty.
+                Text(host.friendlyName != nil ? host.name : host.model)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(host.totalPowerDraw.formatted)
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(Color.manifoldAccent)
+                // "<draw> / <charger>" reads at a glance — accent
+                // green for the live draw, dimmer secondary for the
+                // charger wattage so the eye lands on the active
+                // number first. Falls back to just the draw when on
+                // battery or on a desktop Mac without
+                // `AppleSmartBattery`.
+                HStack(spacing: 4) {
+                    Text(host.totalPowerDraw.formatted)
+                        .foregroundStyle(Color.manifoldAccent)
+                    if let input = host.inputPower {
+                        Text(verbatim: "/")
+                            .foregroundStyle(.secondary)
+                        Text(input.formatted)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline.monospacedDigit())
                 if diagnosticCount > 0 {
                     Text(diagnosticString(for: diagnosticCount))
                         .font(.caption)
@@ -83,7 +104,7 @@ struct HostHeader: View {
                 "popover.host.accessibility",
                 comment: "VoiceOver label for the host header."
             ),
-            host.name,
+            host.displayName,
             host.totalPowerDraw.formatted,
             diag
         )

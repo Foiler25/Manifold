@@ -43,11 +43,13 @@ import ManifoldKit
 
 /// Extra info about the host that PortGraphBuilder needs to assemble
 /// a `Host` value. Resolved by `DiscoveryService` from
-/// `IOPlatformExpertDevice` properties.
+/// `IOPlatformExpertDevice` properties + the macOS Sharing pane.
 struct HostMetadata: Sendable, Equatable {
     let id: HostID
     let name: String
+    let friendlyName: String?
     let model: String
+    let inputPower: Watts?
 }
 
 struct PortGraphBuilder: Sendable {
@@ -68,7 +70,9 @@ struct PortGraphBuilder: Sendable {
         return ManifoldKit.Host(
             id: metadata.id,
             name: metadata.name,
+            friendlyName: metadata.friendlyName,
             model: metadata.model,
+            inputPower: metadata.inputPower,
             ports: ports
         )
     }
@@ -88,16 +92,24 @@ struct PortGraphBuilder: Sendable {
     /// Closes Phase 2 deviation #3 ("Phase 2 keeps every port
     /// host-rooted; Phase 7 reconstructs hub hierarchy"). USB hubs
     /// AND TB daisy chains both nest now.
+    ///
+    /// `volumeNames` is an optional product-string → volume-name map
+    /// (e.g. "Creator SSD" → "PlanckSSD") populated by
+    /// `VolumeNameResolver`. Storage devices whose product string
+    /// keys this map get a `friendlyName` set on the resulting
+    /// `Device`. nil / empty map → no friendly names assigned.
     func merge(
         metadata: HostMetadata,
         usbDevices: [USBDeviceSnapshot],
         tbDevices: [TBDeviceSnapshot] = [],
         displays: [DisplaySnapshot] = [],
+        usbcPorts: [USBCPortSnapshot] = [],
+        volumeNames: [String: String] = [:],
         timestamp: Date = .now
     ) -> ManifoldKit.Host {
         // Step 1: build a flat list of Ports from USB + TB snapshots.
         let usbPorts: [ManifoldKit.Port] = usbDevices.enumerated().map { index, snap in
-            makePort(from: snap, position: snap.portNum ?? (index + 1), timestamp: timestamp)
+            makePort(from: snap, position: snap.portNum ?? (index + 1), volumeNames: volumeNames, timestamp: timestamp)
         }
         let tbPorts: [ManifoldKit.Port] = tbDevices.enumerated().map { index, snap in
             Self.makePort(fromTB: snap, position: index + 1, timestamp: timestamp)
@@ -115,12 +127,58 @@ struct PortGraphBuilder: Sendable {
         // path. Children find their nearest-prefix parent.
         let nested = Self.nestByRegistryPath(flat)
 
+        // Step 4: lift USB-C chassis-port snapshots into PhysicalPort
+        // values. Distinct from `Port` — covers empty + power-only
+        // states the data tree can't represent (a charging-only USB-C
+        // sink never enters IOUSB).
+        let physicalPorts = Self.makePhysicalPorts(from: usbcPorts)
+
         return ManifoldKit.Host(
             id: metadata.id,
             name: metadata.name,
+            friendlyName: metadata.friendlyName,
             model: metadata.model,
-            ports: nested
+            inputPower: metadata.inputPower,
+            ports: nested,
+            physicalPorts: physicalPorts
         )
+    }
+
+    /// Map raw `USBCPortSnapshot` entries to public `PhysicalPort`
+    /// values. The classification rule:
+    ///
+    ///   - `connectionActive == false` → `.empty`
+    ///   - `connectionActive == true` and `transportsActive` contains
+    ///     any of `USB2` / `USB3` / `CIO` / `DisplayPort` →
+    ///     `.dataDevice`
+    ///   - `connectionActive == true` and `transportsActive` contains
+    ///     only `CC` (or is empty) → `.powerOnly`
+    ///
+    /// `CC` is the USB-C configuration channel — the line that
+    /// negotiates power and orientation. Every connected port has it
+    /// active; a port that has *only* `CC` active is a power-only
+    /// sink (no USB data, no DisplayPort, no Thunderbolt).
+    static func makePhysicalPorts(from snapshots: [USBCPortSnapshot]) -> [PhysicalPort] {
+        snapshots.map { snap in
+            let kind = classifyPortKind(snap.portTypeDescription)
+            let state: PhysicalPort.OccupancyState = {
+                guard snap.connectionActive else { return .empty }
+                let dataTransports: Set<String> = ["USB2", "USB3", "CIO", "DisplayPort"]
+                if !Set(snap.transportsActive).intersection(dataTransports).isEmpty {
+                    return .dataDevice
+                }
+                return .powerOnly
+            }()
+            return PhysicalPort(position: snap.position, kind: kind, state: state)
+        }
+    }
+
+    private static func classifyPortKind(_ description: String?) -> PhysicalPort.PhysicalPortKind {
+        switch description {
+        case "USB-C": return .usbC
+        case let s? where s.hasPrefix("MagSafe"): return .magsafe
+        default: return .unknown
+        }
     }
 
     // MARK: - Snapshot → Port / Device
@@ -131,9 +189,10 @@ struct PortGraphBuilder: Sendable {
     private func makePort(
         from snapshot: USBDeviceSnapshot,
         position: Int,
+        volumeNames: [String: String] = [:],
         timestamp: Date
     ) -> ManifoldKit.Port {
-        let device = makeDevice(from: snapshot, timestamp: timestamp)
+        let device = makeDevice(from: snapshot, volumeNames: volumeNames, timestamp: timestamp)
         let linkSpeed = makeLinkSpeed(from: snapshot)
         let powerDraw = snapshot.requestedPowerMA
             .map { Watts.fromMilliamps($0, atVolts: USBBusVoltage.standard) }
@@ -162,7 +221,11 @@ struct PortGraphBuilder: Sendable {
     /// Phase 2 defaults — `kind = .other`, `displayInfo = nil`. Phase 5+
     /// refines `kind` via CoreAudio/HID parent walks; Phase 7 populates
     /// `displayInfo` from EDID.
-    static func makeDevice(from snapshot: USBDeviceSnapshot, timestamp: Date) -> Device {
+    static func makeDevice(
+        from snapshot: USBDeviceSnapshot,
+        volumeNames: [String: String] = [:],
+        timestamp: Date
+    ) -> Device {
         let id = DeviceID.make(
             vendorID: snapshot.vendorID,
             productID: snapshot.productID,
@@ -171,9 +234,17 @@ struct PortGraphBuilder: Sendable {
         )
         let resolvedName = snapshot.productName ?? "\(snapshot.vendorName ?? "Unknown") device"
 
+        // Match the device's product string against the volume-name map
+        // (also try a whitespace-trimmed variant since DiskArbitration
+        // sometimes returns the model padded with spaces). nil → no
+        // mounted volume — UI falls back to `name`.
+        let trimmedProduct = resolvedName.trimmingCharacters(in: .whitespaces)
+        let friendly = volumeNames[trimmedProduct] ?? volumeNames[resolvedName]
+
         return Device(
             id: id,
             name: resolvedName,
+            friendlyName: friendly,
             kind: .other,
             vendorID: snapshot.vendorID,
             productID: snapshot.productID,
@@ -185,8 +256,12 @@ struct PortGraphBuilder: Sendable {
         )
     }
 
-    private func makeDevice(from snapshot: USBDeviceSnapshot, timestamp: Date) -> Device {
-        Self.makeDevice(from: snapshot, timestamp: timestamp)
+    private func makeDevice(
+        from snapshot: USBDeviceSnapshot,
+        volumeNames: [String: String] = [:],
+        timestamp: Date
+    ) -> Device {
+        Self.makeDevice(from: snapshot, volumeNames: volumeNames, timestamp: timestamp)
     }
 
     /// Snapshot → LinkSpeed. Internal-static for the same reason as

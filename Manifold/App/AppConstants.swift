@@ -49,9 +49,24 @@ enum AppConstants {
     /// on the same string. Used in earnest from Phase 13.
     static let appGroupIdentifier: String = "group.com.Loofa.Manifold"
 
-    /// Size of the popover. Width 360 pt per SPEC §13.1 ("Fixed
-    /// width 360pt"); height tuned to fit ~6 device rows + header +
-    /// toolbar without scrolling on the typical Mac. Phase 4 widened
-    /// from Phase 1's 320 to match the SPEC.
-    static let popoverContentSize: CGSize = CGSize(width: 360, height: 420)
+    /// Initial seed size for the popover. Width 360 pt per SPEC §13.1
+    /// ("Fixed width 360pt"); height is just the first-frame value
+    /// before SwiftUI computes the real size — `PopoverRoot` drives
+    /// the actual height via `NSHostingController.preferredContentSize`,
+    /// scaling to fit the visible rows.
+    static let popoverContentSize: CGSize = CGSize(width: 360, height: 360)
+
+    /// Number of port rows visible in the popover before the inner
+    /// scroll view starts scrolling. Above this count the scroll
+    /// section pins at `popoverPortRowHeight × popoverScrollThreshold`
+    /// and the popover stops growing taller.
+    static let popoverScrollThreshold: Int = 3
+
+    /// Approximate visual height of one port row in the popover scroll
+    /// section: the row's header HStack + 6 pt spacing + the inline
+    /// TelemetryChart (72 pt) + 4+4 pt vertical padding from the
+    /// `.padding(.vertical, 4)` modifier wrapping each row. Used to
+    /// compute the scroll section's frame height so the popover hugs
+    /// its content for ≤ N rows and locks at N rows above.
+    static let popoverPortRowHeight: CGFloat = 130
 }

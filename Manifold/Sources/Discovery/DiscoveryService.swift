@@ -32,6 +32,7 @@
 
 import Foundation
 import IOKit
+import SystemConfiguration
 import os
 import ManifoldKit
 
@@ -43,6 +44,7 @@ final class DiscoveryService {
     private let usbWalker: USBWalker
     private let tbWalker: ThunderboltWalker
     private let displayResolver: DisplayResolver
+    private let usbcPortWalker: USBCPortWalker
     private let builder: PortGraphBuilder
     private let hostMetadataOverride: HostMetadata?
 
@@ -50,12 +52,14 @@ final class DiscoveryService {
         usbWalker: USBWalker = USBWalker(),
         tbWalker: ThunderboltWalker = ThunderboltWalker(),
         displayResolver: DisplayResolver = DisplayResolver(),
+        usbcPortWalker: USBCPortWalker = USBCPortWalker(),
         builder: PortGraphBuilder = PortGraphBuilder(),
         hostMetadataOverride: HostMetadata? = nil
     ) {
         self.usbWalker = usbWalker
         self.tbWalker = tbWalker
         self.displayResolver = displayResolver
+        self.usbcPortWalker = usbcPortWalker
         self.builder = builder
         self.hostMetadataOverride = hostMetadataOverride
     }
@@ -76,6 +80,7 @@ final class DiscoveryService {
         async let usbAwait = IOKitQueue.shared.usbWalk(walker: usbWalker)
         async let tbAwait = Self.tryTBWalk(via: tbWalker)
         async let displaysAwait = Self.tryResolveDisplays(via: displayResolver)
+        async let usbcPortsAwait = Self.tryUSBCPortWalk(via: usbcPortWalker)
         let metadata: HostMetadata
         if let override = hostMetadataOverride {
             metadata = override
@@ -83,18 +88,28 @@ final class DiscoveryService {
             metadata = await IOKitQueue.shared.resolveHostMetadata()
         }
 
-        // Surface USB errors; TB and Display soft-fail to empty
-        // arrays so a missing TB framework on a non-TB Mac (e.g.,
-        // older Air) doesn't break discovery entirely.
+        // Surface USB errors; TB, Display, and USB-C-port soft-fail
+        // to empty arrays so a missing class on Intel / older Macs
+        // doesn't break discovery entirely.
         let usbSnapshots = try await usbAwait
         let tbSnapshots = await tbAwait
         let displaySnapshots = await displaysAwait
+        let usbcPortSnapshots = await usbcPortsAwait
+
+        // Look up friendly volume names for any mounted USB / TB
+        // storage device. Cheap (DiskArbitration enumeration of a
+        // handful of mounted volumes) so we run it on every walk;
+        // hot-plugging an SSD between walks reliably picks up the new
+        // volume name after the next sample.
+        let volumeNames = VolumeNameResolver.mountedVolumeNamesByDeviceModel()
 
         let host = builder.merge(
             metadata: metadata,
             usbDevices: usbSnapshots,
             tbDevices: tbSnapshots,
-            displays: displaySnapshots
+            displays: displaySnapshots,
+            usbcPorts: usbcPortSnapshots,
+            volumeNames: volumeNames
         )
         return [host]
     }
@@ -121,6 +136,20 @@ final class DiscoveryService {
             return try await IOKitQueue.shared.resolveDisplays(resolver: resolver)
         } catch {
             Log.discovery.error("Display resolve failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
+    }
+
+    /// Same soft-fail policy for the USB-C chassis-port walker. On
+    /// Intel Macs / Apple Silicon variants where
+    /// `AppleTCControllerType10` doesn't exist, the matching dict
+    /// returns no results — that becomes an empty
+    /// `Host.physicalPorts` and the UI hides the section.
+    private static func tryUSBCPortWalk(via walker: USBCPortWalker) async -> [USBCPortSnapshot] {
+        do {
+            return try await IOKitQueue.shared.usbcPortWalk(walker: walker)
+        } catch {
+            Log.discovery.error("USB-C port walk failed: \(String(describing: error), privacy: .public)")
             return []
         }
     }
@@ -164,7 +193,9 @@ final class DiscoveryService {
         return HostMetadata(
             id: resolvedID ?? HostID("UNKNOWN-\(ProcessInfo.processInfo.hostName)"),
             name: ProcessInfo.processInfo.hostName,
-            model: resolvedModel ?? "Unknown"
+            friendlyName: resolveFriendlyName(),
+            model: resolvedModel ?? "Unknown",
+            inputPower: AdapterPowerReader.currentInputPower()
         )
     }
 
@@ -172,7 +203,21 @@ final class DiscoveryService {
         HostMetadata(
             id: HostID("UNKNOWN-\(ProcessInfo.processInfo.hostName)"),
             name: ProcessInfo.processInfo.hostName,
-            model: "Unknown"
+            friendlyName: resolveFriendlyName(),
+            model: "Unknown",
+            inputPower: AdapterPowerReader.currentInputPower()
         )
+    }
+
+    /// Read the user-set Computer Name from
+    /// `SCDynamicStoreCopyComputerName`. Returns `nil` when the call
+    /// fails (the toll-free-bridged String cast can't fail in
+    /// practice, but we propagate nil rather than empty so
+    /// `Host.displayName` falls back to the bonjour hostname).
+    nonisolated private static func resolveFriendlyName() -> String? {
+        guard let name = SCDynamicStoreCopyComputerName(nil, nil) as String? else {
+            return nil
+        }
+        return name.isEmpty ? nil : name
     }
 }

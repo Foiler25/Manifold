@@ -151,7 +151,13 @@ public enum PreviewData {
         id: HostID("PREVIEW-MAC-UUID"),
         name: "MacBook Pro",
         model: "Mac15,9",
-        ports: [logitechPort, sandiskPort, studioDisplayPort]
+        ports: [logitechPort, sandiskPort, studioDisplayPort],
+        physicalPorts: [
+            PhysicalPort(position: 1, kind: .usbC, state: .powerOnly),
+            PhysicalPort(position: 2, kind: .usbC, state: .dataDevice),
+            PhysicalPort(position: 3, kind: .usbC, state: .empty),
+            PhysicalPort(position: 4, kind: .usbC, state: .empty),
+        ]
     )
 
     /// Empty host — useful for the popover empty-state preview.

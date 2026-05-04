@@ -103,7 +103,8 @@ enum TopologyJSONExporter {
                     id: host.id,
                     name: host.name,
                     model: host.model,
-                    ports: trimmedPorts
+                    ports: trimmedPorts,
+                    physicalPorts: host.physicalPorts
                 )
             }
             guard !trimmed.isEmpty else { return nil }

@@ -77,6 +77,17 @@ actor IOKitQueue {
         try walker.walk()
     }
 
+    // MARK: - USB-C chassis ports
+
+    /// Run a `USBCPortWalker.walk()` on the IOKit serial executor.
+    /// Reads `AppleTCControllerType10` for chassis port occupancy
+    /// state — empty / data device / power-only sink — so the UI
+    /// can show power-only USB-C connections that never appear in
+    /// the IOUSB plane.
+    func usbcPortWalk(walker: USBCPortWalker) throws -> [USBCPortSnapshot] {
+        try walker.walk()
+    }
+
     // MARK: - Displays
 
     /// Run a `DisplayResolver.resolve()` on the IOKit serial

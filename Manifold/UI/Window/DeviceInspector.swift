@@ -51,9 +51,9 @@ struct DeviceInspector: View {
         device: Device
     ) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 20) {
                 header(device: device)
-                Divider()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 section(titleKey: "window.inspector.section.identity") {
                     keyValue("window.inspector.field.vendor", device.vendorID, formatHex)
                     keyValue("window.inspector.field.product", device.productID, formatHex)
@@ -64,12 +64,12 @@ struct DeviceInspector: View {
                         keyValueText("window.inspector.field.usbVersion", usbVersion.rawValue)
                     }
                 }
-                Divider()
                 section(titleKey: "window.inspector.section.connection") {
-                    keyValueText(
-                        "window.inspector.field.host",
-                        "\(host.name) (\(host.model))"
-                    )
+                    keyValueText("window.inspector.field.host", host.displayName)
+                    if host.friendlyName != nil, host.name != host.displayName {
+                        keyValueText("window.inspector.field.networkName", host.name)
+                    }
+                    keyValueText("window.inspector.field.model", host.model)
                     keyValueText(
                         "window.inspector.field.portPosition",
                         String(
@@ -85,16 +85,17 @@ struct DeviceInspector: View {
                         keyValueText("window.inspector.field.power", watts.formatted)
                     }
                 }
-                Divider()
                 section(titleKey: "window.inspector.section.telemetry") {
-                    Sparkline(samples: graph.history(forPortID: port.id)?.samples ?? [])
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    TelemetryChart(
+                        samples: graph.history(forPortID: port.id)?.samples ?? [],
+                        style: .expanded
+                    )
+                    .frame(maxWidth: .infinity)
                     Text("window.inspector.telemetry.caption")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 if let displayInfo = device.displayInfo {
-                    Divider()
                     section(titleKey: "window.inspector.section.display") {
                         keyValueText(
                             "window.inspector.field.resolution",
@@ -121,16 +122,41 @@ struct DeviceInspector: View {
 
     private func header(device: Device) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(device.name.isEmpty ? fallbackName(for: device) : device.name)
+            Text(displayName(for: device))
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Color.manifoldText)
+                .lineLimit(2)
+            // When a friendly volume name overrode the USB product
+            // string, surface the original product string as a
+            // secondary line so users can still see what the device
+            // reports itself as. Hidden when the two match.
+            if let friendly = device.friendlyName,
+               !friendly.isEmpty,
+               !device.name.isEmpty,
+               friendly != device.name {
+                Text(device.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Text(deviceKindLabel(device.kind))
                 .font(.caption.smallCaps())
                 .foregroundStyle(Color.manifoldAccent)
         }
     }
 
+    private func displayName(for device: Device) -> String {
+        if let friendly = device.friendlyName, !friendly.isEmpty {
+            return friendly
+        }
+        return device.name.isEmpty ? fallbackName(for: device) : device.name
+    }
+
     /// Reusable section frame: small-caps title + content vstack.
+    /// `.frame(maxWidth: .infinity, alignment: .leading)` ensures the
+    /// section claims the full inspector column width — without it,
+    /// `LabeledContent` rows inside size to their natural content,
+    /// pushing values past the column's right edge.
     private func section<Content: View>(
         titleKey: LocalizedStringKey,
         @ViewBuilder content: () -> Content
@@ -141,6 +167,7 @@ struct DeviceInspector: View {
                 .foregroundStyle(.secondary)
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Convenience for hex-formatted UInt16 fields (vendor/product
@@ -153,20 +180,30 @@ struct DeviceInspector: View {
         keyValueText(labelKey, format(value))
     }
 
-    /// Convenience for plain string fields.
+    /// Two-column key/value row: secondary-tinted label on the leading
+    /// edge, monospaced value pushed to the trailing edge. The
+    /// `Spacer()` requires the parent column to have a bounded width
+    /// (the outer `.frame(maxWidth:)` on the inspector content covers
+    /// that), otherwise the HStack would claim infinity and the value
+    /// would render past the column. Long values truncate with a tail
+    /// ellipsis; full untruncated value goes into a `.help()` tooltip.
     private func keyValueText(
         _ labelKey: LocalizedStringKey,
         _ value: String
     ) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(labelKey)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            Spacer()
+            Spacer(minLength: 8)
             Text(value)
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(Color.manifoldText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(value)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var emptyState: some View {

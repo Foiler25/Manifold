@@ -55,7 +55,6 @@ struct TopologyCanvas: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
                 topologyHeader(host: host)
-                Divider()
                 ForEach(host.ports, id: \.id) { port in
                     OutlineGroup(port, children: \.childrenForOutline) { node in
                         topologyRow(port: node)
@@ -77,7 +76,7 @@ struct TopologyCanvas: View {
             }
             .padding(.vertical, 12)
         }
-        .navigationTitle(host.name)
+        .navigationTitle(host.displayName)
     }
 
     private func topologyHeader(host: ManifoldKit.Host) -> some View {
@@ -98,6 +97,10 @@ struct TopologyCanvas: View {
                 summaryItem(
                     label: "window.topology.summary.totalDraw",
                     value: host.totalPowerDraw.formatted
+                )
+                summaryItem(
+                    label: "window.topology.summary.input",
+                    value: host.inputPower?.formatted ?? "—"
                 )
             }
         }
@@ -125,7 +128,7 @@ struct TopologyCanvas: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 if let device = port.connectedDevice {
-                    Text(device.name.isEmpty ? fallbackName(for: device) : device.name)
+                    Text(displayName(for: device))
                         .font(.body)
                         .foregroundStyle(Color.manifoldText)
                     Text(deviceCaption(port: port, device: device))
@@ -186,6 +189,15 @@ struct TopologyCanvas: View {
         )
     }
 
+    /// User-facing primary name: friendly volume name if set, else the
+    /// USB product string, else "Device VVVV:PPPP".
+    private func displayName(for device: Device) -> String {
+        if let friendly = device.friendlyName, !friendly.isEmpty {
+            return friendly
+        }
+        return device.name.isEmpty ? fallbackName(for: device) : device.name
+    }
+
     private func deviceCaption(port: ManifoldKit.Port, device: Device) -> String {
         let proto = port.negotiated?.protocolName
             ?? NSLocalizedString("popover.device.unknown.protocol", comment: "")
@@ -222,7 +234,7 @@ struct TopologyCanvas: View {
             ),
             portKindAccessibilityName(port.kind),
             port.position,
-            device.name.isEmpty ? fallbackName(for: device) : device.name,
+            displayName(for: device),
             proto,
             powerStr
         )

@@ -17,23 +17,24 @@
 // ─────────────────────────────────────────────────────────────────────
 // MainWindow.swift
 //
-// `WindowGroup` content per SPEC.md §13.2 / §18 Phase 6:
+// `WindowGroup` content per SPEC.md §13.2 / §18 Phase 6, with a Phase
+// "native polish" pass:
 //
-//   - `NavigationSplitView` with three columns:
-//     * Sidebar  (HostSidebar)
-//     * Content  (TabView: Topology / History / Diagnostics)
-//     * Detail   (DeviceInspector)
+//   - Two-column `NavigationSplitView`:
+//     * Sidebar (HostSidebar)
+//     * Detail  (the active tab's content)
+//   - Tabs live in the window toolbar as a segmented `Picker`.
+//   - The DeviceInspector is presented via SwiftUI's `.inspector`
+//     modifier (macOS 14+) so it gets native chrome and a toolbar
+//     toggle, instead of being a third NavigationSplitView column.
 //
-//   - Top tabs above the content column.
-//   - Window state persists across launches (selected tab, host,
-//     device IDs via `@SceneStorage`; window size/position via
-//     `NSWindow.frameAutosaveName` set in AppDelegate's window
-//     bring-up — handled by SwiftUI's WindowGroup automatically when
-//     `.windowResizability` is set).
+// Window state persists across launches (selected tab, host, device
+// IDs, inspector visibility via `@SceneStorage`; window size/position
+// via `NSWindow.frameAutosaveName` set in AppDelegate's window
+// bring-up).
 //
 // `onWindowAppear` / `onWindowDisappear` callbacks let AppDelegate
-// hook `SamplerLifecycle.windowDid{Appear,Disappear}()`. Phase 5
-// declared the lifecycle hooks; Phase 6 wires them.
+// hook `SamplerLifecycle.windowDid{Appear,Disappear}()`.
 
 import SwiftUI
 import ManifoldKit
@@ -57,15 +58,6 @@ struct MainWindow: View {
     /// the menu command and by the Cmd-E shortcut.
     @State private var isExportSheetPresented: Bool = false
 
-    /// Phase 15: tab-bar focus tracking. SPEC §18 Phase 15 #8 +
-    /// F18 close: the custom HStack-of-Buttons tabBar from Phase 6
-    /// gets focus-ring rendering, arrow-key navigation between
-    /// adjacent tabs, and ⌘1/⌘2/⌘3 jump bindings. SwiftUI's
-    /// `@FocusState` drives the focus ring; the keyboard handlers
-    /// move both the focus AND the selected-tab binding so VoiceOver
-    /// reads the change consistently.
-    @FocusState private var focusedTab: WindowTab?
-
     /// Phase 15 #7: first-launch onboarding. Default false →
     /// sheet presents on first MainWindow appearance; the sheet's
     /// Done button flips it to true and dismisses. Subsequent
@@ -85,6 +77,13 @@ struct MainWindow: View {
 
     @SceneStorage(MainWindowConstants.sceneStorageSelectedDeviceKey)
     private var selectedDeviceRaw: String = ""
+
+    /// Explicit column visibility, defaulting to `.all` so SwiftUI
+    /// doesn't auto-collapse the content + detail columns when the
+    /// restored window frame is narrower than expected. Without this
+    /// the user could end up looking at sidebar-only chrome with no
+    /// way back besides resizing the window.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     /// Computed binding from the raw `String` `@SceneStorage` to the
     /// typed `WindowTab`. Falling back to `.topology` for any
@@ -116,7 +115,7 @@ struct MainWindow: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             HostSidebar(graph: graph, selectedHostID: selectedHostID)
                 .navigationSplitViewColumnWidth(
                     min: MainWindowConstants.sidebarMinWidth,
@@ -124,25 +123,39 @@ struct MainWindow: View {
                     max: MainWindowConstants.sidebarMaxWidth
                 )
         } content: {
-            contentColumn
-                .navigationSplitViewColumnWidth(
-                    min: MainWindowConstants.detailMinWidth + 40,
-                    ideal: MainWindowConstants.defaultWindowSize.width
-                        - MainWindowConstants.sidebarIdealWidth
-                        - MainWindowConstants.detailIdealWidth
-                )
+            VStack(spacing: 0) {
+                tabPickerBar
+                Divider()
+                tabContent
+            }
+            .navigationTitle(navigationTitle)
+            // `.navigationSplitViewColumnWidth(ideal:)` with no min/max
+            // lets the content column flex freely as the user resizes
+            // the window — it absorbs the slack between sidebar and
+            // inspector mins instead of pinning to a fixed range.
+            .navigationSplitViewColumnWidth(
+                ideal: MainWindowConstants.contentIdealWidth
+            )
         } detail: {
-            DeviceInspector(graph: graph, selectedDeviceID: selectedDeviceID.wrappedValue)
-                .navigationSplitViewColumnWidth(
-                    min: MainWindowConstants.detailMinWidth,
-                    ideal: MainWindowConstants.detailIdealWidth
-                )
+            DeviceInspector(
+                graph: graph,
+                selectedDeviceID: selectedDeviceID.wrappedValue
+            )
+            .navigationSplitViewColumnWidth(
+                min: MainWindowConstants.inspectorMinWidth,
+                ideal: MainWindowConstants.inspectorIdealWidth,
+                max: MainWindowConstants.inspectorMaxWidth
+            )
         }
+        // `.balanced` keeps every column embedded in the window.
+        // `.automatic` could pick `.prominentDetail` and float the
+        // sidebar as a translucent overlay detached from the main
+        // window — that was the "left panel half hidden" symptom.
+        .navigationSplitViewStyle(.balanced)
         .frame(
             minWidth: MainWindowConstants.minimumWindowSize.width,
             minHeight: MainWindowConstants.minimumWindowSize.height
         )
-        .background(Color.manifoldSurface)
         .onAppear { onWindowAppear() }
         .onDisappear { onWindowDisappear() }
         .sheet(isPresented: $isExportSheetPresented) {
@@ -169,104 +182,50 @@ struct MainWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: .manifoldShowExportSheet)) { _ in
             isExportSheetPresented = true
         }
-        // Phase 15 #8 + F18: ⌘1/⌘2/⌘3 menu commands route through
-        // a process-wide notification (single-WindowGroup app, same
-        // pattern Phase 11 used for File ▸ Export). The userInfo
-        // payload carries the WindowTab.rawValue.
+        // ⌘1/⌘2/⌘3 menu commands route through a process-wide
+        // notification (single-WindowGroup app, same pattern Phase
+        // 11 used for File ▸ Export). The userInfo payload carries
+        // the WindowTab.rawValue.
         .onReceive(NotificationCenter.default.publisher(for: .manifoldSelectTab)) { note in
             if let raw = note.userInfo?["tab"] as? String,
                let tab = WindowTab(rawValue: raw) {
                 selectedTab.wrappedValue = tab
-                focusedTab = tab
             }
         }
     }
 
-    // MARK: - Content column with tabs
+    // MARK: - Toolbar
 
-    private var contentColumn: some View {
-        VStack(spacing: 0) {
-            tabBar
-            Divider()
-            tabContent
-        }
-    }
-
-    private var tabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(WindowTab.allCases) { tab in
-                tabButton(for: tab)
+    /// Inline picker bar that sits at the top of the content pane.
+    /// Living inside the content `VStack` (rather than as a
+    /// `ToolbarItem`) keeps the segments visually inside the middle
+    /// pane: a unified-toolbar `ToolbarItem(placement: .principal)`
+    /// competed with the window title, and `.primaryAction` rendered
+    /// past the inspector divider. The `.bar` material matches the
+    /// title bar's translucency so the two read as one continuous
+    /// chrome strip.
+    private var tabPickerBar: some View {
+        HStack {
+            Picker(selection: selectedTab) {
+                ForEach(WindowTab.allCases) { tab in
+                    Label(LocalizedStringKey(tab.labelKey), systemImage: tab.systemImageName)
+                        .accessibilityIdentifier("window.tab.\(tab.rawValue)")
+                        .tag(tab)
+                }
+            } label: {
+                Text("window.toolbar.tab.picker.label")
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.manifoldCard)
-        // Phase 15 #8 + F18: arrow-key navigation between tabs.
-        // SwiftUI dispatches the keypress to the focused descendant
-        // first; if no tab has focus we still respond here so the
-        // user can hit Left/Right after Tabbing to the bar.
-        .onKeyPress(.leftArrow, action: { advanceFocus(by: -1) })
-        .onKeyPress(.rightArrow, action: { advanceFocus(by: 1) })
+        .background(.bar)
     }
 
-    private func tabButton(for tab: WindowTab) -> some View {
-        let active = selectedTab.wrappedValue == tab
-        let position = (WindowTab.allCases.firstIndex(of: tab) ?? 0) + 1
-        return Button {
-            selectedTab.wrappedValue = tab
-            focusedTab = tab
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: tab.systemImageName)
-                Text(LocalizedStringKey(tab.labelKey))
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(active ? Color.manifoldAccent.opacity(0.18) : Color.clear)
-            .foregroundStyle(active ? Color.manifoldAccent : Color.secondary)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        // Phase 15 #8 + F18: focus ring rendering. The default
-        // `.plain` button style + `@FocusState` produces a system
-        // focus ring around the active button when it's the
-        // keyboard focus target.
-        .focused($focusedTab, equals: tab)
-        // VoiceOver reads "Topology, tab, 1 of 3" style. Position
-        // text is localized via the `accessibility.tab.position`
-        // key with `%1$lld` of `%2$lld`.
-        .accessibilityLabel(LocalizedStringKey(tab.labelKey))
-        .accessibilityValue(
-            String(
-                format: NSLocalizedString("accessibility.tab.position", comment: ""),
-                position,
-                WindowTab.allCases.count
-            )
-        )
-        .accessibilityAddTraits(active ? [.isSelected, .isHeader] : .isHeader)
-        // Stable identifier for `WindowUITests` queries — must match
-        // the values referenced by `WindowUITests.swift`. Format
-        // `window.tab.<rawValue>` keeps the binding obvious without a
-        // separate constants table.
-        .accessibilityIdentifier("window.tab.\(tab.rawValue)")
-    }
-
-    /// F18 closure helper. `delta = +1` for Right-Arrow, `-1` for
-    /// Left-Arrow. Wraps at the ends so the user doesn't get
-    /// stuck on the first/last tab (matches NSTabView native
-    /// behaviour). Updates BOTH `selectedTab` (so the content
-    /// column re-renders) and `focusedTab` (so the focus ring
-    /// follows).
-    private func advanceFocus(by delta: Int) -> KeyPress.Result {
-        let cases = WindowTab.allCases
-        let current = focusedTab ?? selectedTab.wrappedValue
-        guard let i = cases.firstIndex(of: current) else { return .ignored }
-        let next = cases[(i + delta + cases.count) % cases.count]
-        focusedTab = next
-        selectedTab.wrappedValue = next
-        return .handled
-    }
+    // MARK: - Tab content + helpers
 
     @ViewBuilder
     private var tabContent: some View {
@@ -285,12 +244,21 @@ struct MainWindow: View {
         }
     }
 
+    /// Window title text. Defaults to the selected host name so the
+    /// title bar reads "temporary-max-pro.local" rather than the
+    /// generic app name; falls back to the app name on cold launch
+    /// before the first walk has populated the graph.
+    private var navigationTitle: String {
+        selectedHostObject()?.name
+            ?? NSLocalizedString("window.title.fallback", comment: "")
+    }
+
     /// Resolve the persisted host selection against the live graph.
     /// If the persisted ID isn't present (host unplugged between
     /// launches — not realistic for a Mac, but defensive), default to
-    /// the first host so the content column always has something to
-    /// render. Returns nil only when the graph itself has no hosts
-    /// (cold launch before first walk).
+    /// the first host so the content always has something to render.
+    /// Returns nil only when the graph itself has no hosts (cold
+    /// launch before first walk).
     private func selectedHostObject() -> ManifoldKit.Host? {
         if let id = selectedHostID.wrappedValue,
            let match = graph.hosts.first(where: { $0.id == id }) {
@@ -336,8 +304,8 @@ extension Notification.Name {
     static let manifoldShowExportSheet = Notification.Name("com.Loofa.Manifold.showExportSheet")
 
     /// Phase 15 #8 + F18: posted by the View ▸ ⌘1/⌘2/⌘3 menu
-    /// commands so MainWindow updates `selectedTab` + `focusedTab`.
-    /// `userInfo["tab"]` carries the WindowTab.rawValue. Same
-    /// process-wide pattern Phase 11 used for the Export sheet.
+    /// commands so MainWindow updates `selectedTab`. `userInfo["tab"]`
+    /// carries the WindowTab.rawValue. Same process-wide pattern
+    /// Phase 11 used for the Export sheet.
     static let manifoldSelectTab = Notification.Name("com.Loofa.Manifold.selectTab")
 }

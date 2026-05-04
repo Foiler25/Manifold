@@ -40,17 +40,14 @@ struct HostSidebar: View {
     @Binding var selectedHostID: HostID?
 
     var body: some View {
-        List(selection: $selectedHostID) {
-            Section {
-                ForEach(graph.hosts) { host in
-                    HostSidebarRow(host: host)
-                        .tag(Optional(host.id))
-                }
-            } header: {
-                Text("window.sidebar.section.hosts")
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
-            }
+        // No Section wrapper — the macOS sidebar style applies a leading
+        // inset to section headers that, at the smallest sidebar widths,
+        // pushed the "HOSTS" caption off the leading edge so it rendered
+        // as "STS". A single-host (always the local Mac per SPEC §4) app
+        // doesn't need a visible section header to disambiguate anyway.
+        List(graph.hosts, selection: $selectedHostID) { host in
+            HostSidebarRow(host: host)
+                .tag(Optional(host.id))
         }
         .listStyle(.sidebar)
         .navigationTitle("window.sidebar.title")
@@ -68,17 +65,30 @@ private struct HostSidebarRow: View {
             Image(systemName: "laptopcomputer")
                 .foregroundStyle(Color.manifoldAccent)
             VStack(alignment: .leading, spacing: 1) {
-                Text(host.name)
+                Text(host.displayName)
                     .font(.body)
                     .foregroundStyle(Color.manifoldText)
-                Text(host.model)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                // Show bonjour hostname under the friendly name; if no
+                // friendly name is set, fall back to the model identifier.
+                Text(host.friendlyName != nil ? host.name : host.model)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            Spacer()
+            // Without explicit minLength, Spacer is willing to collapse
+            // to 0 pt when the host name claims the row's natural
+            // width — the host name then truncates inside the VStack
+            // instead of pushing the power figure past the trailing
+            // edge of the sidebar.
+            Spacer(minLength: 4)
             Text(host.totalPowerDraw.formatted)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
@@ -91,7 +101,7 @@ private struct HostSidebarRow: View {
                 "window.sidebar.host.accessibility",
                 comment: "VoiceOver label for one host row in the sidebar."
             ),
-            host.name,
+            host.displayName,
             host.model,
             host.totalPowerDraw.formatted
         )

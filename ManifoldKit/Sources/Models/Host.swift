@@ -34,17 +34,37 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
     /// UUID by the discovery layer. Persists across reboots.
     public let id: HostID
 
-    /// Human-readable model name as Apple publishes it ("MacBook Pro").
+    /// Bonjour / network host name ("temporary-max-pro.local"). Sourced
+    /// from `ProcessInfo.processInfo.hostName`.
     public let name: String
+
+    /// User-set Computer Name from the macOS Sharing pane
+    /// ("Temporary Max Pro"). Sourced from
+    /// `SCDynamicStoreCopyComputerName`. nil when the system call
+    /// fails or the user hasn't set one — UI falls back to `name`.
+    public let friendlyName: String?
 
     /// Apple model identifier ("Mac15,9", "MacBookPro18,4"). Used by
     /// Phase 8's diagnostic rules (some power budgets are model-keyed)
     /// and by Phase 12 exports.
     public let model: String
 
+    /// Connected charger wattage (MagSafe or USB-C PD). Sourced from
+    /// `AppleSmartBattery`'s `AdapterDetails`. nil on desktop Macs
+    /// (no battery service) or on laptops running unplugged.
+    public let inputPower: Watts?
+
     /// Top-level ports on this host. Each port may have downstream
     /// children (hubs, daisy-chained TB devices); see `Port.children`.
     public let ports: [Port]
+
+    /// Every physical port on the host chassis (USB-C@1..N, MagSafe).
+    /// Distinct from `ports` — `ports` is only the data-enumerated
+    /// subset. A USB-C chassis port that has a power-only sink (a
+    /// charging tape measure on a CC-only contract) appears here as
+    /// `state == .powerOnly` but has no entry in `ports` because the
+    /// device exposes no USB descriptors.
+    public let physicalPorts: [PhysicalPort]
 
     /// Total wattage draw across every device attached to this host,
     /// summed recursively through downstream hubs and daisy chains.
@@ -54,10 +74,54 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
         Watts(ports.reduce(0.0) { $0 + $1.totalDraw.value })
     }
 
-    public init(id: HostID, name: String, model: String, ports: [Port]) {
+    /// Total advertised port budget across every port on this host —
+    /// the supply-side counterpart to `totalPowerDraw`. Sums each
+    /// port's `availablePower` (recursively through hubs). Useful as
+    /// a "headroom" figure paired with `totalPowerDraw`. Zero when no
+    /// port advertises a budget; UI should treat zero as "unknown" /
+    /// "—" rather than "0 W".
+    public var totalPowerAvailable: Watts {
+        Watts(ports.reduce(0.0) { $0 + $1.totalAvailable.value })
+    }
+
+    public init(
+        id: HostID,
+        name: String,
+        friendlyName: String? = nil,
+        model: String,
+        inputPower: Watts? = nil,
+        ports: [Port],
+        physicalPorts: [PhysicalPort] = []
+    ) {
         self.id = id
         self.name = name
+        self.friendlyName = friendlyName
         self.model = model
+        self.inputPower = inputPower
         self.ports = ports
+        self.physicalPorts = physicalPorts
+    }
+
+    /// User-facing primary name: prefer the user-set Computer Name,
+    /// fall back to the Bonjour host name. Centralised so every view
+    /// renders the same thing.
+    public var displayName: String {
+        if let friendlyName, !friendlyName.isEmpty { return friendlyName }
+        return name
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, friendlyName, model, inputPower, ports, physicalPorts
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(HostID.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.friendlyName = try c.decodeIfPresent(String.self, forKey: .friendlyName)
+        self.model = try c.decode(String.self, forKey: .model)
+        self.inputPower = try c.decodeIfPresent(Watts.self, forKey: .inputPower)
+        self.ports = try c.decode([Port].self, forKey: .ports)
+        self.physicalPorts = try c.decodeIfPresent([PhysicalPort].self, forKey: .physicalPorts) ?? []
     }
 }

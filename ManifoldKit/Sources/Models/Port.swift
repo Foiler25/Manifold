@@ -97,6 +97,17 @@ public struct Port: Identifiable, Hashable, Sendable, Codable {
         return Watts(me + kids)
     }
 
+    /// Recursive sum of advertised port budgets — this port's
+    /// `availablePower` plus every descendant's. Mirrors `totalDraw`
+    /// but for the supply side, so a host header can report
+    /// "X W draw / Y W available" at a glance. Ports that don't
+    /// advertise a budget contribute zero.
+    public var totalAvailable: Watts {
+        let me = availablePower?.value ?? 0
+        let kids = children.reduce(0.0) { $0 + $1.totalAvailable.value }
+        return Watts(me + kids)
+    }
+
     public init(
         id: PortID,
         position: Int,

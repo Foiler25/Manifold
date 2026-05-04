@@ -60,8 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-**foiler25@github.io** (replace with the project owner's preferred contact
-once published).
+**foiler25@gmail.com**.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

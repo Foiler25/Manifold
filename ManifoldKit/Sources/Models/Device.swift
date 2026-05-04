@@ -61,6 +61,12 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
     /// resolved, even if empty).
     public let name: String
 
+    /// User-facing friendly name. For storage devices this is the
+    /// volume label the user has set (e.g. "PlanckSSD"); nil for
+    /// devices whose underlying transport doesn't expose one. UI
+    /// shows this as the primary label and falls back to `name`.
+    public let friendlyName: String?
+
     /// Coarse classification — see `DeviceKind`.
     public let kind: DeviceKind
 
@@ -96,6 +102,7 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
     public init(
         id: DeviceID,
         name: String,
+        friendlyName: String? = nil,
         kind: DeviceKind,
         vendorID: UInt16,
         productID: UInt16,
@@ -107,6 +114,7 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
     ) {
         self.id = id
         self.name = name
+        self.friendlyName = friendlyName
         self.kind = kind
         self.vendorID = vendorID
         self.productID = productID
@@ -115,5 +123,34 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
         self.displayInfo = displayInfo
         self.firstSeen = firstSeen
         self.lastSeen = lastSeen
+    }
+
+    /// User-facing primary name: prefer the friendly volume name when
+    /// present, fall back to the USB product string. Empty values
+    /// (devices that publish no strings) fall through so the caller
+    /// can substitute a "VID:PID" placeholder.
+    public var displayName: String {
+        if let friendlyName, !friendlyName.isEmpty { return friendlyName }
+        return name
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, friendlyName, kind, vendorID, productID
+        case serial, usbVersion, displayInfo, firstSeen, lastSeen
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(DeviceID.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.friendlyName = try c.decodeIfPresent(String.self, forKey: .friendlyName)
+        self.kind = try c.decode(DeviceKind.self, forKey: .kind)
+        self.vendorID = try c.decode(UInt16.self, forKey: .vendorID)
+        self.productID = try c.decode(UInt16.self, forKey: .productID)
+        self.serial = try c.decodeIfPresent(String.self, forKey: .serial)
+        self.usbVersion = try c.decodeIfPresent(USBVersion.self, forKey: .usbVersion)
+        self.displayInfo = try c.decodeIfPresent(DisplayInfo.self, forKey: .displayInfo)
+        self.firstSeen = try c.decode(Date.self, forKey: .firstSeen)
+        self.lastSeen = try c.decode(Date.self, forKey: .lastSeen)
     }
 }

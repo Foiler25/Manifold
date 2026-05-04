@@ -32,57 +32,69 @@ struct DeviceRow: View {
     let port: ManifoldKit.Port
     let device: Device
 
-    /// Phase 5: per-port telemetry buffer. nil → no samples yet
-    /// (placeholder line); `.samples` is the Sparkline's input. The
-    /// PortGraph passes this in from `history(forPortID:)`; the
+    /// Per-port telemetry buffer. nil → no samples yet (placeholder
+    /// line); `.samples` feeds the inline TelemetryChart. The
     /// `@Observable` PortGraph re-renders the row on every append.
     let history: TelemetryBuffer?
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: iconName(for: device.kind))
-                .font(.body)
-                .foregroundStyle(Color.manifoldAccent)
-                .frame(width: 18, alignment: .center)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayName)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: iconName(for: device.kind))
                     .font(.body)
-                    .foregroundStyle(Color.manifoldText)
-                Text(detailLine)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
+                    .foregroundStyle(Color.manifoldAccent)
+                    .frame(width: 18, alignment: .center)
 
-            Spacer()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.body)
+                        .foregroundStyle(Color.manifoldText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if let subtitle = productSubtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    Text(detailLine)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
-            // Sparkline + watts column. Phase 4 had only the watts
-            // value; Phase 5 adds the sparkline above it.
-            VStack(alignment: .trailing, spacing: 2) {
-                Sparkline(samples: history?.samples ?? [])
+                Spacer()
+
                 if let watts = port.powerDraw {
                     Text(watts.formatted)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
+
+            // Inline telemetry chart — same component as the inspector,
+            // sized for the popover. Shows the "Awaiting samples"
+            // placeholder until the first 1 Hz sample arrives so the
+            // row's height stays stable on hot-plug.
+            TelemetryChart(samples: history?.samples ?? [], style: .inline)
+                .padding(.leading, 26)  // align with the name text, past the icon column
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// Falls back to "Device VVVV:PPPP" when the device exposes no
-    /// product strings — matches the format the popover used since
-    /// Phase 1. Per Phase 6 Reviewer F14, the literal moves to
-    /// `Localizable.xcstrings` (`popover.device.fallback.name`) so a
-    /// future localisation pass can adapt the wording — the format
-    /// specifiers stay in the localised value.
+    /// Friendly volume name when present, else the USB product string,
+    /// else "Device VVVV:PPPP" as a last-resort fallback.
+    /// Per Phase 6 Reviewer F14 the catalog literal lives in
+    /// `popover.device.fallback.name`.
     private var displayName: String {
+        if let friendly = device.friendlyName, !friendly.isEmpty {
+            return friendly
+        }
         if !device.name.isEmpty { return device.name }
-        // Pre-format hex segments as String so the catalog entry can
-        // use %@ placeholders (xcstrings symbol generation rejects
-        // %04X). Equivalent output: "Device 0461:4E22".
         let vid = String(format: "%04X", device.vendorID)
         let pid = String(format: "%04X", device.productID)
         return String(
@@ -92,6 +104,18 @@ struct DeviceRow: View {
             ),
             vid, pid
         )
+    }
+
+    /// Secondary line under the device name when a friendly name has
+    /// shadowed the USB product string — surfaces the manufacturer's
+    /// model so the row still answers "what is this thing?" at a glance.
+    /// Returns nil when there's nothing extra to show.
+    private var productSubtitle: String? {
+        guard let friendly = device.friendlyName,
+              !friendly.isEmpty,
+              !device.name.isEmpty,
+              friendly != device.name else { return nil }
+        return device.name
     }
 
     /// "VID:PID · Protocol". Power lives in the trailing column above

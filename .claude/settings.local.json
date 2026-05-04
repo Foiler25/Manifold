@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild -scheme Manifold -configuration Debug -destination 'platform=macOS' build)",
+      "Bash(/Volumes/PlanckSSD/GitHub/Manifold/scripts/dev.sh restart *)",
+      "Bash(/Volumes/PlanckSSD/GitHub/Manifold/scripts/dev.sh status *)",
+      "Bash(pkill -x Manifold)",
+      "Bash(cliclick -V)",
+      "Bash(open /Users/loofa/Library/Developer/Xcode/DerivedData/Manifold-fsbcmqqgrvrshkhbpooybblejzap/Build/Products/Debug/Manifold.app)",
+      "Bash(pkill -f \"log stream.*com.Loofa.Manifold\")"
+    ]
+  }
+}

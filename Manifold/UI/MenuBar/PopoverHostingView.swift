@@ -46,14 +46,24 @@ enum PopoverHostingView {
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = AppConstants.popoverContentSize
-        popover.contentViewController = NSHostingController(
+        let hosting = NSHostingController(
             rootView: PopoverRoot(
                 graph: graph,
                 onOpenWindow: onOpenWindow,
                 onOpenSettings: onOpenSettings
             )
         )
+        // `.preferredContentSize` makes NSHostingController publish the
+        // SwiftUI root view's ideal size to its `preferredContentSize`,
+        // which NSPopover honours — letting `PopoverRoot`'s computed
+        // `.frame(height:)` drive the popover's actual size and shrink
+        // / grow as ports come and go.
+        hosting.sizingOptions = [.preferredContentSize]
+        // `contentSize` is the seed size before SwiftUI lays out the
+        // first time. Match the initial computed value for the
+        // 0-device case so the first-frame height isn't visibly wrong.
+        popover.contentSize = AppConstants.popoverContentSize
+        popover.contentViewController = hosting
         return popover
     }
 }

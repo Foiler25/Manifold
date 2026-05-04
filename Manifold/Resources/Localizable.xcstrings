@@ -256,6 +256,21 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "When Device Connects" } } }
     },
+    "telemetry.empty.caption" : {
+      "comment" : "Caption shown in the telemetry chart when no samples have arrived yet.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Awaiting samples" } } }
+    },
+    "telemetry.axis.now" : {
+      "comment" : "Telemetry chart x-axis label for the most recent sample.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Now" } } }
+    },
+    "telemetry.axis.secondsAgo" : {
+      "comment" : "Telemetry chart x-axis label for an older sample, %lld seconds ago.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "−%llds" } } }
+    },
     "accessibility.sparkline.empty" : {
       "comment" : "Spoken value for the sparkline when no samples have arrived yet.",
       "extractionState" : "manual",
@@ -782,6 +797,32 @@
         }
       }
     },
+    "popover.physicalPorts.title" : {
+      "comment" : "Section heading above the chassis-port occupancy strip.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB-C Ports" } } }
+    },
+    "popover.physicalPorts.state.empty" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "empty" } } }
+    },
+    "popover.physicalPorts.state.dataDevice" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "data device" } } }
+    },
+    "popover.physicalPorts.state.powerOnly" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "power-only" } } }
+    },
+    "popover.physicalPorts.state.unknown" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "unknown" } } }
+    },
+    "popover.physicalPorts.accessibility" : {
+      "comment" : "VoiceOver label for one chassis port chip. %1$lld = port number, %2$@ = state.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port %1$lld, %2$@" } } }
+    },
     "popover.port.empty" : {
       "comment" : "Inline label for an empty port slot. %lld = port position.",
       "extractionState" : "manual",
@@ -914,6 +955,26 @@
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@, %2$@, %3$@ total power" } } }
     },
 
+    "window.title.fallback" : {
+      "comment" : "Window title used before the first discovery walk has populated the host name.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold" } } }
+    },
+    "window.toolbar.tab.picker.label" : {
+      "comment" : "Hidden VoiceOver label for the toolbar tab segmented picker.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "View" } } }
+    },
+    "window.toolbar.inspector.toggle.help" : {
+      "comment" : "Tooltip for the toolbar button that shows or hides the inspector pane.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show or hide the inspector" } } }
+    },
+    "window.toolbar.inspector.toggle.accessibility" : {
+      "comment" : "VoiceOver label for the inspector toggle toolbar button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle inspector" } } }
+    },
     "window.tab.topology.label" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Topology" } } }
@@ -953,6 +1014,11 @@
     "window.topology.summary.totalDraw" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Total Draw" } } }
+    },
+    "window.topology.summary.input" : {
+      "comment" : "Topology header summary label — wall-power input from the connected charger (MagSafe or USB-C PD). Shows '—' on battery or on desktop Macs.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Input" } } }
     },
     "window.topology.emptyState.title" : {
       "extractionState" : "manual",
@@ -1002,7 +1068,7 @@
     },
     "window.tab.diagnostics.empty.subtitle" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No active diagnostics. Diagnostic rules begin firing in Phase 8." } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold is monitoring power, link speed, hub allocation, and daisy-chain depth." } } }
     },
 
     "window.inspector.section.identity" : {
@@ -1040,6 +1106,15 @@
     "window.inspector.field.host" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Host" } } }
+    },
+    "window.inspector.field.model" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Model" } } }
+    },
+    "window.inspector.field.networkName" : {
+      "comment" : "Inspector row label for the host's bonjour / network host name (shown alongside the friendly Computer Name).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Network Name" } } }
     },
     "window.inspector.field.portPosition" : {
       "extractionState" : "manual",

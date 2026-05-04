@@ -302,8 +302,11 @@ final class PortGraph {
                 host = ManifoldKit.Host(
                     id: host.id,
                     name: host.name,
+                    friendlyName: host.friendlyName,
                     model: host.model,
-                    ports: newPorts
+                    inputPower: host.inputPower,
+                    ports: newPorts,
+                    physicalPorts: host.physicalPorts
                 )
                 hosts[hostIndex] = host
                 return true
