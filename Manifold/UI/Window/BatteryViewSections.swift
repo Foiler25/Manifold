@@ -754,14 +754,16 @@ struct BatteryDetailRow: View {
 // MARK: - Constants
 
 enum BatteryViewSectionsConstants {
-    /// Capacity bar height in points. Sized to read as a chunky
-    /// "battery level" gauge at the tab's typical width.
-    static let capacityBarHeight: CGFloat = 16
+    /// Capacity bar height in points. A thinner bar reads as a
+    /// supporting gauge rather than a competing UI element — keeps
+    /// the percent number and the section copy as the primary
+    /// signal. Matches Juicy's lean health/charge bars.
+    static let capacityBarHeight: CGFloat = 6
 
     /// Corner radius of the rounded rectangles used by the capacity
-    /// bar (background track + foreground fill). Matches the rest of
-    /// the Battery section card radii.
-    static let capacityBarCornerRadius: CGFloat = 4
+    /// bar (background track + foreground fill). Tracks
+    /// `capacityBarHeight / 2` so the bar reads as a clean pill.
+    static let capacityBarCornerRadius: CGFloat = 3
 
     /// 0...100 percent scale (Int) — used so the per-segment threshold
     /// math stays in integer arithmetic.

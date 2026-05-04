@@ -214,6 +214,7 @@ enum BatterySnapshotReader {
         "ExternalConnected",
         "Temperature",
         "Voltage",
+        "InstantAmperage",
         "Amperage",
         "AvgTimeToFull",
         "AvgTimeToEmpty"
@@ -307,9 +308,18 @@ enum BatterySnapshotReader {
         let voltageVolts: Double = (readDouble(properties, key: "Voltage") ?? 0)
             / BatterySnapshotReaderConstants.voltageDivisor
 
-        // Amperage is signed; >0 charging, <0 discharging. D18 / Q16
-        // pin this to `Amperage` (smoothed), NOT `InstantAmperage`.
-        let amperageMilliamps = readInt(properties, key: "Amperage") ?? 0
+        // Amperage is signed; >0 charging, <0 discharging. The
+        // original D18 / Q16 decision pinned this to the smoothed
+        // `Amperage` for stable readings, but Brandon reverted that
+        // on 2026-05-04 in favor of `InstantAmperage` so Manifold's
+        // current/power readings track Juicy's live values. Falls
+        // back to `Amperage` if the firmware doesn't publish the
+        // instant variant. The 1 Hz sampler tick provides enough
+        // pacing on its own — we surface what the hardware reports
+        // each tick rather than averaging on top.
+        let amperageMilliamps = readInt(properties, key: "InstantAmperage")
+            ?? readInt(properties, key: "Amperage")
+            ?? 0
 
         // Power = V × |mA| / 1000, since current is in mA.
         let powerWatts = voltageVolts
