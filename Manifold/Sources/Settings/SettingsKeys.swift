@@ -89,6 +89,26 @@ enum SettingsKeys {
     /// General-pane USB telemetry rate per D18 / Q13. Default 1.0 Hz,
     /// clamped 0.5–5.0 by the sampler's `didSet`.
     static let batterySampleRateHz = "settings.menubar.batterySampleRateHz"
+
+    /// String id of the most recently selected `SettingsScene` pane.
+    /// Bound to `TabView`'s selection in `SettingsScene` so callers
+    /// (e.g. the battery popover's gear button) can deep-link into a
+    /// specific pane by writing this key before triggering
+    /// `openSettings`. Pane ids match the `SettingsTabID.<case>.rawValue`
+    /// strings.
+    static let selectedSettingsPaneId = "settings.selectedPaneId"
+}
+
+/// Stable string ids for each `SettingsScene` pane. Used both as
+/// `TabView` selection tags and as the values written to
+/// `SettingsKeys.selectedSettingsPaneId` by deep-link callers.
+enum SettingsTabID: String, CaseIterable {
+    case general
+    case notifications
+    case history
+    case menubar
+    case updates
+    case about
 }
 
 // MARK: - Phase 18 defaults

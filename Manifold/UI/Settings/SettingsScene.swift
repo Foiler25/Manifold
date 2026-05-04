@@ -55,32 +55,46 @@ struct SettingsScene: Scene {
     /// AppDelegate's lazy controller.
     let updaterController: UpdaterController?
 
+    /// Persisted selection bound to `TabView` so deep-link callers
+    /// (e.g. the battery popover's gear button writing `"menubar"`)
+    /// can land the user on a specific pane on next open. Tagged
+    /// with `SettingsTabID` raw values so the storage value is
+    /// programmatic, not localized copy.
+    @AppStorage(SettingsKeys.selectedSettingsPaneId)
+    private var selectedPaneId: String = SettingsTabID.general.rawValue
+
     var body: some Scene {
         Settings {
-            TabView {
+            TabView(selection: $selectedPaneId) {
                 GeneralPane(
                     onSampleRateChange: onSampleRateChange,
                     loginItemController: loginItemController
                 )
                 .tabItem { Label("settings.tab.general", systemImage: "gearshape") }
+                .tag(SettingsTabID.general.rawValue)
 
                 NotificationsPane()
                     .tabItem { Label("settings.tab.notifications", systemImage: "bell") }
+                    .tag(SettingsTabID.notifications.rawValue)
 
                 HistoryPane(
                     databaseManager: databaseManager,
                     downsamplingJob: downsamplingJob
                 )
                 .tabItem { Label("settings.tab.history", systemImage: "clock") }
+                .tag(SettingsTabID.history.rawValue)
 
                 MenuBarPane(onBatterySampleRateChange: onBatterySampleRateChange)
                     .tabItem { Label("settings.tab.menubar", systemImage: "menubar.rectangle") }
+                    .tag(SettingsTabID.menubar.rawValue)
 
                 UpdatesPane(updaterController: updaterController)
                     .tabItem { Label("settings.tab.updates", systemImage: "arrow.down.circle") }
+                    .tag(SettingsTabID.updates.rawValue)
 
                 AboutPane()
                     .tabItem { Label("settings.tab.about", systemImage: "info.circle") }
+                    .tag(SettingsTabID.about.rawValue)
             }
         }
     }

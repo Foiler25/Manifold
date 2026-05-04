@@ -44,6 +44,19 @@ struct BatteryPopoverRoot: View {
     /// the popover doesn't depend on AppKit globals directly.
     let onOpenWindow: () -> Void
 
+    /// Closure dispatched when the user clicks the settings gear.
+    /// AppDelegate writes `SettingsTabID.menubar.rawValue` into
+    /// `SettingsKeys.selectedSettingsPaneId` before activating the
+    /// app + opening Settings, so the window lands on the Menu Bar
+    /// pane rather than wherever it was last.
+    let onOpenSettings: () -> Void
+
+    /// Bridges this view to SwiftUI's Settings-window opener. Shared
+    /// shape with `PopoverRoot` — the AppKit closure activates the
+    /// app, this environment action triggers the SwiftUI Settings
+    /// scene to materialize / order-front.
+    @Environment(\.openSettings) private var openSettingsAction
+
     /// Persists the disclosure-group state across popover open / close
     /// cycles. Default expanded — the user opened the popover to see
     /// the data, so the first impression should show it.
@@ -100,16 +113,32 @@ struct BatteryPopoverRoot: View {
 
             Divider()
 
-            // Bottom toolbar — single "Open Manifold" button per
-            // SPEC §20.6.
-            HStack {
+            // Bottom toolbar — "Open Manifold" on the left, settings
+            // gear on the right. Mirrors the primary popover's
+            // toolbar shape so the two surfaces feel native together.
+            // The gear deep-links into Settings → Menu Bar by
+            // writing `SettingsTabID.menubar.rawValue` into the
+            // selected-pane AppStorage key before openSettings fires.
+            HStack(spacing: 12) {
                 Button(action: onOpenWindow) {
                     Label("popover.toolbar.openWindow", systemImage: "macwindow")
                         .contentShape(.rect)
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("popover.toolbar.openWindow.accessibility")
+
                 Spacer()
+
+                Button {
+                    onOpenSettings()
+                    openSettingsAction()
+                } label: {
+                    Image(systemName: "gear")
+                        .frame(width: 24, height: 24)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("popover.toolbar.openSettings.accessibility")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -163,9 +192,9 @@ enum BatteryPopoverRootConstants {
 #Preview("BatteryPopoverRoot — populated") {
     let graph = PortGraph()
     graph.applyBattery(BatteryViewPreviewData.healthy)
-    return BatteryPopoverRoot(graph: graph, onOpenWindow: {})
+    return BatteryPopoverRoot(graph: graph, onOpenWindow: {}, onOpenSettings: {})
 }
 
 #Preview("BatteryPopoverRoot — empty") {
-    BatteryPopoverRoot(graph: PortGraph(), onOpenWindow: {})
+    BatteryPopoverRoot(graph: PortGraph(), onOpenWindow: {}, onOpenSettings: {})
 }

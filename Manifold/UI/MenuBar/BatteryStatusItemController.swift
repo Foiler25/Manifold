@@ -61,8 +61,10 @@ final class BatteryStatusItemController {
     private let graph: PortGraph
 
     /// AppDelegate hooks. The popover's "Open Manifold" toolbar
-    /// button activates the app + brings the window forward.
+    /// button activates the app + brings the window forward; the
+    /// gear button deep-links into Settings on the Menu Bar pane.
     private let onOpenWindow: @MainActor () -> Void
+    private let onOpenSettings: @MainActor () -> Void
     private let onPopoverDidShow: @MainActor () -> Void
     private let onPopoverDidClose: @MainActor () -> Void
 
@@ -86,11 +88,13 @@ final class BatteryStatusItemController {
     init(
         graph: PortGraph,
         onOpenWindow: @escaping @MainActor () -> Void,
+        onOpenSettings: @escaping @MainActor () -> Void,
         onPopoverDidShow: @escaping @MainActor () -> Void = {},
         onPopoverDidClose: @escaping @MainActor () -> Void = {}
     ) {
         self.graph = graph
         self.onOpenWindow = onOpenWindow
+        self.onOpenSettings = onOpenSettings
         self.onPopoverDidShow = onPopoverDidShow
         self.onPopoverDidClose = onPopoverDidClose
     }
@@ -244,7 +248,8 @@ final class BatteryStatusItemController {
         if let existing = popover { return existing }
         let popover = BatteryPopoverHostingView.makePopover(
             graph: graph,
-            onOpenWindow: onOpenWindow
+            onOpenWindow: onOpenWindow,
+            onOpenSettings: onOpenSettings
         )
         // Wrap `onPopoverDidClose` so the click-outside monitor is
         // torn down whenever the popover hides — including the

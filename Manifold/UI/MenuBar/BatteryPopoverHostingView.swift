@@ -29,13 +29,14 @@ import ManifoldKit
 @MainActor
 enum BatteryPopoverHostingView {
 
-    /// Build the battery popover. The closure runs when the user
-    /// taps the toolbar "Open Manifold" button — AppDelegate /
-    /// BatteryStatusItemController owns the actual window-opening
-    /// logic.
+    /// Build the battery popover. The two closures run when the user
+    /// taps the toolbar "Open Manifold" / settings-gear buttons —
+    /// AppDelegate / BatteryStatusItemController own the actual
+    /// window-opening logic.
     static func makePopover(
         graph: PortGraph,
-        onOpenWindow: @escaping @MainActor () -> Void
+        onOpenWindow: @escaping @MainActor () -> Void,
+        onOpenSettings: @escaping @MainActor () -> Void
     ) -> NSPopover {
         let popover = NSPopover()
         popover.behavior = .transient
@@ -43,7 +44,8 @@ enum BatteryPopoverHostingView {
         let hosting = NSHostingController(
             rootView: BatteryPopoverRoot(
                 graph: graph,
-                onOpenWindow: onOpenWindow
+                onOpenWindow: onOpenWindow,
+                onOpenSettings: onOpenSettings
             )
         )
         // Match the primary popover's sizing model so the popover

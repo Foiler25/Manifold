@@ -611,6 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = BatteryStatusItemController(
             graph: portGraph,
             onOpenWindow: { [weak self] in self?.openMainWindow() },
+            onOpenSettings: { [weak self] in self?.openSettingsOnBatteryPane() },
             onPopoverDidShow: { [weak self] in self?.samplerLifecycle.popoverDidOpen() },
             onPopoverDidClose: { [weak self] in self?.samplerLifecycle.popoverDidClose() }
         )
@@ -864,6 +865,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// explicit activate the new Settings window can open behind
     /// whatever app was previously active).
     private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Variant of `openSettings()` that pre-selects the Menu Bar
+    /// pane via `SettingsKeys.selectedSettingsPaneId`. Wired to the
+    /// battery popover's gear button so the user lands directly on
+    /// the Battery / Menu Bar settings instead of wherever they were
+    /// last. Writing the AppStorage key first lets `SettingsScene`'s
+    /// `TabView` selection binding pick up the new value when SwiftUI
+    /// presents the window from `@Environment(\.openSettings)`.
+    private func openSettingsOnBatteryPane() {
+        UserDefaults.standard.set(
+            SettingsTabID.menubar.rawValue,
+            forKey: SettingsKeys.selectedSettingsPaneId
+        )
         NSApp.activate(ignoringOtherApps: true)
     }
 
