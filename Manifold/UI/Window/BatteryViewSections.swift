@@ -90,39 +90,41 @@ struct ChargeBannerSection: View {
         }
     }
 
-    /// Right-aligned "UNTIL FULL / UNTIL EMPTY / ∞" caption. Pure
-    /// caption-smallcaps — sized to read as supplementary metadata,
-    /// not a competing headline.
+    /// Right-aligned time-left readout. The time value is the hero —
+    /// rendered at title size, monospaced — with the "Until full" /
+    /// "Until empty" caption sitting underneath in caption-smallcaps
+    /// secondary. When fully charged the value is "∞" and the caption
+    /// is "Until full" by convention.
     @ViewBuilder
     private var untilLabel: some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        VStack(alignment: .trailing, spacing: 0) {
             switch battery.chargeState {
             case .charging:
-                Text("window.battery.untilFull.label")
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
                 if let m = battery.timeUntilFullMinutes,
                    let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
                     Text(s)
-                        .font(.subheadline.monospacedDigit())
+                        .font(.title2.monospacedDigit().weight(.semibold))
                         .foregroundStyle(Color.manifoldText)
                 }
-            case .discharging:
-                Text("window.battery.untilEmpty.label")
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
-                if let m = battery.timeUntilEmptyMinutes,
-                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
-                    Text(s)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(Color.manifoldText)
-                }
-            case .fullyCharged:
                 Text("window.battery.untilFull.label")
                     .font(.caption.smallCaps())
                     .foregroundStyle(.secondary)
+            case .discharging:
+                if let m = battery.timeUntilEmptyMinutes,
+                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
+                    Text(s)
+                        .font(.title2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.manifoldText)
+                }
+                Text("window.battery.untilEmpty.label")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+            case .fullyCharged:
                 Text("∞")
-                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .font(.title.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("window.battery.untilFull.label")
+                    .font(.caption.smallCaps())
                     .foregroundStyle(.secondary)
             case .notCharging, .unknown:
                 EmptyView()
