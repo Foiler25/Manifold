@@ -20,8 +20,6 @@ reviewer.md
 keyfile.txt
 
 # ── Release pipeline handoff files ─────────────────────────────────────
-build-dmg.sh
-release-github.sh
 .release-metadata
 .release-notes-draft.md
 RELEASE_NOTES.md
