@@ -171,8 +171,15 @@ final class BatterySampler {
 // MARK: - Constants
 
 enum BatterySamplerConstants {
-    /// D18 / SPEC §20.4: "Default 1.0 Hz."
-    static let defaultRate: Double = 1.0
+    /// Default 5 Hz — the high end of the user-facing slider range.
+    /// Bumped from 1 Hz on 2026-05-04 (originally per D18 / SPEC
+    /// §20.4) because `InstantAmperage` reads the firmware's live
+    /// current at the moment we sample, so the displayed power /
+    /// current row only feels live at high tick rates. The
+    /// `SamplerLifecycle` pauses the sampler whenever no UI is
+    /// visible, so the high default only burns CPU when the user is
+    /// actively looking — idle cost stays at zero.
+    static let defaultRate: Double = 5.0
 
     /// D18 / SPEC §20.4: "Range enforced [0.5, 5.0]."
     static let minRate: Double = 0.5

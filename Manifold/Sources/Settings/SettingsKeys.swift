@@ -100,8 +100,11 @@ enum SettingsDefaults {
     /// fallback.
     static let menubarBatteryItemVisible: Bool = true
 
-    /// Default battery sampler rate in Hz.
-    static let batterySampleRateHz: Double = 1.0
+    /// Default battery sampler rate in Hz. 5 Hz matches
+    /// `BatterySamplerConstants.defaultRate` — see that comment for
+    /// why we run at the slider's max by default (sampler pauses
+    /// when no UI is visible, so idle cost stays at zero).
+    static let batterySampleRateHz: Double = 5.0
 }
 
 // MARK: - ThemePreference

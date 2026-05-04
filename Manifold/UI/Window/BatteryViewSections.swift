@@ -103,7 +103,7 @@ struct ChargeBannerSection: View {
                 if let m = battery.timeUntilFullMinutes,
                    let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
                     Text(s)
-                        .font(.title2.monospacedDigit().weight(.semibold))
+                        .font(.title.monospacedDigit().weight(.semibold))
                         .foregroundStyle(Color.manifoldText)
                 }
                 Text("window.battery.untilFull.label")
@@ -113,7 +113,7 @@ struct ChargeBannerSection: View {
                 if let m = battery.timeUntilEmptyMinutes,
                    let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
                     Text(s)
-                        .font(.title2.monospacedDigit().weight(.semibold))
+                        .font(.title.monospacedDigit().weight(.semibold))
                         .foregroundStyle(Color.manifoldText)
                 }
                 Text("window.battery.untilEmpty.label")
@@ -121,7 +121,7 @@ struct ChargeBannerSection: View {
                     .foregroundStyle(.secondary)
             case .fullyCharged:
                 Text("∞")
-                    .font(.title.monospacedDigit().weight(.semibold))
+                    .font(.largeTitle.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text("window.battery.untilFull.label")
                     .font(.caption.smallCaps())
