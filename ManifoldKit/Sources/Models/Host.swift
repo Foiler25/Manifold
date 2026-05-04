@@ -49,10 +49,17 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
     /// and by Phase 12 exports.
     public let model: String
 
-    /// Connected charger wattage (MagSafe or USB-C PD). Sourced from
-    /// `AppleSmartBattery`'s `AdapterDetails`. nil on desktop Macs
-    /// (no battery service) or on laptops running unplugged.
-    public let inputPower: Watts?
+    /// Active wall-power source (MagSafe / USB-C PD / wireless) and
+    /// its wattage. Sourced from `AppleSmartBattery`'s `AdapterDetails`.
+    /// nil on desktop Macs (no battery service) or on laptops running
+    /// unplugged. macOS reports only the *active* adapter when multiple
+    /// are physically connected — see `AdapterPowerReader` notes.
+    public let inputAdapter: AdapterInfo?
+
+    /// Convenience wrapper around `inputAdapter?.watts` — every existing
+    /// view that just needed the wattage keeps working without
+    /// reaching into the nested struct.
+    public var inputPower: Watts? { inputAdapter?.watts }
 
     /// Top-level ports on this host. Each port may have downstream
     /// children (hubs, daisy-chained TB devices); see `Port.children`.
@@ -89,7 +96,7 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
         name: String,
         friendlyName: String? = nil,
         model: String,
-        inputPower: Watts? = nil,
+        inputAdapter: AdapterInfo? = nil,
         ports: [Port],
         physicalPorts: [PhysicalPort] = []
     ) {
@@ -97,7 +104,7 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
         self.name = name
         self.friendlyName = friendlyName
         self.model = model
-        self.inputPower = inputPower
+        self.inputAdapter = inputAdapter
         self.ports = ports
         self.physicalPorts = physicalPorts
     }
@@ -111,7 +118,15 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, friendlyName, model, inputPower, ports, physicalPorts
+        // Stored-property keys only — `inputPower` is a computed
+        // wrapper around `inputAdapter` and must NOT appear here, or
+        // the synthesised Encodable fails to compile.
+        case id, name, friendlyName, model, inputAdapter
+        case ports, physicalPorts
+        // Legacy key from before `inputAdapter` existed. Only consumed
+        // by `init(from:)` for backwards compatibility with snapshots
+        // produced by earlier builds; never written.
+        case inputPower
     }
 
     public init(from decoder: any Decoder) throws {
@@ -120,8 +135,28 @@ public struct Host: Identifiable, Hashable, Sendable, Codable {
         self.name = try c.decode(String.self, forKey: .name)
         self.friendlyName = try c.decodeIfPresent(String.self, forKey: .friendlyName)
         self.model = try c.decode(String.self, forKey: .model)
-        self.inputPower = try c.decodeIfPresent(Watts.self, forKey: .inputPower)
+        // Prefer the new `inputAdapter` payload; fall back to the older
+        // `inputPower` (Watts only) field if a snapshot from an earlier
+        // build is being decoded — surfaces it as an `.unknown` source.
+        if let adapter = try c.decodeIfPresent(AdapterInfo.self, forKey: .inputAdapter) {
+            self.inputAdapter = adapter
+        } else if let watts = try c.decodeIfPresent(Watts.self, forKey: .inputPower) {
+            self.inputAdapter = AdapterInfo(watts: watts, source: .unknown)
+        } else {
+            self.inputAdapter = nil
+        }
         self.ports = try c.decode([Port].self, forKey: .ports)
         self.physicalPorts = try c.decodeIfPresent([PhysicalPort].self, forKey: .physicalPorts) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(friendlyName, forKey: .friendlyName)
+        try c.encode(model, forKey: .model)
+        try c.encodeIfPresent(inputAdapter, forKey: .inputAdapter)
+        try c.encode(ports, forKey: .ports)
+        try c.encode(physicalPorts, forKey: .physicalPorts)
     }
 }

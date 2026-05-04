@@ -111,13 +111,14 @@ enum MainWindowConstants {
 
 // MARK: - WindowTab enum
 
-/// The three top-level tabs of the main window per SPEC §13.2 / §18
-/// Phase 6 acceptance #3. `String` raw values so `@SceneStorage` can
-/// persist directly. `topology` is the default selected tab.
+/// Top-level tabs of the main window. `String` raw values so
+/// `@SceneStorage` can persist directly. `topology` is the default
+/// selected tab.
 enum WindowTab: String, CaseIterable, Identifiable {
     case topology
     case history
     case diagnostics
+    case power
 
     var id: String { rawValue }
 
@@ -134,6 +135,7 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .topology:    return "rectangle.grid.2x2"
         case .history:     return "clock.arrow.circlepath"
         case .diagnostics: return "exclamationmark.triangle"
+        case .power:       return "bolt.fill"
         }
     }
 }

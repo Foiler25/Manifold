@@ -987,6 +987,96 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } } }
     },
+    "window.tab.power.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+    },
+    "window.tab.power.menu" : {
+      "comment" : "View menu item — ⌘ 4 jumps to Power tab.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+    },
+    "window.power.section.input" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power Input" } } }
+    },
+    "window.power.section.draw" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB Power Draw" } } }
+    },
+    "window.power.section.details" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Adapter Details" } } }
+    },
+    "window.power.field.totalDraw" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Total Draw" } } }
+    },
+    "window.power.field.connectedDevices" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Connected Devices" } } }
+    },
+    "window.power.field.description" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Description" } } }
+    },
+    "window.power.field.manufacturer" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manufacturer" } } }
+    },
+    "window.power.field.model" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Model" } } }
+    },
+    "window.power.field.voltage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Voltage" } } }
+    },
+    "window.power.field.current" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Current" } } }
+    },
+    "window.power.field.familyCode" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Family Code" } } }
+    },
+    "window.power.overbudget.help" : {
+      "comment" : "Tooltip on the warning glyph next to the total draw when USB consumption exceeds the active charger's input wattage.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB draw exceeds the charger's input — the difference is being pulled from the battery." } } }
+    },
+    "window.power.source.magsafe.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MagSafe" } } }
+    },
+    "window.power.source.usbC.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB-C Power Delivery" } } }
+    },
+    "window.power.source.wireless.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Wireless Charger" } } }
+    },
+    "window.power.source.unknown.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "External Power" } } }
+    },
+    "window.power.source.unplugged.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "On Battery" } } }
+    },
+    "window.power.source.unplugged.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No charger connected" } } }
+    },
+    "window.power.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No power data" } } }
+    },
+    "window.power.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power information will appear once the discovery walk completes." } } }
+    },
     "window.tab.topology.menu" : {
       "comment" : "View menu item — ⌘ 1 jumps to Topology tab.",
       "extractionState" : "manual",
@@ -1019,6 +1109,41 @@
       "comment" : "Topology header summary label — wall-power input from the connected charger (MagSafe or USB-C PD). Shows '—' on battery or on desktop Macs.",
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Input" } } }
+    },
+    "host.adapter.source.magsafe" : {
+      "comment" : "Short label for a MagSafe charger as the active power source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "MagSafe" } } }
+    },
+    "host.adapter.source.usbC" : {
+      "comment" : "Short label for a USB-C PD charger as the active power source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB-C" } } }
+    },
+    "host.adapter.source.wireless" : {
+      "comment" : "Short label for a wireless / inductive charger as the active power source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Wireless" } } }
+    },
+    "host.adapter.source.unknown" : {
+      "comment" : "Short label for an unrecognised charger source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown" } } }
+    },
+    "popover.host.adapter.source.magsafe" : {
+      "comment" : "Popover host-header subtitle when MagSafe is the active source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "via MagSafe" } } }
+    },
+    "popover.host.adapter.source.usbC" : {
+      "comment" : "Popover host-header subtitle when USB-C PD is the active source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "via USB-C" } } }
+    },
+    "popover.host.adapter.source.wireless" : {
+      "comment" : "Popover host-header subtitle when a wireless charger is the active source.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "via Wireless" } } }
     },
     "window.topology.emptyState.title" : {
       "extractionState" : "manual",

@@ -48,28 +48,38 @@ struct HostHeader: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                // "<draw> / <charger>" reads at a glance — accent
-                // green for the live draw, dimmer secondary for the
-                // charger wattage so the eye lands on the active
-                // number first. Falls back to just the draw when on
-                // battery or on a desktop Mac without
+                // "<draw> / <charger>". Draw renders in the default
+                // text colour (no special tint when within budget) —
+                // it flips to critical red when it exceeds the input
+                // wattage, signalling overdraw. Input wattage is the
+                // green "headroom" accent. Falls back to just the
+                // draw when on battery or on a desktop Mac without
                 // `AppleSmartBattery`.
                 HStack(spacing: 4) {
                     Text(host.totalPowerDraw.formatted)
-                        .foregroundStyle(Color.manifoldAccent)
-                    if let input = host.inputPower {
+                        .foregroundStyle(drawColor(for: host))
+                    if let input = host.inputAdapter {
                         Text(verbatim: "/")
                             .foregroundStyle(.secondary)
-                        Text(input.formatted)
-                            .foregroundStyle(.secondary)
+                        Text(input.watts.formatted)
+                            .foregroundStyle(Color.manifoldAccent)
                     }
                 }
                 .font(.subheadline.monospacedDigit())
+                // Second line: charger source when known
+                // ("via MagSafe" / "via USB-C"). Falls through to a
+                // third line for the diagnostic count so both can
+                // coexist when both apply.
+                if let source = adapterSourceCaption {
+                    Text(source)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if diagnosticCount > 0 {
                     Text(diagnosticString(for: diagnosticCount))
                         .font(.caption)
                         .foregroundStyle(Color.manifoldWarning)
-                } else {
+                } else if adapterSourceCaption == nil {
                     Text("popover.host.diagnostics.none")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -78,6 +88,33 @@ struct HostHeader: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// Default text colour for the draw figure, flipped to critical
+    /// red when total USB draw exceeds the connected charger's input
+    /// wattage. Battery / desktop / no-adapter cases keep the default
+    /// colour because there's no comparison baseline.
+    private func drawColor(for host: ManifoldKit.Host) -> Color {
+        guard let input = host.inputAdapter?.watts.value,
+              host.totalPowerDraw.value > input else {
+            return Color.manifoldText
+        }
+        return Color.manifoldCritical
+    }
+
+    /// "via MagSafe" / "via USB-C" / "via Wireless". nil when the
+    /// adapter source is `.unknown` or when no adapter is connected —
+    /// caller falls back to the diagnostic count line in that case.
+    private var adapterSourceCaption: String? {
+        guard let source = host.inputAdapter?.source else { return nil }
+        let labelKey: String
+        switch source {
+        case .magsafe:  labelKey = "popover.host.adapter.source.magsafe"
+        case .usbC:     labelKey = "popover.host.adapter.source.usbC"
+        case .wireless: labelKey = "popover.host.adapter.source.wireless"
+        case .unknown:  return nil
+        }
+        return NSLocalizedString(labelKey, comment: "")
     }
 
     /// Localised "1 diagnostic" / "N diagnostics" via the string

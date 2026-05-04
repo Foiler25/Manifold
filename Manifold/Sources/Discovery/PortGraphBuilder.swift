@@ -49,7 +49,7 @@ struct HostMetadata: Sendable, Equatable {
     let name: String
     let friendlyName: String?
     let model: String
-    let inputPower: Watts?
+    let inputAdapter: AdapterInfo?
 }
 
 struct PortGraphBuilder: Sendable {
@@ -72,7 +72,7 @@ struct PortGraphBuilder: Sendable {
             name: metadata.name,
             friendlyName: metadata.friendlyName,
             model: metadata.model,
-            inputPower: metadata.inputPower,
+            inputAdapter: metadata.inputAdapter,
             ports: ports
         )
     }
@@ -138,7 +138,7 @@ struct PortGraphBuilder: Sendable {
             name: metadata.name,
             friendlyName: metadata.friendlyName,
             model: metadata.model,
-            inputPower: metadata.inputPower,
+            inputAdapter: metadata.inputAdapter,
             ports: nested,
             physicalPorts: physicalPorts
         )

@@ -153,6 +153,29 @@ final class StatusItemController {
         }
         guard let button = statusItem?.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        configurePopoverWindowForFullscreenOverlay()
+    }
+
+    /// Lifts the popover's underlying NSWindow to a level + collection
+    /// behaviour that lets it draw over fullscreen apps. NSPopover's
+    /// default window is normal-level and tied to its parent's space,
+    /// so a popover triggered while another app is in fullscreen
+    /// otherwise drops behind the fullscreen Space and looks broken.
+    /// Must run after `popover.show(...)` — the hosting window is
+    /// created lazily as part of that call.
+    private func configurePopoverWindowForFullscreenOverlay() {
+        guard let window = popover?.contentViewController?.view.window else {
+            return
+        }
+        // `.canJoinAllSpaces` puts the window on every Space at once
+        // (including the active fullscreen Space). `.fullScreenAuxiliary`
+        // marks it as an overlay that's allowed to draw over a
+        // fullscreen app's window without forcing the app out of
+        // fullscreen. `.popUpMenu` is the standard menu-bar transient
+        // level — same one NSMenu uses, so the popover floats over
+        // fullscreen content but still hides under modal alerts.
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.level = .popUpMenu
     }
 
     private func popoverIfNeeded() -> NSPopover {

@@ -604,13 +604,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// surface count tracks window visibility per SPEC §18 Phase 5
     /// acceptance #3 ("pauses sampling when popover hidden AND window
     /// not visible"). Phase 5 declared the lifecycle methods; Phase 6
-    /// wires them.
+    /// wires them. Also flips the activation policy to `.regular` so
+    /// the Dock icon appears alongside the visible window.
     func notifyMainWindowDidAppear() {
         samplerLifecycle.windowDidAppear()
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
     }
 
+    /// Mirror of the appear-side hook. Switches the activation policy
+    /// to `.accessory` when the main window goes away so Manifold
+    /// becomes a menu-bar-only app — the Dock icon disappears, the
+    /// status item stays. Re-opening the window via the popover's
+    /// "Open Manifold" button (which runs `openMainWindow`) drops
+    /// back into `.regular` automatically through this method's
+    /// `onAppear`-side counterpart.
     func notifyMainWindowDidDisappear() {
         samplerLifecycle.windowDidDisappear()
+        // Defer the policy flip one runloop tick. SwiftUI's
+        // `onDisappear` fires before the NSWindow is fully closed;
+        // switching policy mid-close can leave AppKit thinking a
+        // closing window still has focus, which suppresses the next
+        // `applicationShouldHandleReopen`.
+        DispatchQueue.main.async {
+            if NSApp.activationPolicy() != .accessory {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
 
     // MARK: - Toolbar actions

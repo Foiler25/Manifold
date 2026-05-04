@@ -304,7 +304,7 @@ final class PortGraph {
                     name: host.name,
                     friendlyName: host.friendlyName,
                     model: host.model,
-                    inputPower: host.inputPower,
+                    inputAdapter: host.inputAdapter,
                     ports: newPorts,
                     physicalPorts: host.physicalPorts
                 )

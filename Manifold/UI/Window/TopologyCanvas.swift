@@ -96,11 +96,13 @@ struct TopologyCanvas: View {
                 )
                 summaryItem(
                     label: "window.topology.summary.totalDraw",
-                    value: host.totalPowerDraw.formatted
+                    value: host.totalPowerDraw.formatted,
+                    valueColor: drawColor(for: host)
                 )
                 summaryItem(
                     label: "window.topology.summary.input",
-                    value: host.inputPower?.formatted ?? "—"
+                    value: inputSummaryValue(for: host),
+                    valueColor: host.inputAdapter == nil ? Color.manifoldText : Color.manifoldAccent
                 )
             }
         }
@@ -108,14 +110,53 @@ struct TopologyCanvas: View {
         .padding(.top, 12)
     }
 
-    private func summaryItem(label: LocalizedStringKey, value: String) -> some View {
+    /// "65 W (MagSafe)" / "45 W (USB-C)" / "—". Wattage and source
+    /// fold into one summary value so the header still reads as four
+    /// equal columns; the source label tucks under the wattage if
+    /// needed.
+    private func inputSummaryValue(for host: ManifoldKit.Host) -> String {
+        guard let adapter = host.inputAdapter else { return "—" }
+        let watts = adapter.watts.formatted
+        let source = sourceLabel(for: adapter.source)
+        if source.isEmpty {
+            return watts
+        }
+        return "\(watts) (\(source))"
+    }
+
+    private func sourceLabel(for source: AdapterInfo.Source) -> String {
+        switch source {
+        case .magsafe:  return NSLocalizedString("host.adapter.source.magsafe",  comment: "")
+        case .usbC:     return NSLocalizedString("host.adapter.source.usbC",     comment: "")
+        case .wireless: return NSLocalizedString("host.adapter.source.wireless", comment: "")
+        case .unknown:  return ""
+        }
+    }
+
+    /// True when total USB draw exceeds the active charger's input —
+    /// flips the summary's draw figure to critical red.
+    private func drawColor(for host: ManifoldKit.Host) -> Color {
+        guard let input = host.inputAdapter?.watts.value,
+              host.totalPowerDraw.value > input else {
+            return Color.manifoldText
+        }
+        return Color.manifoldCritical
+    }
+
+    private func summaryItem(
+        label: LocalizedStringKey,
+        value: String,
+        valueColor: Color = Color.manifoldText
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.caption2.smallCaps())
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.headline.monospacedDigit())
-                .foregroundStyle(Color.manifoldText)
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -195,7 +195,7 @@ final class DiscoveryService {
             name: ProcessInfo.processInfo.hostName,
             friendlyName: resolveFriendlyName(),
             model: resolvedModel ?? "Unknown",
-            inputPower: AdapterPowerReader.currentInputPower()
+            inputAdapter: AdapterPowerReader.currentInputPower()
         )
     }
 
@@ -205,7 +205,7 @@ final class DiscoveryService {
             name: ProcessInfo.processInfo.hostName,
             friendlyName: resolveFriendlyName(),
             model: "Unknown",
-            inputPower: AdapterPowerReader.currentInputPower()
+            inputAdapter: AdapterPowerReader.currentInputPower()
         )
     }
 
