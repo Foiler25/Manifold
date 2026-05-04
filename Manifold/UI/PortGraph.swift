@@ -66,6 +66,15 @@ final class PortGraph {
     /// emission from inside `apply`.
     private(set) var needsFullRefresh: Bool = false
 
+    /// Phase 18 / D16: battery snapshot, host-level state. Nil on
+    /// hardware with no `AppleSmartBattery` service (desktop Macs) and
+    /// before the first `BatterySampler` tick on portable Macs. Source
+    /// of truth for `BatteryView` and `BatteryStatusItemController`.
+    ///
+    /// NOT routed through `PortEvent` / `apply(_:)` per D16 — battery
+    /// is host-level, not port-keyed. Mutated only via `applyBattery(_:)`.
+    private(set) var battery: BatteryInfo?
+
     init() {}
 
     // MARK: - Mutation
@@ -134,6 +143,24 @@ final class PortGraph {
     /// flag so the next `.attached` not-found can set it again.
     func acknowledgeRefreshRequest() {
         needsFullRefresh = false
+    }
+
+    /// Phase 18 / D16: direct setter for the battery snapshot. Called
+    /// by `BatterySampler`'s `onSample` callback once per tick.
+    /// Bypasses `PortEvent`/`apply(_:)` because battery state is
+    /// host-level, not port-keyed; routing it through events would
+    /// force every consumer (NotificationService, EventRepository,
+    /// SnapshotCoordinator, IntentDonor) to handle a case they don't
+    /// care about.
+    ///
+    /// Bumps `lastUpdated` on every call so `@Observable` consumers
+    /// re-read — the menubar status item observer in particular
+    /// depends on this so its glyph and percentage refresh on each
+    /// tick (and so any test that asserts a tick happened can read
+    /// the bumped timestamp).
+    func applyBattery(_ info: BatteryInfo?) {
+        self.battery = info
+        self.lastUpdated = .now
     }
 
     // MARK: - Per-case handlers (§4.6.1)

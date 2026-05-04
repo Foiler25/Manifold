@@ -187,6 +187,10 @@ final class StatusItemController {
         )
         // Wire the popover delegate so SamplerLifecycle hears about
         // popover open/close and can pause/resume the sampler.
+        // Phase 18: delegate adapter lifted to
+        // `Manifold/UI/MenuBar/PopoverDelegateAdapter.swift` so
+        // `BatteryStatusItemController` can reuse the same shape (per
+        // D17 + SPEC §20.6).
         let delegate = PopoverDelegateAdapter(
             onShow: onPopoverDidShow,
             onClose: onPopoverDidClose
@@ -215,46 +219,6 @@ final class StatusItemController {
     }
 }
 
-// MARK: - Popover delegate adapter
-
-/// Inner class that bridges NSPopoverDelegate's Objective-C callbacks
-/// to our Swift closure pair. Held by `StatusItemController` so the
-/// delegate stays alive as long as the popover does — `NSPopover.delegate`
-/// is `weak`.
-@MainActor
-private final class PopoverDelegateAdapter: NSObject, NSPopoverDelegate {
-    let onShow: @MainActor () -> Void
-    let onClose: @MainActor () -> Void
-
-    init(
-        onShow: @escaping @MainActor () -> Void,
-        onClose: @escaping @MainActor () -> Void
-    ) {
-        self.onShow = onShow
-        self.onClose = onClose
-    }
-
-    nonisolated func popoverDidShow(_ notification: Notification) {
-        Task { @MainActor in onShow() }
-    }
-
-    nonisolated func popoverDidClose(_ notification: Notification) {
-        Task { @MainActor in onClose() }
-    }
-}
-
-// MARK: - Font weight helper
-
-private extension NSFont {
-    /// `NSFont.menuBarFont(ofSize: 0)` returns the canonical menu-bar
-    /// font; this helper re-applies a desired weight while preserving
-    /// the family + point size. Used to make the badge number stand
-    /// out subtly without hardcoding the menu-bar font name (which can
-    /// shift between OS versions).
-    func withWeightApplied(_ weight: NSFont.Weight) -> NSFont {
-        let descriptor = fontDescriptor.addingAttributes([
-            .traits: [NSFontDescriptor.TraitKey.weight: weight]
-        ])
-        return NSFont(descriptor: descriptor, size: pointSize) ?? self
-    }
-}
+// (NSFont.withWeightApplied helper lives in PopoverDelegateAdapter.swift
+// so both StatusItemController and BatteryStatusItemController can use
+// it without re-declaring the same fileprivate extension.)

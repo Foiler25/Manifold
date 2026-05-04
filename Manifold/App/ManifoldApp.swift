@@ -119,6 +119,9 @@ struct ManifoldApp: App {
             onSampleRateChange: { rate in
                 appDelegate.applySampleRate(rate)
             },
+            onBatterySampleRateChange: { rate in
+                appDelegate.applyBatterySampleRate(rate)
+            },
             loginItemController: LiveLoginItemController(),
             databaseManager: appDelegate.publishedDatabaseManager,
             downsamplingJob: appDelegate.publishedDownsamplingJob,

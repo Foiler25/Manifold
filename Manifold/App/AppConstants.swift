@@ -69,4 +69,27 @@ enum AppConstants {
     /// compute the scroll section's frame height so the popover hugs
     /// its content for ≤ N rows and locks at N rows above.
     static let popoverPortRowHeight: CGFloat = 130
+
+    // MARK: - Phase 18 — Battery menu bar item
+
+    /// Width of the secondary (battery) status item slot. Variable so
+    /// the slot grows / shrinks with the percentage attributedTitle's
+    /// rendered width — matches the primary status item's behaviour
+    /// from §13.1.
+    static let batteryStatusItemLength: CGFloat = NSStatusItem.variableLength
+
+    /// Localized accessibility key set on the secondary (battery)
+    /// status item's button. Distinct from the primary's
+    /// `menubar.icon.accessibility` key so VoiceOver reads the two
+    /// items differently — primary says "Manifold", battery says
+    /// "Manifold battery".
+    static let menuBarBatteryIconAccessibilityKey: String = "menubar.battery.icon.accessibility"
+
+    /// Initial seed size for the battery popover. Width 280 pt — the
+    /// condensed `BatteryPopoverRoot` has a smaller footprint than
+    /// the primary popover's port-tree layout (360 pt). Height is the
+    /// SwiftUI-driven first-frame value; `NSHostingController.sizingOptions`
+    /// = `[.preferredContentSize]` lets the actual height grow / shrink
+    /// to fit the content.
+    static let batteryPopoverContentSize: CGSize = CGSize(width: 280, height: 320)
 }

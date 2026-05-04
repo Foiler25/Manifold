@@ -39,6 +39,12 @@ final class SamplerLifecycle {
     /// outlive the lifecycle (or vice versa) without a retain cycle.
     private weak var sampler: TelemetrySampler?
 
+    /// Phase 18 — parallel battery sampler. Held weakly for the same
+    /// reason as `sampler`. Both samplers respond to the same active-
+    /// surface count per D18 ("same lifecycle gate, independent
+    /// rates"); each tracks its own timer + sample rate independently.
+    private weak var batterySampler: BatterySampler?
+
     /// Active surface count. `private(set)` so tests can observe
     /// without exposing a setter.
     private(set) var activeSurfaceCount: Int = 0
@@ -67,6 +73,14 @@ final class SamplerLifecycle {
         self.sampler = sampler
         // If a surface is already active when we attach, kick the
         // sampler so it starts immediately.
+        applyState()
+    }
+
+    /// Phase 18 — mirror of `attach(sampler:)` for the battery sampler.
+    /// Both samplers respond to the same active-surface count gate per
+    /// D18; each maintains its own timer and sample rate.
+    func attachBattery(_ sampler: BatterySampler) {
+        self.batterySampler = sampler
         applyState()
     }
 
@@ -120,6 +134,8 @@ final class SamplerLifecycle {
         pendingWidgetTasks.removeAll()
         activeSurfaceCount = 0
         sampler?.stop()
+        // Phase 18: parallel teardown of the battery sampler.
+        batterySampler?.stop()
     }
 
     // MARK: - Internals
@@ -144,14 +160,16 @@ final class SamplerLifecycle {
     }
 
     /// Translate `activeSurfaceCount` into a sampler start/stop call.
-    /// Idempotent — `sampler.start()` and `sampler.stop()` are no-ops
-    /// when already in the requested state.
+    /// Idempotent — `start()` and `stop()` are no-ops when already in
+    /// the requested state. Both samplers (USB telemetry + battery)
+    /// receive the same dispatch per D18.
     private func applyState() {
-        guard let sampler else { return }
-        if activeSurfaceCount > 0 {
-            sampler.start()
-        } else {
-            sampler.stop()
+        let active = activeSurfaceCount > 0
+        if let sampler {
+            if active { sampler.start() } else { sampler.stop() }
+        }
+        if let batterySampler {
+            if active { batterySampler.start() } else { batterySampler.stop() }
         }
     }
 }

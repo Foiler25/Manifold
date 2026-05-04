@@ -243,6 +243,8 @@ struct MainWindow: View {
             DiagnosticsBanner(graph: graph)
         case .power:
             PowerView(graph: graph, host: host)
+        case .battery:
+            BatteryView(graph: graph)
         }
     }
 

@@ -75,6 +75,33 @@ enum SettingsKeys {
     /// life of the install (the UI offers no "show onboarding
     /// again" affordance — Phase 15 ships the simplest shape).
     static let onboardingCompleted = "settings.onboarding.completed"
+
+    // MARK: - Phase 18 — Menu bar / battery
+
+    /// Whether the second (battery) `NSStatusItem` is installed.
+    /// Default `true`. On desktop Macs (no `AppleSmartBattery`),
+    /// this toggle is a no-op: AppDelegate gates installation on the
+    /// app-start probe returning a non-nil snapshot, regardless of
+    /// the value here. The MenuBarPane copy surfaces this explicitly.
+    static let menubarBatteryItemVisible = "settings.menubar.batteryItemVisible"
+
+    /// Sample rate for `BatterySampler`, independent from the
+    /// General-pane USB telemetry rate per D18 / Q13. Default 1.0 Hz,
+    /// clamped 0.5–5.0 by the sampler's `didSet`.
+    static let batterySampleRateHz = "settings.menubar.batterySampleRateHz"
+}
+
+// MARK: - Phase 18 defaults
+
+enum SettingsDefaults {
+    /// Default value for `menubarBatteryItemVisible`. Lifted to a
+    /// named constant so the `@AppStorage` literals in
+    /// `MenuBarPane` and the AppDelegate gate read agree on the
+    /// fallback.
+    static let menubarBatteryItemVisible: Bool = true
+
+    /// Default battery sampler rate in Hz.
+    static let batterySampleRateHz: Double = 1.0
 }
 
 // MARK: - ThemePreference

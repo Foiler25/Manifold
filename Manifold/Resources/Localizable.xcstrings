@@ -1327,6 +1327,214 @@
     "window.inspector.kind.other" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Other" } } }
+    },
+    "window.tab.battery.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery" } } }
+    },
+    "window.battery.section.charge" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charge" } } }
+    },
+    "window.battery.section.health" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery Health" } } }
+    },
+    "window.battery.section.temperature" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Temperature" } } }
+    },
+    "window.battery.section.power" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power & Electrical" } } }
+    },
+    "window.battery.section.capacity" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Capacity" } } }
+    },
+    "window.battery.field.health" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Health" } } }
+    },
+    "window.battery.field.cycleCount" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cycle Count" } } }
+    },
+    "window.battery.field.condition" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Condition" } } }
+    },
+    "window.battery.field.temperature" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Temperature" } } }
+    },
+    "window.battery.field.voltage" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Voltage" } } }
+    },
+    "window.battery.field.current" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Current" } } }
+    },
+    "window.battery.field.power" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+    },
+    "window.battery.field.remaining" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Remaining" } } }
+    },
+    "window.battery.field.fullCharge" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Full Charge" } } }
+    },
+    "window.battery.field.design" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Design Capacity" } } }
+    },
+    "window.battery.timeUntilFull" : {
+      "comment" : "Battery tab subtitle when charging — %1$@ is the localized hours/minutes string.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Until full in %1$@" } } }
+    },
+    "window.battery.timeUntilEmpty" : {
+      "comment" : "Battery tab subtitle when discharging — %1$@ is the localized hours/minutes string.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Until empty in %1$@" } } }
+    },
+    "window.battery.fullyCharged" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Fully charged" } } }
+    },
+    "host.battery.chargeState.charging" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charging" } } }
+    },
+    "host.battery.chargeState.fullyCharged" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Fully Charged" } } }
+    },
+    "host.battery.chargeState.discharging" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "On Battery" } } }
+    },
+    "host.battery.chargeState.notCharging" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Plugged In" } } }
+    },
+    "host.battery.chargeState.unknown" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown" } } }
+    },
+    "host.battery.health.condition.excellent" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Excellent" } } }
+    },
+    "host.battery.health.condition.good" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Good" } } }
+    },
+    "host.battery.health.condition.fair" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Fair" } } }
+    },
+    "host.battery.health.condition.poor" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Poor" } } }
+    },
+    "host.battery.health.condition.veryPoor" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Very Poor" } } }
+    },
+    "window.battery.info.health.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About Battery Health" } } }
+    },
+    "window.battery.info.health.body" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Health is the ratio of your battery's current full-charge capacity to its original design capacity. A factory-fresh battery reads 100%; one that has lost 22% of its capacity reads 78%. Health declines slowly over time and with charge cycles." } } }
+    },
+    "window.battery.info.condition.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Condition Bands" } } }
+    },
+    "window.battery.info.condition.body" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Excellent: 90% or above. Good: 80–89%. Fair: 70–79%. Poor: 60–69%. Very Poor: below 60%. Apple recommends a service appointment when condition reaches Poor." } } }
+    },
+    "window.battery.info.temperature.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About Battery Temperature" } } }
+    },
+    "window.battery.info.temperature.body" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Optimal operating range is 0–35°C. Sustained operation above 40°C can accelerate health decline. The reading shown is the battery cell temperature reported by the SMC, not the case or CPU temperature." } } }
+    },
+    "window.battery.info.power.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About Power & Current" } } }
+    },
+    "window.battery.info.power.body" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Current is signed: positive values mean the battery is gaining charge; negative values mean it is supplying power. Power is the absolute product of voltage and current. Manifold uses the smoothed Amperage reading to keep the value stable; a fast-changing 'instant' reading would jitter unhelpfully." } } }
+    },
+    "window.battery.info.capacity.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About Capacity" } } }
+    },
+    "window.battery.info.capacity.body" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Remaining is the live charge in milliamp-hours. Full Charge is the maximum charge your battery can currently hold (this declines with age — the percentage shows the ratio against design). Design Capacity is the manufacturer's original rating and stays constant for the life of the battery." } } }
+    },
+    "window.battery.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No battery detected" } } }
+    },
+    "window.battery.empty.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold could not find an internal battery. This is normal on a Mac mini, Mac Studio, or Mac Pro." } } }
+    },
+    "menubar.battery.icon.accessibility" : {
+      "comment" : "VoiceOver-only base label set on the secondary menubar button before each setBattery(_:) updates it with a percentage-aware summary.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold battery" } } }
+    },
+    "menubar.battery.popover.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery" } } }
+    },
+    "menubar.battery.accessibility.format" : {
+      "comment" : "Battery menubar VoiceOver summary. %1$@ percent (\"84%\"), %2$@ state, %3$@ time string (or empty).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery %1$@, %2$@. %3$@" } } }
+    },
+    "settings.tab.menubar" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Menu Bar" } } }
+    },
+    "settings.menubar.section.items" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Menu bar items" } } }
+    },
+    "settings.menubar.section.sampling" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery sampling" } } }
+    },
+    "settings.menubar.batteryItem.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Show battery in menu bar" } } }
+    },
+    "settings.menubar.batteryItem.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Adds a second menu bar item showing the current charge percentage. On desktop Macs (no internal battery) this toggle has no effect — the item is never installed." } } }
+    },
+    "settings.menubar.sampleRate.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sample rate" } } }
+    },
+    "settings.menubar.sampleRate.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "How often Manifold reads battery state from the system. Higher rates respond more quickly to plug / unplug events; lower rates use less power." } } }
     }
   },
   "version" : "1.0"

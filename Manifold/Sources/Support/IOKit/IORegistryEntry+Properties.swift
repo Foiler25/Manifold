@@ -83,6 +83,18 @@ func boolProperty(
     property(key, of: entry, as: NSNumber.self)?.boolValue
 }
 
+/// Read a `Double` property (e.g. `Temperature` and `Voltage` on
+/// `AppleSmartBattery`, both of which can bridge as Double-NSNumber on
+/// firmware that publishes them as floats rather than integers).
+/// `NSNumber.doubleValue` is lossless for any numeric NSNumber so the
+/// integer firmware path also lands here cleanly.
+func doubleProperty(
+    _ key: String,
+    of entry: borrowing IOObject
+) -> Double? {
+    property(key, of: entry, as: NSNumber.self)?.doubleValue
+}
+
 /// Read a `[String]` (e.g. `TransportsActive` on
 /// `AppleTCControllerType10`, which is a CF array of CF strings).
 /// Returns `nil` when the property is absent and `[]` when the

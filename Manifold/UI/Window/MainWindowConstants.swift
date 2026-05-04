@@ -114,11 +114,17 @@ enum MainWindowConstants {
 /// Top-level tabs of the main window. `String` raw values so
 /// `@SceneStorage` can persist directly. `topology` is the default
 /// selected tab.
+///
+/// Phase 18 / SPEC §18 Phase 18 #6: `battery` is the **5th** tab,
+/// last in `allCases`. ⌘1–⌘4 keyboard shortcuts are unchanged
+/// (Topology / History / Diagnostics / Power); the battery tab is
+/// reachable via the picker only — no keyboard shortcut yet.
 enum WindowTab: String, CaseIterable, Identifiable {
     case topology
     case history
     case diagnostics
     case power
+    case battery
 
     var id: String { rawValue }
 
@@ -136,6 +142,7 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .history:     return "clock.arrow.circlepath"
         case .diagnostics: return "exclamationmark.triangle"
         case .power:       return "bolt.fill"
+        case .battery:     return "bolt.batteryblock"
         }
     }
 }

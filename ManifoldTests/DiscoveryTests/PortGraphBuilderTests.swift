@@ -59,7 +59,9 @@ final class PortGraphBuilderTests: XCTestCase {
         HostMetadata(
             id: HostID("TEST-MACHINE-UUID"),
             name: "Test Mac",
-            model: "MacTest1,1"
+            friendlyName: nil,
+            model: "MacTest1,1",
+            inputAdapter: nil
         )
     }
 

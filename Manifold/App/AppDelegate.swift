@@ -71,11 +71,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         telemetrySampler?.sampleRate = hz
     }
 
+    /// Phase 18: parallel knob for the battery sampler — invoked by
+    /// `SettingsScene`'s MenuBarPane. Forwards to BatterySampler
+    /// whose `didSet` clamps + re-arms the timer.
+    func applyBatterySampleRate(_ hz: Double) {
+        batterySampler?.sampleRate = hz
+    }
+
     private var statusItemController: StatusItemController?
     private var telemetrySampler: TelemetrySampler?
     private let samplerLifecycle = SamplerLifecycle()
     private var eventConsumerTask: Task<Void, Never>?
     private var graphObservationTask: Task<Void, Never>?
+
+    // MARK: - Phase 18 Battery
+
+    /// Battery sampler — owns its own timer + rate. AppDelegate
+    /// instantiates this on launch regardless of whether the
+    /// secondary status item is installed (the BatteryView tab in
+    /// the main window always wants live data when the window is
+    /// visible).
+    private var batterySampler: BatterySampler?
+
+    /// Secondary `NSStatusItem` controller. nil on desktop Macs
+    /// (probe returns nil) AND when the user has disabled the
+    /// item via the MenuBarPane toggle. Live install / uninstall
+    /// is driven by the AppStorage observer below.
+    private var batteryStatusItemController: BatteryStatusItemController?
+
+    /// Result of the one-shot probe at app start. nil → desktop
+    /// Mac (no `AppleSmartBattery` service), so the secondary
+    /// status item is never installed regardless of the
+    /// AppStorage value.
+    private var batteryHardwarePresent: Bool = false
+
+    /// `UserDefaults.didChangeNotification` observer. Held so the
+    /// observer survives the closure scope.
+    private var menubarBatteryItemObserver: (any NSObjectProtocol)?
+
+    /// Snapshot of the last applied AppStorage value so the
+    /// `didChangeNotification` handler can debounce — UserDefaults
+    /// posts the notification for ANY default change, not just
+    /// the one we care about.
+    private var lastObservedBatteryItemVisible: Bool?
+
+    /// Per-`graph.battery` observer task — pushes the latest
+    /// `BatteryInfo?` into the secondary status item controller's
+    /// `setBattery(_:)` whenever the graph's battery field changes.
+    /// Mirrors the `startBadgeObserver` Pattern A from §13.5.
+    private var batteryObservationTask: Task<Void, Never>?
 
     // MARK: - Phase 10 Storage
 
@@ -169,6 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         samplerLifecycle.attach(sampler: sampler)
 
+        // Phase 18: battery sampler on a parallel timer, lifecycle-
+        // paused alongside the USB telemetry sampler. The closure
+        // forwards each tick to `portGraph.applyBattery(_:)`.
+        installBatterySampler()
+        installBatteryStatusItemIfEligible()
+        startBatteryItemVisibilityObserver()
+
         // Seed the initial walk by calling rebuildGraph directly.
         // We previously routed through `service.requestRefresh()` for
         // shape uniformity with subsequent refreshes, but that
@@ -239,10 +290,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         eventConsumerTask?.cancel()
         graphObservationTask?.cancel()
+        batteryObservationTask?.cancel()
         samplerLifecycle.shutdown()
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()
+        if let observer = menubarBatteryItemObserver {
+            NotificationCenter.default.removeObserver(observer)
+            menubarBatteryItemObserver = nil
+        }
     }
 
     /// Fires when the user clicks the dock icon (or our popover-button
@@ -502,6 +558,133 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
+    }
+
+    // MARK: - Phase 18 Battery wiring
+
+    /// Stand up the `BatterySampler`, attach to lifecycle, forward
+    /// each tick to `portGraph.applyBattery(_:)`. Called once at
+    /// app start.
+    private func installBatterySampler() {
+        let sampler = BatterySampler { [weak self] info in
+            self?.portGraph.applyBattery(info)
+        }
+        // Apply persisted sample rate; clamp via `didSet`.
+        let persisted = UserDefaults.standard.double(forKey: SettingsKeys.batterySampleRateHz)
+        if persisted > 0 {
+            sampler.sampleRate = persisted
+        }
+        batterySampler = sampler
+        samplerLifecycle.attachBattery(sampler)
+    }
+
+    /// One-shot probe + AppStorage gate. Per SPEC §20.6 + Q12:
+    /// the secondary status item is installed iff the probe returns
+    /// non-nil AND the AppStorage toggle is true. Desktop Macs
+    /// (probe nil) never install regardless of the toggle.
+    private func installBatteryStatusItemIfEligible() {
+        let probe = BatterySnapshotReader.currentSnapshot()
+        let probeHasBattery = (probe != nil)
+        batteryHardwarePresent = probeHasBattery
+        // Seed the graph with the probe so the Battery tab + status
+        // item have data on the first frame, before the first
+        // sampler tick lands.
+        if let probe {
+            portGraph.applyBattery(probe)
+        }
+
+        let toggleOn = (UserDefaults.standard.object(forKey: SettingsKeys.menubarBatteryItemVisible) as? Bool)
+            ?? SettingsDefaults.menubarBatteryItemVisible
+        lastObservedBatteryItemVisible = toggleOn
+
+        guard probeHasBattery, toggleOn else {
+            return
+        }
+        installBatteryStatusItemController()
+    }
+
+    /// Concrete install path. Builds the controller, runs `install()`,
+    /// kicks off the per-graph observer that pushes battery snapshots
+    /// to the menu-bar glyph + percent.
+    private func installBatteryStatusItemController() {
+        guard batteryStatusItemController == nil else { return }
+        let controller = BatteryStatusItemController(
+            graph: portGraph,
+            onOpenWindow: { [weak self] in self?.openMainWindow() },
+            onPopoverDidShow: { [weak self] in self?.samplerLifecycle.popoverDidOpen() },
+            onPopoverDidClose: { [weak self] in self?.samplerLifecycle.popoverDidClose() }
+        )
+        controller.install()
+        batteryStatusItemController = controller
+        startBatteryObserver(controller: controller)
+    }
+
+    /// Pattern A observer per §13.5 — same shape as `startBadgeObserver`.
+    /// Re-reads `graph.battery` on every tick; on change, forwards to
+    /// `controller.setBattery(_:)`. The 50 ms cadence keeps menu-bar
+    /// updates timely without busy-spinning the main actor.
+    private func startBatteryObserver(controller: BatteryStatusItemController) {
+        batteryObservationTask?.cancel()
+        batteryObservationTask = Task { @MainActor [weak self, weak controller] in
+            while !Task.isCancelled {
+                guard let self, let controller else { return }
+                let info = withObservationTracking {
+                    self.portGraph.battery
+                } onChange: { }
+                controller.setBattery(info)
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    /// Watch `UserDefaults.didChangeNotification` for changes to
+    /// the battery-item-visible AppStorage value. On a transition
+    /// from on → off OR off → on, install / uninstall the
+    /// controller accordingly. Probe gate (`batteryHardwarePresent`)
+    /// still applies — desktop Macs never install regardless.
+    private func startBatteryItemVisibilityObserver() {
+        let observer = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: UserDefaults.standard,
+            queue: .main
+        ) { [weak self] _ in
+            // Hop to MainActor — the observer queue is .main so this
+            // is already on the main thread, but the `Task @MainActor`
+            // hop satisfies Swift 6 strict-concurrency around the
+            // captured `self`.
+            Task { @MainActor [weak self] in
+                self?.handleBatteryItemVisibilityChange()
+            }
+        }
+        menubarBatteryItemObserver = observer
+    }
+
+    /// Compare the live AppStorage value against
+    /// `lastObservedBatteryItemVisible`; install / uninstall on a
+    /// real transition only. UserDefaults posts didChange for any
+    /// default change so the dedup is load-bearing.
+    private func handleBatteryItemVisibilityChange() {
+        let toggleOn = (UserDefaults.standard.object(forKey: SettingsKeys.menubarBatteryItemVisible) as? Bool)
+            ?? SettingsDefaults.menubarBatteryItemVisible
+        guard toggleOn != lastObservedBatteryItemVisible else { return }
+        lastObservedBatteryItemVisible = toggleOn
+
+        if !batteryHardwarePresent {
+            // Desktop Mac path — toggle is documented as a no-op.
+            return
+        }
+        if toggleOn {
+            installBatteryStatusItemController()
+        } else {
+            uninstallBatteryStatusItemController()
+        }
+    }
+
+    private func uninstallBatteryStatusItemController() {
+        batteryObservationTask?.cancel()
+        batteryObservationTask = nil
+        batteryStatusItemController?.uninstall()
+        batteryStatusItemController = nil
     }
 
     // MARK: - Window-frame persistence (SPEC §18 Phase 6 rev-6)
