@@ -52,28 +52,30 @@ struct TopologyCanvas: View {
     }
 
     private func populated(host: ManifoldKit.Host) -> some View {
-        ScrollView {
+        let rootPorts = PortGraph.displayableRootPorts(for: host)
+        let anyExpandable = TopologyOutline<EmptyView>.anyExpandable(in: rootPorts)
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
                 topologyHeader(host: host)
-                ForEach(host.ports, id: \.id) { port in
-                    OutlineGroup(port, children: \.childrenForOutline) { node in
-                        topologyRow(port: node)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if let device = node.connectedDevice {
-                                    selectedDeviceID = device.id
-                                }
-                            }
-                            .background(
-                                isSelected(node)
-                                    ? Color.manifoldAccent.opacity(0.18)
-                                    : Color.clear
-                            )
-                    }
+                ForEach(rootPorts, id: \.id) { port in
+                    TopologyOutline(
+                        port: port,
+                        depth: 0,
+                        anyExpandable: anyExpandable,
+                        selectedDeviceID: $selectedDeviceID,
+                        rowContent: { node in topologyRow(port: node) },
+                        isSelected: isSelected(_:)
+                    )
                 }
             }
+            // Leading inset so the disclosure chevron has breathing
+            // room from the topology pane's left edge. Skipped when
+            // no hubs exist anywhere — the rows flush left without
+            // the chevron gutter.
+            .padding(
+                .leading,
+                anyExpandable ? TopologyCanvasConstants.outlineLeadingInset : 0
+            )
             .padding(.vertical, 12)
         }
         .navigationTitle(host.displayName)
@@ -188,10 +190,29 @@ struct TopologyCanvas: View {
                 Text(watts.formatted)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+            } else if port.connectedDevice != nil, portCarriesUSB(port) {
+                // Mirrors DeviceRow's behaviour: macOS sometimes omits
+                // the power property on small HID dongles. Surface an
+                // info icon so the row doesn't read as "0 W" by silence.
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("popover.device.power.unavailable.tooltip")
+                    .accessibilityHidden(true)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel(for: port))
+    }
+
+    /// True for ports that carry USB protocol — USB-A, USB-C,
+    /// Thunderbolt. Matches the DeviceRow scoping rule: silence is
+    /// only meaningful (and thus worth flagging) on USB-bearing ports.
+    private func portCarriesUSB(_ port: ManifoldKit.Port) -> Bool {
+        switch port.kind {
+        case .usbA, .usbC, .thunderbolt: return true
+        case .hdmi, .sd, .audio, .ethernet, .magsafe, .unknown: return false
+        }
     }
 
     private var emptyState: some View {
@@ -299,11 +320,133 @@ struct TopologyCanvas: View {
     }
 }
 
-// MARK: - OutlineGroup helper (re-declared private here so this file compiles standalone)
+// MARK: - Constants
 
-private extension ManifoldKit.Port {
-    var childrenForOutline: [ManifoldKit.Port]? {
-        children.isEmpty ? nil : children
+enum TopologyCanvasConstants {
+    /// Width of the dedicated chevron column. Always reserved on
+    /// every row — `chevron.right`/`down` on expandable rows, empty
+    /// `Color.clear` on leaves — so the plug icon and the trailing
+    /// power/info icon both land at consistent x's regardless of
+    /// depth or expandability.
+    static let chevronColumnWidth: CGFloat = 18.0
+
+    /// Per-depth indent for nested children. Each level shifts the
+    /// row's content this many points to the right.
+    static let outlineIndentPerLevel: CGFloat = 16.0
+
+    /// Leading inset on the outline container so the disclosure
+    /// chevron has breathing room from the topology pane's left
+    /// edge instead of being jammed against it.
+    static let outlineLeadingInset: CGFloat = 10.0
+}
+
+// MARK: - TopologyOutline
+
+/// Custom recursive replacement for `OutlineGroup`, mirroring the
+/// `PortOutline` view used by the popover. SwiftUI's `OutlineGroup`
+/// produced rows whose intrinsic width fought every
+/// `.frame(maxWidth: .infinity)` we added — leaf rows ended up
+/// narrower than expandable rows and the trailing power / info
+/// icons sat at different x's across the list.
+///
+/// `TopologyOutline` controls every column directly: a fixed-width
+/// chevron gutter (filled with `chevron.down/right` for hubs,
+/// `Color.clear` for leaves) plus the caller-supplied row content
+/// (a `topologyRow(port:)`) that fills the remaining width.
+/// Nested children are rendered recursively at `depth + 1`.
+///
+/// Disclosure state is `@State` (per-instance, in-memory). The
+/// stand-alone window can graduate to `@SceneStorage` later if a
+/// user wants the tree state to persist across reopens.
+struct TopologyOutline<Row: View>: View {
+    let port: ManifoldKit.Port
+    let depth: Int
+    /// `true` when any port in the host tree has children. When
+    /// `false` (host with zero hubs anywhere), the chevron column
+    /// AND the per-depth indent collapse to zero width — there's
+    /// no disclosure to surface, so the rows flush left instead of
+    /// carrying an always-empty gutter. Computed once at the root
+    /// scope.
+    let anyExpandable: Bool
+    @Binding var selectedDeviceID: DeviceID?
+    let rowContent: (ManifoldKit.Port) -> Row
+    let isSelected: (ManifoldKit.Port) -> Bool
+    @State private var isExpanded: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 0) {
+                if anyExpandable, depth > 0 {
+                    Color.clear
+                        .frame(
+                            width: CGFloat(depth) * TopologyCanvasConstants.outlineIndentPerLevel
+                        )
+                }
+                chevronColumn
+                rowContent(port)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if let device = port.connectedDevice {
+                    selectedDeviceID = device.id
+                }
+            }
+            .background(
+                isSelected(port)
+                    ? Color.manifoldAccent.opacity(0.18)
+                    : Color.clear
+            )
+
+            if isExpanded, !port.children.isEmpty {
+                ForEach(port.children, id: \.id) { child in
+                    TopologyOutline(
+                        port: child,
+                        depth: depth + 1,
+                        anyExpandable: anyExpandable,
+                        selectedDeviceID: $selectedDeviceID,
+                        rowContent: rowContent,
+                        isSelected: isSelected
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chevronColumn: some View {
+        if !anyExpandable {
+            EmptyView()
+        } else if !port.children.isEmpty {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(
+                        width: TopologyCanvasConstants.chevronColumnWidth,
+                        alignment: .center
+                    )
+            }
+            .buttonStyle(.plain)
+        } else {
+            Color.clear
+                .frame(width: TopologyCanvasConstants.chevronColumnWidth)
+        }
+    }
+
+    /// Recursive check — `true` when this port or any of its
+    /// descendants has children. Used at the root scope to compute
+    /// the `anyExpandable` flag once for the whole tree.
+    static func anyExpandable(in ports: [ManifoldKit.Port]) -> Bool {
+        ports.contains { port in
+            !port.children.isEmpty || TopologyOutline.anyExpandable(in: port.children)
+        }
     }
 }
 

@@ -39,6 +39,14 @@ struct DeviceRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // `.frame(maxWidth: .infinity)` is load-bearing here:
+            // without it the HStack sizes to its intrinsic content
+            // width, the `Spacer()` collapses to its 8pt minimum,
+            // and the trailing power/info icon sits at a different
+            // x for every row depending on how long the device
+            // name is. Forcing the HStack to fill the available
+            // width pins the trailing icon to a consistent
+            // trailing edge across every row in the list.
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: iconName(for: device.kind))
                     .font(.body)
@@ -71,8 +79,20 @@ struct DeviceRow: View {
                     Text(watts.formatted)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                } else if portCarriesUSB {
+                    // macOS sometimes omits the power property on small
+                    // HID dongles (e.g. Logitech Bolt receivers). Surface
+                    // an info icon so the row doesn't read as "0 W" by
+                    // omission. The row's accessibilityLabel already
+                    // includes the "power unknown" fallback for VO.
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("popover.device.power.unavailable.tooltip")
+                        .accessibilityHidden(true)
                 }
             }
+            .frame(maxWidth: .infinity)
 
             // Inline telemetry chart — same component as the inspector,
             // sized for the popover. Shows the "Awaiting samples"
@@ -124,6 +144,18 @@ struct DeviceRow: View {
         let proto = port.negotiated?.protocolName
             ?? NSLocalizedString("popover.device.unknown.protocol", comment: "Fallback protocol label.")
         return String(format: "%04X:%04X · %@", device.vendorID, device.productID, proto)
+    }
+
+    /// True when the port carries the USB protocol — i.e. macOS *should*
+    /// be exposing a `Requested Power` (or alternate) property on the
+    /// IOKit node. Drives the "info icon for missing power" affordance:
+    /// silence is meaningful here, but not on HDMI / audio / ethernet
+    /// ports where USB power semantics don't apply.
+    private var portCarriesUSB: Bool {
+        switch port.kind {
+        case .usbA, .usbC, .thunderbolt: return true
+        case .hdmi, .sd, .audio, .ethernet, .magsafe, .unknown: return false
+        }
     }
 
     /// Map `DeviceKind` to an SF Symbol. Phase 15's polish pass may
@@ -222,6 +254,16 @@ private func previewBuffer(seed: Double) -> TelemetryBuffer {
     DeviceRow(
         port: PreviewData.studioDisplayPort,
         device: PreviewData.studioDisplay,
+        history: nil
+    )
+    .padding()
+    .background(Color.manifoldSurface)
+}
+
+#Preview("DeviceRow — Logitech receiver, macOS reports no power") {
+    DeviceRow(
+        port: PreviewData.logitechPortNoPower,
+        device: PreviewData.logitechMouse,
         history: nil
     )
     .padding()

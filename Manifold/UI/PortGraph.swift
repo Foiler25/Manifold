@@ -276,29 +276,94 @@ final class PortGraph {
     /// kills its tree), clear history (§4.6.1's "clear history").
     /// Not-found: drop + debug log per §4.6.1.
     private func applyDetached(deviceID: DeviceID, from portID: PortID) {
-        let found = mutatePort(id: portID) { port in
-            port = ManifoldKit.Port(
-                id: port.id,
-                position: port.position,
-                kind: port.kind,
-                parentID: port.parentID,
-                connectedDevice: nil,
-                negotiated: nil,
-                powerDraw: nil,
-                availablePower: port.availablePower,
-                children: []
-            )
-        }
-
-        if found {
-            // §4.6.1: ".detached → clear history". The buffer for this
-            // port is gone; the next .attached on this PortID will
-            // start a fresh sparkline.
+        // Always remove the port entirely on detach — both root
+        // chassis ports and nested hub-child ports. The previous
+        // "preserve as empty" path for root ports produced two
+        // problems:
+        //   - Multi-lane chassis ports (e.g. USB-C ports on Apple
+        //     silicon, where each physical port shows as two IOReg
+        //     entries — USB 2.0 lane + USB 3.0/3.1 lane) appeared
+        //     twice as empty rows after unplug, even though they're
+        //     the same physical socket.
+        //   - Hub-child ports lingered as orphan "Port N — Empty"
+        //     rows after their parent hub disappeared.
+        //
+        // The "physical chassis port stays visible as empty" UX
+        // comes from `host.physicalPorts` — `displayableRootPorts`
+        // synthesizes empty `Port` rows from chassis entries whose
+        // `state == .empty`. That list lives outside the surgical
+        // mutation path: a `.detached` event clears the active port
+        // here but doesn't refresh chassis occupancy, so without a
+        // full re-walk `physicalPorts[N].state` would stay at
+        // `.dataDevice` and the empty filter wouldn't pick it up.
+        // We set `needsFullRefresh = true` so AppDelegate's consumer
+        // runs `rebuildGraph()` after the apply — that re-reads the
+        // chassis snapshot and the empty row appears.
+        let removed = removePort(id: portID)
+        if removed {
+            // §4.6.1: ".detached → clear history". The buffer for
+            // this port is gone; the next .attached on this PortID
+            // will start a fresh sparkline.
             telemetryHistory.removeValue(forKey: portID)
+            needsFullRefresh = true
             lastUpdated = .now
         } else {
             Log.events.debug("detached from unknown port \(portID.rawValue, privacy: .public) — dropped")
         }
+    }
+
+    /// Walk the host tree and remove the port matching `id` from
+    /// wherever it lives — whether it's a root chassis port (top
+    /// level of `host.ports`) or a hub child nested somewhere in
+    /// the tree. Returns `true` if the port was found and removed.
+    @discardableResult
+    private func removePort(id: PortID) -> Bool {
+        for hostIndex in hosts.indices {
+            var host = hosts[hostIndex]
+            var newPorts = host.ports
+            if Self.removePortInArray(&newPorts, id: id) {
+                host = ManifoldKit.Host(
+                    id: host.id,
+                    name: host.name,
+                    friendlyName: host.friendlyName,
+                    model: host.model,
+                    inputAdapter: host.inputAdapter,
+                    ports: newPorts,
+                    physicalPorts: host.physicalPorts
+                )
+                hosts[hostIndex] = host
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Recursive helper for `removePort(id:)`. Scans `ports` first;
+    /// if the matching port isn't a direct member, descends into
+    /// each child's subtree. Mutates `ports` in place.
+    private static func removePortInArray(_ ports: inout [ManifoldKit.Port], id: PortID) -> Bool {
+        if let index = ports.firstIndex(where: { $0.id == id }) {
+            ports.remove(at: index)
+            return true
+        }
+        for i in ports.indices {
+            var children = ports[i].children
+            if removePortInArray(&children, id: id) {
+                ports[i] = ManifoldKit.Port(
+                    id: ports[i].id,
+                    position: ports[i].position,
+                    kind: ports[i].kind,
+                    parentID: ports[i].parentID,
+                    connectedDevice: ports[i].connectedDevice,
+                    negotiated: ports[i].negotiated,
+                    powerDraw: ports[i].powerDraw,
+                    availablePower: ports[i].availablePower,
+                    children: children
+                )
+                return true
+            }
+        }
+        return false
     }
 
     /// `.diagnostic` — append + dedupe by (target, ruleIdentifier).
@@ -380,6 +445,60 @@ final class PortGraph {
     }
 
     // MARK: - Convenience derivations
+
+    /// Root-level ports to display in the popover / topology list,
+    /// combining active device-bearing ports with synthesized
+    /// placeholders for any empty chassis ports.
+    ///
+    /// `host.ports` only contains ports with currently connected
+    /// devices — `applyDetached` drops a port entirely on unplug so
+    /// transient dock-introduced lanes don't linger. That's the
+    /// correct behavior for the active-device tree, but the user
+    /// also wants to see "Port 1 — Empty" rows for the laptop's
+    /// physical chassis ports when nothing is plugged in. The
+    /// chassis state lives in `host.physicalPorts`; we lift the
+    /// `.empty`-state entries into synthetic root `Port` values
+    /// (no device, no children) and append them after the active
+    /// ports.
+    ///
+    /// A chassis port whose state is `.dataDevice` or `.powerOnly`
+    /// is already represented by an active root port (or — for
+    /// power-only — by `PortOccupancyView`'s chip strip), so we
+    /// don't synthesize a row for those. Synthetic IDs use a
+    /// `chassis-<kind>-<position>` prefix that won't collide with
+    /// real registry paths.
+    static func displayableRootPorts(for host: ManifoldKit.Host) -> [ManifoldKit.Port] {
+        let emptyChassis = host.physicalPorts
+            .filter { $0.state == .empty }
+            .sorted { $0.position < $1.position }
+            .map(syntheticEmptyPort(for:))
+        return host.ports + emptyChassis
+    }
+
+    /// Build a connection-less `Port` from an empty `PhysicalPort`.
+    /// The resulting port renders through the existing empty-port
+    /// path in `PortRow` / `topologyRow`, so the visual treatment
+    /// matches a hub-orphaned empty without any new view code.
+    private static func syntheticEmptyPort(for chassis: ManifoldKit.PhysicalPort) -> ManifoldKit.Port {
+        let kind: ManifoldKit.PortKind = {
+            switch chassis.kind {
+            case .usbC:    return .usbC
+            case .magsafe: return .magsafe
+            case .unknown: return .unknown
+            }
+        }()
+        return ManifoldKit.Port(
+            id: PortID("chassis-\(chassis.kind.rawValue)-\(chassis.position)"),
+            position: chassis.position,
+            kind: kind,
+            parentID: nil,
+            connectedDevice: nil,
+            negotiated: nil,
+            powerDraw: nil,
+            availablePower: nil,
+            children: []
+        )
+    }
 
     /// Total connected device count across every host. Used by the
     /// popover header and the Shortcut intent (Phase 12).

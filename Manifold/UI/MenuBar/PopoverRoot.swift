@@ -88,19 +88,26 @@ struct PopoverRoot: View {
             // popover hugs its content; once the visible-row cap kicks
             // in (>3 rows) the height holds and the rest scroll.
             ScrollView {
+                let rootPorts = graph.hosts.first.map(PortGraph.displayableRootPorts(for:)) ?? []
+                let anyExpandable = PortOutline.anyExpandable(in: rootPorts)
                 LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(graph.hosts.first?.ports ?? [], id: \.id) { port in
-                        OutlineGroup(port, children: \.childrenForOutline) { node in
-                            PortRow(
-                                port: node,
-                                history: graph.history(forPortID: node.id),
-                                diagnostics: graph.diagnostics(forPortID: node.id)
-                            )
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 4)
-                        }
+                    ForEach(rootPorts, id: \.id) { port in
+                        PortOutline(
+                            port: port,
+                            depth: 0,
+                            anyExpandable: anyExpandable,
+                            graph: graph
+                        )
                     }
                 }
+                // Leading inset so the disclosure chevron doesn't
+                // read as crowded against the popover's left edge.
+                // Skipped when no hubs exist anywhere — the rows
+                // flush left without the chevron gutter.
+                .padding(
+                    .leading,
+                    anyExpandable ? PopoverRootConstants.outlineLeadingInset : 0
+                )
                 .padding(.vertical, 8)
             }
             .frame(height: scrollSectionHeight)
@@ -153,8 +160,10 @@ struct PopoverRoot: View {
     /// scroll view starts scrolling. Counts only top-level ports —
     /// nested children inside an `OutlineGroup` are reachable via
     /// the disclosure triangle and don't contribute to the cap.
+    /// Includes the synthetic empty chassis rows so the popover
+    /// height stays right when nothing is plugged in.
     private var visibleRowCount: Int {
-        let total = graph.hosts.first?.ports.count ?? 0
+        let total = graph.hosts.first.map(PortGraph.displayableRootPorts(for:))?.count ?? 0
         return min(total, AppConstants.popoverScrollThreshold)
     }
 
@@ -193,6 +202,129 @@ struct PopoverRoot: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Constants
+
+enum PopoverRootConstants {
+    /// Width of the dedicated chevron column. Always reserved on
+    /// every row — `chevron.right` for expandable rows, empty for
+    /// leaves — so the plug icon and the trailing power/info icon
+    /// both land at consistent x's regardless of depth or
+    /// expandability. Tuned by inspection.
+    static let chevronColumnWidth: CGFloat = 18.0
+
+    /// Per-depth indent for nested children. Each level shifts the
+    /// row's content this many points to the right.
+    static let outlineIndentPerLevel: CGFloat = 16.0
+
+    /// Leading inset on the entire outline container so the
+    /// disclosure chevron has breathing room from the popover's
+    /// left edge instead of being jammed against it.
+    static let outlineLeadingInset: CGFloat = 10.0
+}
+
+// MARK: - PortOutline
+
+/// Custom recursive replacement for `OutlineGroup`. SwiftUI's
+/// `OutlineGroup` was producing rows whose intrinsic width fought
+/// every `.frame(maxWidth: .infinity)` we added — leaf rows ended
+/// up narrower than expandable rows because the auto-rendered
+/// chevron took variable width, and the trailing power / info
+/// icons sat at different x's across the list.
+///
+/// `PortOutline` controls every column directly: a fixed-width
+/// chevron gutter (filled with `chevron.down/right` for hubs,
+/// `Color.clear` for leaves) plus a `PortRow` that fills the
+/// remaining width with `.frame(maxWidth: .infinity, alignment:
+/// .leading)`. Nested children are rendered recursively at
+/// `depth + 1` with a left indent.
+///
+/// Disclosure state is `@State` (per-instance, in-memory) — opens
+/// and closes survive scrolling but reset when the popover is
+/// dismissed. That matches the popover's transient role; the
+/// stand-alone window can graduate to `@SceneStorage` later if a
+/// user wants the tree-state to persist across reopens.
+struct PortOutline: View {
+    let port: ManifoldKit.Port
+    let depth: Int
+    /// Set to `true` when any port in the host tree has children
+    /// (i.e. there's at least one hub somewhere). When `false`, the
+    /// chevron column AND the per-depth indent collapse to zero
+    /// width — there's no disclosure UX to surface, so the rows
+    /// flush against the leading inset instead of carrying an
+    /// always-empty gutter. Computed once at the root scope and
+    /// threaded down so siblings agree.
+    let anyExpandable: Bool
+    @Bindable var graph: PortGraph
+    @State private var isExpanded: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 0) {
+                if anyExpandable, depth > 0 {
+                    Color.clear
+                        .frame(
+                            width: CGFloat(depth) * PopoverRootConstants.outlineIndentPerLevel
+                        )
+                }
+                chevronColumn
+                PortRow(
+                    port: port,
+                    history: graph.history(forPortID: port.id),
+                    diagnostics: graph.diagnostics(forPortID: port.id)
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+
+            if isExpanded, !port.children.isEmpty {
+                ForEach(port.children, id: \.id) { child in
+                    PortOutline(
+                        port: child,
+                        depth: depth + 1,
+                        anyExpandable: anyExpandable,
+                        graph: graph
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chevronColumn: some View {
+        if !anyExpandable {
+            EmptyView()
+        } else if !port.children.isEmpty {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(
+                        width: PopoverRootConstants.chevronColumnWidth,
+                        alignment: .center
+                    )
+            }
+            .buttonStyle(.plain)
+        } else {
+            Color.clear
+                .frame(width: PopoverRootConstants.chevronColumnWidth)
+        }
+    }
+
+    /// Recursive check — `true` when this port or any of its
+    /// descendants has children. Used at the root scope to compute
+    /// the `anyExpandable` flag once for the whole tree.
+    static func anyExpandable(in ports: [ManifoldKit.Port]) -> Bool {
+        ports.contains { port in
+            !port.children.isEmpty || PortOutline.anyExpandable(in: port.children)
+        }
     }
 }
 

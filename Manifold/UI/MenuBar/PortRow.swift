@@ -53,6 +53,13 @@ struct PortRow: View {
                 badgeStrip
             }
         }
+        // Force the row to fill the available width so the inner
+        // `Spacer()` in DeviceRow / emptyPortRow can actually push
+        // the trailing power/info icon to the row's trailing edge.
+        // Without this, PortRow sizes to intrinsic content and the
+        // trailing icon's x ends up dependent on the device name's
+        // length — visibly misaligned across rows.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Horizontal flow of `DiagnosticBadge`s. `WrappingHStack` would be

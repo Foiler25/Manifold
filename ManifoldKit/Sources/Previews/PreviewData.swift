@@ -119,6 +119,20 @@ public enum PreviewData {
         children: []
     )
 
+    /// Same Logitech receiver but with `powerDraw == nil` — exercises the
+    /// "macOS didn't expose a power property" path that some HID dongles
+    /// (e.g. Bolt receivers) hit on real hardware.
+    public static let logitechPortNoPower = Port(
+        id: PortID("/preview/logitech-port-nopower"),
+        position: 1,
+        kind: .usbC,
+        parentID: nil,
+        connectedDevice: logitechMouse,
+        negotiated: LinkSpeed(protocolName: "USB 2.0", bitrate: Bitrate(bitsPerSecond: 480_000_000)),
+        powerDraw: nil,
+        children: []
+    )
+
     /// USB-C port with the SanDisk SSD. USB 3.2 Gen 2x2 link, high draw.
     public static let sandiskPort = Port(
         id: PortID("/preview/sandisk-port"),

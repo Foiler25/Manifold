@@ -83,6 +83,8 @@ struct DeviceInspector: View {
                     }
                     if let watts = port.powerDraw {
                         keyValueText("window.inspector.field.power", watts.formatted)
+                    } else if portCarriesUSB(port) {
+                        powerUnavailableRow
                     }
                 }
                 section(titleKey: "window.inspector.section.telemetry") {
@@ -204,6 +206,36 @@ struct DeviceInspector: View {
                 .help(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Power-row variant for the case where the port has a connected
+    /// USB device but macOS didn't expose a power property — small HID
+    /// dongles routinely hit this. The trailing info icon mirrors
+    /// DeviceRow / TopologyCanvas; hover surfaces the same tooltip
+    /// from the shared catalog key.
+    private var powerUnavailableRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text("window.inspector.field.power")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Image(systemName: "info.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .help("popover.device.power.unavailable.tooltip")
+                .accessibilityLabel(Text("popover.device.power.unavailable.accessibility"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Same scoping rule as DeviceRow / TopologyCanvas: only USB-A,
+    /// USB-C, and Thunderbolt ports should advertise a missing-power
+    /// indicator — silence isn't meaningful on HDMI / audio / etc.
+    private func portCarriesUSB(_ port: ManifoldKit.Port) -> Bool {
+        switch port.kind {
+        case .usbA, .usbC, .thunderbolt: return true
+        case .hdmi, .sd, .audio, .ethernet, .magsafe, .unknown: return false
+        }
     }
 
     private var emptyState: some View {
