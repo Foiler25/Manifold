@@ -149,6 +149,7 @@ final class NotchPanelController {
             viewModel: viewModel,
             notchWidth: notchWidth,
             notchHeight: notchHeight,
+            hasNotch: anchor.hasNotch,
             canvasSize: canvasSize,
             content: pending.content
         )
@@ -279,16 +280,22 @@ final class NotchPanelController {
     /// alert height; the SwiftUI frame interpolation springs from
     /// `(notchWidth, 0)` to this size.
     private func canvasSize(for anchor: NotchAnchor) -> CGSize {
-        let height = NotchPanelControllerConstants.panelHeight
         // Notched: canvas extends `notchExtension` past each side of
         // the physical notch so the body has breathing room past the
-        // concave shoulders. Non-notched: fall back to a fixed width.
+        // concave shoulders, and is tall enough to clear the notch
+        // mask plus the content stack. Non-notched: a much shorter
+        // canvas — there's no notch mask to clear so the top
+        // padding is small, and the dropdown height tracks the
+        // content directly.
         let width: CGFloat
+        let height: CGFloat
         if anchor.hasNotch {
             width = anchor.notchFrame.width
                 + NotchPanelControllerConstants.notchExtension * 2
+            height = NotchPanelControllerConstants.panelHeight
         } else {
             width = NotchPanelControllerConstants.panelWidth
+            height = NotchPanelControllerConstants.panelHeightFallback
         }
         return CGSize(width: width, height: height)
     }
@@ -363,6 +370,7 @@ struct NotchPanelRoot: View {
     @Bindable var viewModel: NotchPanelViewModel
     let notchWidth: CGFloat
     let notchHeight: CGFloat
+    let hasNotch: Bool
     let canvasSize: CGSize
     let content: AnyView
 
@@ -370,6 +378,7 @@ struct NotchPanelRoot: View {
         NotchHostView(
             notchWidth: notchWidth,
             notchHeight: notchHeight,
+            hasNotch: hasNotch,
             isOpen: viewModel.isOpen,
             contentOpacity: viewModel.contentOpacity,
             canvasSize: canvasSize,
@@ -420,13 +429,23 @@ enum NotchPanelControllerConstants {
     /// dropdown unfurls symmetrically from the notch.
     static let panelWidth: CGFloat = 360
 
-    /// Default panel canvas height in points. Sized to clear the
-    /// physical notch (~38pt) PLUS a three-line content stack
-    /// (title / subtitle / time-remaining caption) PLUS bottom
-    /// padding. The visible body height (below the notch) is
-    /// `panelHeight - notchHeight - paddings` — currently ~64pt
-    /// for the three-line stack.
-    static let panelHeight: CGFloat = 112
+    /// Notched canvas height in points. Sized to clear the
+    /// physical notch (~38pt) plus the title / subtitle / time
+    /// caption stack plus bottom padding. Tight by design — extra
+    /// slack at the bottom reads as wasted space, and the content
+    /// is small enough that this fits the typical 3-line case
+    /// without clipping.
+    static let panelHeight: CGFloat = 102
+
+    /// Non-notched canvas height in points. Much shorter than
+    /// `panelHeight` because there's no notch mask to clear at
+    /// the top — the dropdown is just the content stack plus
+    /// small top + bottom paddings, sized like a regular toast.
+    /// 4pt more than the bare-minimum to accommodate the slightly
+    /// larger `contentBottomPaddingFallback` (the non-notched
+    /// dropdown floats free, so it benefits from a bit more
+    /// breathing room near the bottom rounded corner).
+    static let panelHeightFallback: CGFloat = 74
 
     /// Distance the canvas extends past each side of the physical
     /// notch on notched hardware. Wide enough to fit the icon, the

@@ -47,8 +47,15 @@ struct NotchHostView<Content: View>: View {
     /// sits at the screen top (behind the notch), so the area from
     /// y=0 to y=notchHeight in the shape's coordinate system is the
     /// portion hidden behind the notch hardware mask. Content has to
-    /// be padded past this Y to be visible.
+    /// be padded past this Y to be visible. 0 when `hasNotch` is
+    /// false (no masked area).
     let notchHeight: CGFloat
+
+    /// Whether the active screen has a physical notch. Drives both
+    /// the silhouette (concave-shoulder NotchBlendShape vs plain
+    /// RoundedRectangle) AND the content's top padding (clear the
+    /// notch mask vs a small breathing buffer).
+    let hasNotch: Bool
 
     /// Open / closed flag. Drives the `.frame` interpolation. Caller
     /// sets this inside `withAnimation` so the spring animates the
@@ -72,11 +79,27 @@ struct NotchHostView<Content: View>: View {
         let liveHeight = isOpen ? canvasSize.height : 0
 
         ZStack(alignment: .top) {
-            NotchBlendShape(
-                shoulderRadius: NotchBlendShapeConstants.shoulderRadius,
-                bottomRadius: NotchBlendShapeConstants.bottomRadius
-            )
-            .fill(NotchHostViewConstants.fillColor)
+            // Notched displays get the concave-shoulder shape so the
+            // top corners blend into the physical notch. Non-notched
+            // displays get a plain rounded rectangle — no notch to
+            // blend with, so the concave indents would just look
+            // like decorative scoops. Same fill color + shadow on
+            // both paths.
+            Group {
+                if hasNotch {
+                    NotchBlendShape(
+                        shoulderRadius: NotchBlendShapeConstants.shoulderRadius,
+                        bottomRadius: NotchBlendShapeConstants.bottomRadius
+                    )
+                    .fill(NotchHostViewConstants.fillColor)
+                } else {
+                    RoundedRectangle(
+                        cornerRadius: NotchHostViewConstants.fallbackCornerRadius,
+                        style: .continuous
+                    )
+                    .fill(NotchHostViewConstants.fillColor)
+                }
+            }
             .shadow(
                 color: NotchHostViewConstants.shadowColor,
                 radius: NotchHostViewConstants.shadowRadius,
@@ -85,16 +108,23 @@ struct NotchHostView<Content: View>: View {
             )
             .frame(width: liveWidth, height: liveHeight)
 
-            // Content sits inside the visible body — padded past the
-            // notch (which masks the canvas's top portion) plus a
-            // small breathing buffer below the notch's lower edge.
-            // Horizontal padding clears the shoulder curves on each
-            // side. Fades in via a delayed easeOut so the silhouette
-            // unfurls first.
+            // Content padding adapts to the screen kind:
+            //   - Notched: clear the masked area at top (notchHeight)
+            //     plus a small buffer below the notch's lower edge.
+            //   - Non-notched: just a regular top padding — no mask
+            //     to clear, so the title sits closer to the canvas
+            //     top, eliminating the empty band that would
+            //     otherwise feel like phantom-notch padding.
+            let topPadding: CGFloat = hasNotch
+                ? notchHeight + NotchHostViewConstants.contentBelowNotchPadding
+                : NotchHostViewConstants.contentTopPaddingFallback
+            let bottomPadding: CGFloat = hasNotch
+                ? NotchHostViewConstants.contentBottomPadding
+                : NotchHostViewConstants.contentBottomPaddingFallback
             content
-                .padding(.top, notchHeight + NotchHostViewConstants.contentBelowNotchPadding)
+                .padding(.top, topPadding)
                 .padding(.horizontal, NotchHostViewConstants.contentHorizontalPadding)
-                .padding(.bottom, NotchHostViewConstants.contentBottomPadding)
+                .padding(.bottom, bottomPadding)
                 .frame(width: liveWidth, height: liveHeight, alignment: .top)
                 .opacity(contentOpacity)
                 .clipped()
@@ -169,11 +199,29 @@ enum NotchHostViewConstants {
     /// hug the notch's lower edge.
     static let contentBelowNotchPadding: CGFloat = 6.0
 
+    /// Top padding for the non-notched fallback. No physical mask
+    /// to clear, so the content sits much closer to the canvas top
+    /// — just enough to not crowd the rounded corner.
+    static let contentTopPaddingFallback: CGFloat = 14.0
+
     /// Horizontal padding inside the content. Past the shoulder
     /// curves on each side plus a small text-margin.
     static let contentHorizontalPadding: CGFloat = 14.0 + 8.0
 
-    /// Bottom padding so the content doesn't hug the rounded
-    /// bottom corners.
-    static let contentBottomPadding: CGFloat = 12.0
+    /// Bottom padding (notched path). Tight — the visible body
+    /// already starts well below the screen top because of the
+    /// notch mask, so excess bottom padding reads as wasted space.
+    static let contentBottomPadding: CGFloat = 8.0
+
+    /// Bottom padding (non-notched fallback). 4pt more than the
+    /// notched path because the dropdown floats free below the
+    /// menu bar — without that extra breathing room the text feels
+    /// like it's hugging the rounded bottom corner.
+    static let contentBottomPaddingFallback: CGFloat = 12.0
+
+    /// Corner radius for the non-notched fallback rounded rectangle.
+    /// Matches `NotchBlendShapeConstants.bottomRadius` so the bottom
+    /// corners are visually consistent across the notched and
+    /// non-notched paths.
+    static let fallbackCornerRadius: CGFloat = 16.0
 }
