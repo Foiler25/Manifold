@@ -189,9 +189,19 @@ final class BatteryStatusItemController {
 
     // MARK: - Click handling
 
+    /// AppKit invokes this via target/action. Marked `nonisolated` to
+    /// suppress Swift 6's auto-inserted `_checkExpectedExecutor` thunk
+    /// — that thunk reads a corrupted `SerialExecutorRef` under some
+    /// build configurations and crashes inside `swift_getObjectType`
+    /// on the way to deciding "is this MainActor". We *know* AppKit
+    /// dispatches target/action on the main thread, so `MainActor.
+    /// assumeIsolated` is the documented way to tell the compiler /
+    /// runtime "yes, we're on MainActor — skip the check".
     @objc
-    private func buttonClicked(_ sender: Any?) {
-        showPopover()
+    nonisolated private func buttonClicked(_ sender: Any?) {
+        MainActor.assumeIsolated {
+            showPopover()
+        }
     }
 
     /// Open / close the battery popover.

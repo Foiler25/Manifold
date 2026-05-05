@@ -36,57 +36,70 @@ import SwiftUI
 /// content view type so the controller can swap content per alert.
 struct NotchHostView<Content: View>: View {
 
-    /// Notch dimensions resolved at present-time (per
-    /// `NotchAnchor.notchFrame`). 0 / 0 in the no-notch fallback;
-    /// `NotchBlendShape` handles the degenerate case.
+    /// Width of the physical notch in points. The shape's frame
+    /// collapses to this width (× zero height) when `isOpen == false`,
+    /// so the closed state is a thin pill of exactly the notch's
+    /// horizontal extent — the open animation reads as the dropdown
+    /// unfurling out from the notch's lower edge.
     let notchWidth: CGFloat
+
+    /// Height of the physical notch in points. The canvas's top edge
+    /// sits at the screen top (behind the notch), so the area from
+    /// y=0 to y=notchHeight in the shape's coordinate system is the
+    /// portion hidden behind the notch hardware mask. Content has to
+    /// be padded past this Y to be visible.
     let notchHeight: CGFloat
 
-    /// Shape progress 0...1. Driven by the controller via the
-    /// `withAnimation(open/close spring)` block in
-    /// `NotchPanelController.show(...)` / `dismiss(...)`.
-    let shapeProgress: CGFloat
+    /// Open / closed flag. Drives the `.frame` interpolation. Caller
+    /// sets this inside `withAnimation` so the spring animates the
+    /// width / height transition.
+    let isOpen: Bool
 
     /// Content fade progress 0...1. Driven by a separate
-    /// `.easeOut(duration: 0.26).delay(0.14)` so the content
-    /// appears AFTER the shape opens (per SPEC §21.4).
+    /// `.easeOut(duration: 0.26).delay(0.14)` so the content fades in
+    /// after the shape unfurls.
     let contentOpacity: CGFloat
 
-    /// Total panel canvas size. Sets the SwiftUI frame so the shape
-    /// has a definite `rect` to draw into and the content view
-    /// can position relative to it.
+    /// Fully-open canvas size. The frame interpolates between
+    /// `(notchWidth, 0)` and this value.
     let canvasSize: CGSize
 
     /// Caller-supplied content view rendered on top of the shape.
     let content: Content
 
     var body: some View {
+        let liveWidth = isOpen ? canvasSize.width : max(notchWidth, 1)
+        let liveHeight = isOpen ? canvasSize.height : 0
+
         ZStack(alignment: .top) {
             NotchBlendShape(
-                notchWidth: notchWidth,
-                notchHeight: notchHeight,
-                progress: shapeProgress
+                shoulderRadius: NotchBlendShapeConstants.shoulderRadius,
+                bottomRadius: NotchBlendShapeConstants.bottomRadius
             )
             .fill(NotchHostViewConstants.fillColor)
-            // Subtle shadow on the dropdown — SwiftUI draws this
-            // since `NotchPanel.hasShadow == false` (the panel itself
-            // is shadowless; SwiftUI handles the visual depth).
             .shadow(
                 color: NotchHostViewConstants.shadowColor,
                 radius: NotchHostViewConstants.shadowRadius,
                 x: 0,
                 y: NotchHostViewConstants.shadowYOffset
             )
+            .frame(width: liveWidth, height: liveHeight)
 
-            // Content sits below the notch silhouette top edge, fades
-            // in via a delayed easeOut so the shoulders unfurl first.
+            // Content sits inside the visible body — padded past the
+            // notch (which masks the canvas's top portion) plus a
+            // small breathing buffer below the notch's lower edge.
+            // Horizontal padding clears the shoulder curves on each
+            // side. Fades in via a delayed easeOut so the silhouette
+            // unfurls first.
             content
-                .padding(.top, notchHeight + NotchHostViewConstants.contentTopPadding)
+                .padding(.top, notchHeight + NotchHostViewConstants.contentBelowNotchPadding)
                 .padding(.horizontal, NotchHostViewConstants.contentHorizontalPadding)
                 .padding(.bottom, NotchHostViewConstants.contentBottomPadding)
+                .frame(width: liveWidth, height: liveHeight, alignment: .top)
                 .opacity(contentOpacity)
+                .clipped()
         }
-        .frame(width: canvasSize.width, height: canvasSize.height)
+        .frame(width: canvasSize.width, height: canvasSize.height, alignment: .top)
         .accessibilityElement(children: .contain)
     }
 }
@@ -129,12 +142,12 @@ final class NotchClickThroughHostingView<Content: View>: NSHostingView<Content> 
 // MARK: - Constants
 
 enum NotchHostViewConstants {
-    /// Fill color of the dropdown silhouette. Pure black with high
-    /// opacity reads as part of the notch on Apple silicon laptops
-    /// (the physical notch area is very dark). Drives off
-    /// `Color.manifoldSurface` so a Phase 15-style theming pass
-    /// inherits any future palette refinement.
-    static let fillColor: Color = Color.manifoldSurface
+    /// Fill color of the dropdown silhouette. Pure `Color.black`
+    /// (not `Color.manifoldSurface` / `#0A0A0A`) so the dropdown
+    /// reads as visually continuous with the physical notch — the
+    /// notch is OLED-black, anything lighter creates a visible
+    /// seam where the shoulders meet the notch.
+    static let fillColor: Color = Color.black
 
     /// Shadow color underneath the dropdown — soft black at low
     /// opacity. The opacity is intentional; a fully-opaque shadow
@@ -149,15 +162,18 @@ enum NotchHostViewConstants {
     /// dropdown rather than haloing around it.
     static let shadowYOffset: CGFloat = 4.0
 
-    /// Padding from the notch's lower edge to the content's top.
-    /// 12pt keeps the title clear of the visible shoulder curve.
-    static let contentTopPadding: CGFloat = 12.0
+    /// Padding between the notch's lower edge and the content's
+    /// top. Added on TOP of `notchHeight` (the panel's canvas top
+    /// is at the screen top, behind the notch — content needs to
+    /// clear the masked area). Small buffer so the title doesn't
+    /// hug the notch's lower edge.
+    static let contentBelowNotchPadding: CGFloat = 6.0
 
-    /// Horizontal padding inside the content. 18pt gives the
-    /// title + subtitle breathing room from the curved sides.
-    static let contentHorizontalPadding: CGFloat = 18.0
+    /// Horizontal padding inside the content. Past the shoulder
+    /// curves on each side plus a small text-margin.
+    static let contentHorizontalPadding: CGFloat = 14.0 + 8.0
 
     /// Bottom padding so the content doesn't hug the rounded
     /// bottom corners.
-    static let contentBottomPadding: CGFloat = 16.0
+    static let contentBottomPadding: CGFloat = 12.0
 }

@@ -1792,6 +1792,16 @@
       "comment" : "Phase 19 notch alert — unplug subtitle.",
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Running on battery" } } }
+    },
+    "notch.battery.alert.timeRemaining.untilFull" : {
+      "comment" : "Plug-in alert caption. %1$@ = compact duration like '1h 23m'.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ until full" } } }
+    },
+    "notch.battery.alert.timeRemaining.untilEmpty" : {
+      "comment" : "Unplug alert caption. %1$@ = compact duration like '4h 5m'.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$@ until empty" } } }
     }
   },
   "version" : "1.0"

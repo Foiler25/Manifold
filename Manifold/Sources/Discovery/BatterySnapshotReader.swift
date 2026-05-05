@@ -134,6 +134,17 @@ enum BatterySnapshotReader {
         guard let listRef = IOPSCopyPowerSourcesList(blob) else { return result }
         let list = listRef.takeRetainedValue() as Array
 
+        // Per-source direction inferred from the source dict's
+        // charging / state keys. Used to route
+        // `IOPSGetTimeRemainingEstimate()` (a single global
+        // estimate, no direction) into the right field below — the
+        // per-source `kIOPSTimeToEmpty` / `TimeToFullCharge` values
+        // lag for ~1–2s after a power-source change, so without
+        // this we'd surface a `nil` time-remaining caption every
+        // plug/unplug even though the smoothed estimate IS
+        // available.
+        var sourceIsCharging: Bool?
+
         for sourceAny in list {
             let source = sourceAny as CFTypeRef
             guard let descRef = IOPSGetPowerSourceDescription(blob, source) else { continue }
@@ -154,11 +165,19 @@ enum BatterySnapshotReader {
                 result.percent = p
             }
 
+            // Direction. Prefer the explicit `IsCharging` flag; fall
+            // back to the `Power Source State` string ("AC Power" /
+            // "Battery Power") when the flag is absent.
+            if let charging = desc[kIOPSIsChargingKey as String] as? Bool {
+                sourceIsCharging = charging
+            } else if let state = desc[kIOPSPowerSourceStateKey as String] as? String {
+                sourceIsCharging = (state == (kIOPSACPowerValue as String))
+            }
+
             // IOPS publishes time-to-empty / time-to-full as integer
             // minutes. Negative or sentinel-large values mean
-            // "calculating" / "unknown" → keep nil so the UI shows
-            // the static "On Battery" / "Charging" pill instead of
-            // a misleading "X minutes" caption.
+            // "calculating" / "unknown" → keep nil so the UI doesn't
+            // show a stale figure.
             if let t = desc[kIOPSTimeToEmptyKey as String] as? Int, t > 0,
                t < BatterySnapshotReaderConstants.timeRemainingSentinel {
                 result.timeUntilEmptyMinutes = t
@@ -175,23 +194,28 @@ enum BatterySnapshotReader {
         //                                     no countdown applies.
         //   kIOPSTimeRemainingUnknown   (-1): not enough samples yet.
         //   positive: seconds remaining.
-        // We use it as a more-authoritative override of the per-
-        // source kIOPSTimeToEmpty/Full keys (which can lag) — when it
-        // gives a real positive number, copy into whichever field
-        // matches the discharge direction we already inferred.
+        //
+        // The estimate is unidirectional — the framework hands back
+        // a single number and expects the caller to know which
+        // direction applies. We use the IsCharging flag captured
+        // above to route it. When IsCharging is nil (rare; happens
+        // very briefly mid-transition), we fall back to whichever
+        // per-source field had a value, then to "leave both nil".
         let estimate = IOPSGetTimeRemainingEstimate()
         if estimate > 0 {
             let estimatedMinutes = Int(estimate
                                        / Double(BatterySnapshotReaderConstants.secondsPerMinute))
-            // Direction: if we already saw a time-to-empty from a
-            // source dict, the system thinks we're discharging; if a
-            // time-to-full, we're charging. Otherwise leave the
-            // estimate parked — the parser will pick whichever field
-            // matches the IORegistry-derived charge state.
-            if result.timeUntilEmptyMinutes != nil {
-                result.timeUntilEmptyMinutes = estimatedMinutes
-            } else if result.timeUntilFullMinutes != nil {
+            switch sourceIsCharging {
+            case .some(true):
                 result.timeUntilFullMinutes = estimatedMinutes
+            case .some(false):
+                result.timeUntilEmptyMinutes = estimatedMinutes
+            case .none:
+                if result.timeUntilEmptyMinutes != nil {
+                    result.timeUntilEmptyMinutes = estimatedMinutes
+                } else if result.timeUntilFullMinutes != nil {
+                    result.timeUntilFullMinutes = estimatedMinutes
+                }
             }
         }
 

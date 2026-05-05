@@ -36,6 +36,7 @@
 
 import AppKit
 import SwiftUI
+import os
 
 @MainActor
 final class NotchPanelController {
@@ -89,9 +90,11 @@ final class NotchPanelController {
     func show<Content: View>(content: Content, for duration: TimeInterval) {
         let pending = Pending(content: AnyView(content), duration: duration)
         if isVisible {
+            Log.app.info("NotchPanelController — already visible, enqueueing (queue depth \(self.queue.count + 1, privacy: .public))")
             enqueue(pending)
             return
         }
+        Log.app.info("NotchPanelController.show — presenting alert for \(duration, privacy: .public)s")
         present(pending)
     }
 
@@ -130,15 +133,22 @@ final class NotchPanelController {
     /// Stand up the panel + hosting controller, animate open, schedule
     /// auto-dismiss after `pending.duration`.
     private func present(_ pending: Pending) {
-        guard let anchor = NotchAnchor.resolve() else { return }
+        guard let anchor = NotchAnchor.resolve() else {
+            Log.app.error("NotchPanelController.present — NotchAnchor.resolve() returned nil; alert dropped")
+            return
+        }
+        Log.app.info("NotchPanelController.present — anchor hasNotch=\(anchor.hasNotch, privacy: .public), screen=\(anchor.screenFrame.debugDescription, privacy: .public), notchFrame=\(anchor.notchFrame.debugDescription, privacy: .public)")
 
         let canvasSize = canvasSize(for: anchor)
         let frame = panelFrame(for: anchor, canvasSize: canvasSize)
+        let notchWidth = anchor.hasNotch ? anchor.notchFrame.width : canvasSize.width
+        let notchHeight = anchor.hasNotch ? anchor.notchFrame.height : 0
 
         let panel = NotchPanel(contentRect: frame)
         let root = NotchPanelRoot(
             viewModel: viewModel,
-            anchor: anchor,
+            notchWidth: notchWidth,
+            notchHeight: notchHeight,
             canvasSize: canvasSize,
             content: pending.content
         )
@@ -152,29 +162,40 @@ final class NotchPanelController {
         self.isVisible = true
 
         // Reset the view model to a closed state so the open spring
-        // animates from scratch.
-        viewModel.shapeProgress = 0
+        // animates from a thin pill matching the notch width.
+        viewModel.isOpen = false
         viewModel.contentOpacity = 0
 
-        // Order in with alpha 0 → 1 via NSAnimationContext.
-        panel.alphaValue = 0
+        // Set alpha directly. NSAnimationContext-driven fades on
+        // freshly-ordered panels are unreliable; the SwiftUI frame
+        // spring is what carries the perceived unfurl.
+        panel.alphaValue = 1
         panel.orderFrontRegardless()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = NotchPanelControllerConstants.panelAlphaDuration
-            panel.animator().alphaValue = 1.0
-        }
 
-        // Drive shape open + delayed content fade-in via SwiftUI
-        // animations on the view model. The open spring + the
-        // .easeOut(.delay) read directly off SPEC §21.4.
-        withAnimation(NotchPanelControllerConstants.openSpring) {
-            viewModel.shapeProgress = 1
-        }
-        withAnimation(
-            NotchPanelControllerConstants.contentFadeIn
-                .delay(NotchPanelControllerConstants.contentFadeDelay)
-        ) {
-            viewModel.contentOpacity = 1
+        Log.app.info(
+            "NotchPanelController.present — panel ordered front: isVisible=\(panel.isVisible, privacy: .public) alpha=\(panel.alphaValue, privacy: .public) frame=\(NSStringFromRect(panel.frame), privacy: .public) level=\(panel.level.rawValue, privacy: .public)"
+        )
+
+        // Defer the open animation to the next runloop tick so SwiftUI
+        // observes the closed state (frame collapsed to notchWidth × 0)
+        // before the spring kicks the frame up to full canvas. Without
+        // the defer, both states fold into one transaction and the
+        // animation pops instead of unfurling. The transaction also
+        // avoids the Swift 6 strict-concurrency executor-check bug
+        // we hit when forcing synchronous SwiftUI layout immediately
+        // after orderFront (it cascaded into MainWindow's segmented
+        // Picker and crashed).
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            withAnimation(NotchPanelControllerConstants.openSpring) {
+                self.viewModel.isOpen = true
+            }
+            withAnimation(
+                NotchPanelControllerConstants.contentFadeIn
+                    .delay(NotchPanelControllerConstants.contentFadeDelay)
+            ) {
+                self.viewModel.contentOpacity = 1
+            }
         }
 
         // Schedule auto-dismiss.
@@ -201,9 +222,10 @@ final class NotchPanelController {
             return
         }
 
-        // Close spring + content fade-out.
+        // Close spring + content fade-out. Setting isOpen = false
+        // springs the frame back to the closed pill.
         withAnimation(NotchPanelControllerConstants.closeSpring) {
-            viewModel.shapeProgress = 0
+            viewModel.isOpen = false
         }
         withAnimation(.easeIn(duration: NotchPanelControllerConstants.contentFadeOutDuration)) {
             viewModel.contentOpacity = 0
@@ -251,19 +273,24 @@ final class NotchPanelController {
 
     // MARK: - Geometry
 
-    /// Canvas size in points. Width is the content width (340pt) plus
-    /// the side padding budget — the dropdown is wider than the notch
-    /// to host the title + subtitle. Height is fixed at the alert
-    /// height; the spring drives `progress` 0→1 to interpolate.
+    /// Canvas size in points. Width = notch width + a margin on each
+    /// side to host the content; the body inside the shape ends up
+    /// `canvasWidth - 2 × shoulderRadius` wide. Height fixed at the
+    /// alert height; the SwiftUI frame interpolation springs from
+    /// `(notchWidth, 0)` to this size.
     private func canvasSize(for anchor: NotchAnchor) -> CGSize {
-        let width = NotchPanelControllerConstants.panelWidth
         let height = NotchPanelControllerConstants.panelHeight
-        // For non-notched fallback, the panel still wants the same
-        // canvas size — the shape just fills it without a notch
-        // silhouette. For the notched case, ensure the canvas is at
-        // least as wide as the physical notch + a margin.
-        let minWidth = anchor.notchFrame.width + NotchPanelControllerConstants.minimumNotchMargin * 2
-        return CGSize(width: max(width, minWidth), height: height)
+        // Notched: canvas extends `notchExtension` past each side of
+        // the physical notch so the body has breathing room past the
+        // concave shoulders. Non-notched: fall back to a fixed width.
+        let width: CGFloat
+        if anchor.hasNotch {
+            width = anchor.notchFrame.width
+                + NotchPanelControllerConstants.notchExtension * 2
+        } else {
+            width = NotchPanelControllerConstants.panelWidth
+        }
+        return CGSize(width: width, height: height)
     }
 
     /// Position the panel frame in screen coordinates. Centered on
@@ -281,12 +308,20 @@ final class NotchPanelController {
         let centerX = screenFrame.midX - canvasSize.width / 2
         let topY: CGFloat
         if anchor.hasNotch {
-            // Top edge flush with screen top — the notch silhouette
-            // inside fills in the upper area.
-            topY = screenFrame.maxY - canvasSize.height
+            // Panel's TOP edge sits at the SCREEN TOP, so the canvas
+            // extends behind the physical notch. The shape's top
+            // corners (canvas (0,0) / (width,0)) land on the screen
+            // top, slightly past each side of the notch — the area
+            // between them at y=0 falls behind the notch (hardware-
+            // masked, invisible). What the user sees is the canvas's
+            // two outer "wings" poking out from the notch's left and
+            // right shoulders, with the shape's concave corners
+            // unfurling from there. This is the "blends into the
+            // notch" look. NSScreen origin is bottom-left, so the
+            // window's bottom-left is `screenTop - canvasHeight`.
+            topY = anchor.notchFrame.maxY - canvasSize.height
         } else {
-            // 6pt below visibleFrame top so the menu bar doesn't
-            // overlap the panel content (per SPEC §21.12).
+            // Non-notched fallback: position just below the menu bar.
             let visibleTop = (anchor.screen?.visibleFrame.maxY) ?? screenFrame.maxY
             topY = visibleTop
                 - canvasSize.height
@@ -308,31 +343,34 @@ final class NotchPanelController {
 @MainActor
 @Observable
 final class NotchPanelViewModel {
-    /// 0 = closed pill, 1 = full dropdown. Animated by the open /
-    /// close springs.
-    var shapeProgress: CGFloat = 0
+    /// `false` = closed pill (frame matches the notch width × 0),
+    /// `true` = full dropdown. Toggled inside `withAnimation(spring)`
+    /// so the SwiftUI frame interpolation drives the unfurl.
+    var isOpen: Bool = false
     /// Inner content opacity. Driven by the delayed easeOut so the
-    /// content fades in AFTER the shape opens.
+    /// content fades in AFTER the shape unfurls.
     var contentOpacity: CGFloat = 0
 }
 
 // MARK: - Root SwiftUI view
 
 /// SwiftUI root injected into `NSHostingController`. Bridges the
-/// `NotchPanelViewModel` into `NotchHostView` and threads the path
-/// provider into the click-through hit-testing.
+/// `NotchPanelViewModel` into `NotchHostView`. The host view owns
+/// the frame interpolation; this root just forwards the dimensions
+/// and the bindable state.
 struct NotchPanelRoot: View {
 
     @Bindable var viewModel: NotchPanelViewModel
-    let anchor: NotchAnchor
+    let notchWidth: CGFloat
+    let notchHeight: CGFloat
     let canvasSize: CGSize
     let content: AnyView
 
     var body: some View {
         NotchHostView(
-            notchWidth: anchor.hasNotch ? anchor.notchFrame.width : 0,
-            notchHeight: anchor.hasNotch ? anchor.notchFrame.height : 0,
-            shapeProgress: viewModel.shapeProgress,
+            notchWidth: notchWidth,
+            notchHeight: notchHeight,
+            isOpen: viewModel.isOpen,
             contentOpacity: viewModel.contentOpacity,
             canvasSize: canvasSize,
             content: content
@@ -376,19 +414,28 @@ enum NotchPanelControllerConstants {
     /// the close completes visibly.
     static let closeWindow: TimeInterval = 0.42
 
-    /// Default panel canvas width in points. Wide enough for the
-    /// 340pt content view with 18pt horizontal padding on each side
-    /// + a margin so the shoulder curves have room to sweep out.
-    static let panelWidth: CGFloat = 420
+    /// Fallback canvas width on non-notched displays (M1 Air,
+    /// external monitor). On notched hardware the canvas width is
+    /// derived from `notchFrame.width + 2 × notchExtension` so the
+    /// dropdown unfurls symmetrically from the notch.
+    static let panelWidth: CGFloat = 360
 
-    /// Default panel canvas height in points. Fixed across alerts
-    /// so the shape geometry stays consistent.
-    static let panelHeight: CGFloat = 96
+    /// Default panel canvas height in points. Sized to clear the
+    /// physical notch (~38pt) PLUS a three-line content stack
+    /// (title / subtitle / time-remaining caption) PLUS bottom
+    /// padding. The visible body height (below the notch) is
+    /// `panelHeight - notchHeight - paddings` — currently ~64pt
+    /// for the three-line stack.
+    static let panelHeight: CGFloat = 112
 
-    /// Minimum side margin from the physical notch to the canvas
-    /// edge. Ensures the shoulders have room to sweep out without
-    /// cropping at the canvas edge.
-    static let minimumNotchMargin: CGFloat = 24
+    /// Distance the canvas extends past each side of the physical
+    /// notch on notched hardware. Wide enough to fit the icon, the
+    /// title / subtitle / time-caption stack at full single-line
+    /// width, AND the trailing percent label without anything
+    /// truncating. With `notchWidth = 220pt`, this yields a 360pt
+    /// canvas / 332pt body / ~316pt content area — ~190pt available
+    /// for the text stack after the icon + spacer + percent budget.
+    static let notchExtension: CGFloat = 70
 
     /// Fallback Y offset (no-notch path) — gap between the menu bar
     /// (visibleFrame top) and the panel's top edge. 6pt matches

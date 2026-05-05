@@ -48,6 +48,7 @@
 import Foundation
 import ManifoldKit
 import SwiftUI
+import os
 
 @MainActor
 final class BatteryAlertEngine {
@@ -77,6 +78,20 @@ final class BatteryAlertEngine {
     }
 
     private var state = State()
+
+    /// Latest snapshot captured at the start of `handle(_:)`. Read by
+    /// the fire paths to populate the optional time-remaining
+    /// caption ("1h 23m until full" / "4h 5m until empty"). Reset on
+    /// every tick so the value is always live.
+    private var currentInfo: BatteryInfo?
+
+    /// Pending plug / unplug fire. Delayed so the firmware (IOPS API)
+    /// has a moment to publish a fresh time-until-full or
+    /// time-until-empty estimate — those values are nil for ~1s
+    /// after a power-source change while the rolling average
+    /// settles. Cancelled if a counter-event arrives within the
+    /// delay window (rapid plug/unplug toggle).
+    private var pendingPowerSourceTask: Task<Void, Never>?
 
     // MARK: - Dependencies
 
@@ -178,18 +193,45 @@ final class BatteryAlertEngine {
     func handle(_ info: BatteryInfo) {
         guard isMasterEnabled() else { return }
 
+        // Stash the live snapshot so the fire paths can read time-
+        // remaining off it for the optional caption line.
+        currentInfo = info
+
         let prevPercent = state.lastPercent
         let currentPercent = info.chargePercent
         let prevExternal = state.lastIsExternalConnected
         let currentExternal = info.isExternalConnected
 
+        // First observation gets a one-line log so a Console.app /
+        // `log show` reader can confirm the engine started ticking
+        // and what initial state it locked in. Subsequent ticks stay
+        // silent unless an alert actually fires (avoids spam at the
+        // 50ms cadence).
+        if prevExternal == nil {
+            Log.app.info(
+                "BatteryAlertEngine first tick — percent \(currentPercent, privacy: .public)%, external=\(currentExternal, privacy: .public), state=\(String(describing: info.chargeState), privacy: .public)"
+            )
+        }
+
         // ---- 1. Plug / unplug -------------------------------------
         // First observation: do not fire (`prevExternal == nil`).
+        // Subsequent edges schedule the fire after waiting for the
+        // firmware to publish a time-remaining estimate — adaptive,
+        // not a fixed delay: minimum 300ms so it doesn't feel
+        // instantaneous, then poll until time-remaining is available
+        // for the matching direction, capped at 1.5s. A counter-
+        // event within the window cancels the pending fire.
         if let prevExternal {
             if !prevExternal && currentExternal {
-                firePluggedIn()
+                Log.app.info("BatteryAlertEngine — plug edge, scheduling pluggedIn alert")
+                schedulePowerSourceAlert(waitFor: .untilFull) { [weak self] in
+                    self?.firePluggedIn()
+                }
             } else if prevExternal && !currentExternal {
-                fireUnplugged()
+                Log.app.info("BatteryAlertEngine — unplug edge, scheduling unplugged alert")
+                schedulePowerSourceAlert(waitFor: .untilEmpty) { [weak self] in
+                    self?.fireUnplugged()
+                }
             }
         }
 
@@ -248,7 +290,8 @@ final class BatteryAlertEngine {
                     "notch.battery.alert.low.subtitle.format",
                     comment: "Phase 19 low-battery subtitle. %1$lld = current percent."
                 ), percent)
-            )
+            ),
+            percent: percent
         )
         presenter(content, BatteryAlertEngineConstants.thresholdAlertDuration)
         if row.playsSound, preferences.batteryAlertsSoundEnabled {
@@ -270,7 +313,8 @@ final class BatteryAlertEngine {
                     "notch.battery.alert.charged.subtitle.format",
                     comment: "Phase 19 charged-battery subtitle. %1$lld = current percent."
                 ), percent)
-            )
+            ),
+            percent: percent
         )
         presenter(content, BatteryAlertEngineConstants.thresholdAlertDuration)
         if row.playsSound, preferences.batteryAlertsSoundEnabled {
@@ -278,15 +322,71 @@ final class BatteryAlertEngine {
         }
     }
 
+    /// Direction the schedule loop watches for in the IOPS-derived
+    /// time-remaining fields. `untilFull` for plug-in (we want a
+    /// time-until-full estimate), `untilEmpty` for unplug.
+    private enum WaitTarget {
+        case untilFull
+        case untilEmpty
+    }
+
+    /// Schedule a power-source alert (plug or unplug) with adaptive
+    /// timing. Polls until the firmware publishes a time-remaining
+    /// estimate for the requested direction (so the alert's caption
+    /// is populated when it appears), capped at a maximum so we
+    /// still fire even if the estimate never comes.
+    ///
+    /// No minimum delay — the polling cadence + organic firmware
+    /// settle time produce ~150–700 ms in the typical case, which
+    /// is plenty of perceptible beat without a hardcoded floor.
+    ///
+    /// Cancels any previously-pending power-source alert — only the
+    /// LATEST power-source event fires when the user rapidly toggles.
+    private func schedulePowerSourceAlert(
+        waitFor target: WaitTarget,
+        fire: @escaping @MainActor () -> Void
+    ) {
+        pendingPowerSourceTask?.cancel()
+        pendingPowerSourceTask = Task { @MainActor [weak self] in
+            let pollMs = BatteryAlertEngineConstants.powerSourcePollMs
+            let maxMs = BatteryAlertEngineConstants.powerSourceMaxDelayMs
+            let polls = max(0, maxMs / pollMs)
+            for _ in 0..<polls {
+                guard let self else { return }
+                if Task.isCancelled { return }
+                if self.timeRemainingReady(for: target) { break }
+                try? await Task.sleep(for: .milliseconds(pollMs))
+            }
+            guard !Task.isCancelled else { return }
+            fire()
+        }
+    }
+
+    /// `true` when `currentInfo` has a non-nil time-remaining value
+    /// for the requested direction. Drives the schedule loop's
+    /// early-exit check.
+    private func timeRemainingReady(for target: WaitTarget) -> Bool {
+        guard let info = currentInfo else { return false }
+        switch target {
+        case .untilFull:  return info.timeUntilFullMinutes != nil
+        case .untilEmpty: return info.timeUntilEmptyMinutes != nil
+        }
+    }
+
     private func firePluggedIn() {
-        guard preferences.pluggedInEnabled else { return }
+        guard preferences.pluggedInEnabled else {
+            Log.app.info("BatteryAlertEngine — pluggedIn suppressed (preference disabled)")
+            return
+        }
         let subtitle: LocalizedStringKey = adapterDescription()
             .map { LocalizedStringKey($0) }
             ?? "notch.battery.alert.pluggedIn.subtitle"
         let content = BatteryNotchContent(
             kind: .pluggedIn,
             title: "notch.battery.alert.pluggedIn.title",
-            subtitle: subtitle
+            subtitle: subtitle,
+            timeRemaining: timeUntilFullCaption(),
+            percent: currentInfo?.chargePercent
         )
         presenter(content, BatteryAlertEngineConstants.powerSourceAlertDuration)
         if preferences.pluggedInPlaysSound, preferences.batteryAlertsSoundEnabled {
@@ -295,17 +395,76 @@ final class BatteryAlertEngine {
     }
 
     private func fireUnplugged() {
-        guard preferences.unpluggedEnabled else { return }
+        guard preferences.unpluggedEnabled else {
+            Log.app.info("BatteryAlertEngine — unplugged suppressed (preference disabled)")
+            return
+        }
         let content = BatteryNotchContent(
             kind: .unplugged,
             title: "notch.battery.alert.unplugged.title",
-            subtitle: "notch.battery.alert.unplugged.subtitle"
+            subtitle: "notch.battery.alert.unplugged.subtitle",
+            timeRemaining: timeUntilEmptyCaption(),
+            percent: currentInfo?.chargePercent
         )
         presenter(content, BatteryAlertEngineConstants.powerSourceAlertDuration)
         if preferences.unpluggedPlaysSound, preferences.batteryAlertsSoundEnabled {
             player(.unplugged)
         }
     }
+
+    // MARK: - Time-remaining captions
+
+    /// "1h 23m until full" — for plug-in alerts. Returns nil when
+    /// the battery is already fully charged or the firmware has not
+    /// yet produced a time estimate (typical for the first second
+    /// after plug-in).
+    private func timeUntilFullCaption() -> String? {
+        guard let info = currentInfo,
+              let minutes = info.timeUntilFullMinutes,
+              minutes > 0,
+              !info.isFullyCharged
+        else { return nil }
+        guard let duration = Self.shortDurationFormatter.string(from: TimeInterval(minutes * 60)) else {
+            return nil
+        }
+        return String.localizedStringWithFormat(
+            NSLocalizedString(
+                "notch.battery.alert.timeRemaining.untilFull",
+                comment: "Plug-in alert caption. %1$@ = duration like '1h 23m'."
+            ),
+            duration
+        )
+    }
+
+    /// "4h 5m until empty" — for unplug alerts. Returns nil when the
+    /// firmware has not yet estimated a discharge rate (typical right
+    /// after unplug while the rolling average settles).
+    private func timeUntilEmptyCaption() -> String? {
+        guard let info = currentInfo,
+              let minutes = info.timeUntilEmptyMinutes,
+              minutes > 0
+        else { return nil }
+        guard let duration = Self.shortDurationFormatter.string(from: TimeInterval(minutes * 60)) else {
+            return nil
+        }
+        return String.localizedStringWithFormat(
+            NSLocalizedString(
+                "notch.battery.alert.timeRemaining.untilEmpty",
+                comment: "Unplug alert caption. %1$@ = duration like '4h 5m'."
+            ),
+            duration
+        )
+    }
+
+    /// Compact "1h 23m" formatter shared by both captions. Static
+    /// because `DateComponentsFormatter` is non-Sendable but is fine
+    /// to share on the main actor where the engine runs.
+    private static let shortDurationFormatter: DateComponentsFormatter = {
+        let f = DateComponentsFormatter()
+        f.allowedUnits = [.hour, .minute]
+        f.unitsStyle = .abbreviated
+        return f
+    }()
 }
 
 // MARK: - Constants
@@ -325,5 +484,18 @@ enum BatteryAlertEngineConstants {
     /// because the user just took the physical action and doesn't
     /// need to study the alert. Per Q22.
     static let powerSourceAlertDuration: TimeInterval = 3.0
+
+    /// Hard cap on the schedule loop. After this much time we fire
+    /// whether or not the firmware has published a time-remaining
+    /// estimate (the caption is then nil — better than no
+    /// notification at all). 1.5s is comfortably past the typical
+    /// IOPS settle time.
+    static let powerSourceMaxDelayMs: Int = 1500
+
+    /// Poll interval for the time-remaining-available check. Small
+    /// enough that we fire within ~one poll of the firmware
+    /// publishing. Also the minimum effective delay before any fire
+    /// — we sleep for one tick before the first re-check.
+    static let powerSourcePollMs: Int = 100
 }
 

@@ -57,6 +57,36 @@ struct BatteryNotchContent: View {
     /// "Manifold 65W USB-C" / "Running on battery".
     let subtitle: LocalizedStringKey
 
+    /// Optional time-remaining caption — e.g., "1h 23m until full" /
+    /// "4h 5m until empty". Rendered below the subtitle in caption-
+    /// secondary so it reads as supplementary metadata. Nil for
+    /// alerts where no useful estimate exists (charged-threshold
+    /// alerts, fully-charged plug events, fresh-unplug before the
+    /// firmware has a discharge estimate).
+    let timeRemaining: String?
+
+    /// Optional charge percentage rendered large on the right of
+    /// the row. Tinted by `BatteryNotchContentConstants.tint(for:)`
+    /// — green for charging / charged, amber for discharging
+    /// (unplug), red for critical-low — so a glance at the right
+    /// side conveys both the level and the state at once. Nil
+    /// hides the column cleanly.
+    let percent: Int?
+
+    init(
+        kind: Kind,
+        title: LocalizedStringKey,
+        subtitle: LocalizedStringKey,
+        timeRemaining: String? = nil,
+        percent: Int? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.timeRemaining = timeRemaining
+        self.percent = percent
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: BatteryNotchContentConstants.iconTitleSpacing) {
             Image(systemName: BatteryNotchContentConstants.icon(for: kind))
@@ -74,11 +104,34 @@ struct BatteryNotchContent: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let timeRemaining {
+                    Text(timeRemaining)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .monospacedDigit()
+                }
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: BatteryNotchContentConstants.minPercentSpacing)
+
+            if let percent {
+                Text("\(percent)%")
+                    .font(
+                        .system(
+                            size: BatteryNotchContentConstants.percentFontSize,
+                            weight: .semibold,
+                            design: .rounded
+                        )
+                        .monospacedDigit()
+                    )
+                    .foregroundStyle(BatteryNotchContentConstants.tint(for: kind))
+                    .lineLimit(1)
+                    .padding(.trailing, BatteryNotchContentConstants.percentTrailingInset)
+                    .accessibilityLabel(Text("\(percent) percent"))
+            }
         }
-        .frame(width: BatteryNotchContentConstants.contentWidth)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -104,6 +157,25 @@ enum BatteryNotchContentConstants {
 
     /// Gap between title and subtitle.
     static let titleSubtitleSpacing: CGFloat = 2
+
+    /// Minimum gap between the text stack and the trailing percent
+    /// label. Used as the `Spacer(minLength:)` so the spacer
+    /// guarantees breathing room even on tight canvases.
+    static let minPercentSpacing: CGFloat = 12
+
+    /// Font size for the trailing percent label. Sized so a 3-digit
+    /// "100%" reads clearly without crowding the title stack — at
+    /// 24pt rounded-semibold "100%" is ~62pt wide, leaving comfortable
+    /// room in the canvas for the title / subtitle / time captions
+    /// to sit on a single line each.
+    static let percentFontSize: CGFloat = 24
+
+    /// Extra trailing inset on the percent label so its visual
+    /// right edge mirrors the icon's visual left edge — the icon
+    /// glyph (24pt) is centered in a 36pt column, yielding ~6pt of
+    /// air between the body's left padding and the visible glyph;
+    /// this inset adds the same air on the right.
+    static let percentTrailingInset: CGFloat = 6
 
     /// SF Symbol name for each alert kind.
     static func icon(for kind: BatteryNotchContent.Kind) -> String {

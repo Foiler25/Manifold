@@ -17,181 +17,131 @@
 // ─────────────────────────────────────────────────────────────────────
 // NotchBlendShape.swift
 //
-// Phase 19 — SwiftUI `Shape` rendering the notch-flush dropdown
-// silhouette. Independently re-derived from the geometric description
-// in SPEC §21.3:
+// Phase 19 — SwiftUI `Shape` rendering the notch-flush dropdown.
 //
-//   - **Top edge** straight, flush against the physical notch (or
-//     the screen-top in the no-notch fallback).
-//   - **Shoulders** quadratic Bézier curves that sweep concave from
-//     the inset of the notch width out to the canvas edge. Effective
-//     shoulder radius ~14pt — the control point sits at the corner
-//     where the notch's vertical edge would meet the panel's top
-//     plane, producing the "blended into the notch" look.
-//   - **Bottom corners** rounded with radius ~16pt — standard
-//     rounded-rectangle bottom geometry.
+// The shape is intentionally simple. The animation does not happen
+// inside the shape — it happens at the SwiftUI frame level, where
+// the containing view's width and height are interpolated by a
+// spring. This shape just draws the canonical silhouette in
+// whatever rect it's given.
 //
-// Math (independently derived, not transcribed):
-//   Place the notch on the top edge of the canvas, centered. Let
-//   `nw = notchWidth`, `nh = notchHeight`, `W = rect.width`, `H =
-//   rect.height`, `s = NotchBlendShapeConstants.shoulderRadius`,
-//   `b = NotchBlendShapeConstants.bottomRadius`. The notch span
-//   on the top edge runs from `xL = (W - nw) / 2` to `xR = (W + nw) / 2`.
+// Silhouette (in SwiftUI top-left coordinates, where +y goes down):
 //
-//   The shoulder anchor on the top edge is `(xL, nh)` (the
-//   notch's lower-inner corner) and the shoulder anchor on the
-//   left vertical face of the canvas is `(xL - s, nh + s)`. The
-//   quadratic Bézier control point is `(xL, nh + s)` — i.e., the
-//   right-angle corner the notch would terminate in if there were no
-//   curve. Sweeping from `(xL, nh)` through that control to
-//   `(xL - s, nh + s)` produces a concave curve that meets the
-//   notch edge tangentially. The right shoulder mirrors.
+//   • Top edge straight, sitting at `rect.minY`. The caller positions
+//     the panel so this edge lines up with the notch's *lower* edge —
+//     the canvas's top-left and top-right corners therefore sit at
+//     the notch's lower-outer corners, producing the visual
+//     continuation that reads as "unfurling from the notch".
+//   • Top corners are CONCAVE quarter-ellipses sweeping inward and
+//     downward. Each corner curves from `(rect.{minX,maxX}, rect.minY)`
+//     to `(rect.{minX+s, maxX-s}, rect.minY + s)`, where
+//     `s = shoulderRadius`. The control point sits at the right-angle
+//     corner so the curve meets the canvas top edge tangentially.
+//   • Body sides are straight verticals from the shoulder anchors
+//     down to the bottom rounded corners.
+//   • Bottom corners are CONVEX rounded corners with radius `b =
+//     bottomRadius`.
 //
-// `progress` interpolates the shape from "closed pill" (height = 0,
-// width = notchWidth) to "open dropdown" (full geometry). SwiftUI's
-// `animatableData` drives the spring (SPEC §21.4).
+// As the caller animates the rect from `(notchWidth, 0)` to
+// `(fullWidth, fullHeight)`, the shape unfurls from a thin pill
+// flush with the notch's lower edge into the full dropdown.
 
 import SwiftUI
 
 /// Notch-flush dropdown shape. Pure geometry — no animation logic
-/// here; the panel controller drives `progress` via `.animation(...)`.
+/// here; the panel controller drives unfurling via the containing
+/// view's `.frame` modifier inside `withAnimation`.
 struct NotchBlendShape: Shape {
 
-    /// Width of the physical notch in points. Pulled from
-    /// `NotchAnchor.notchFrame.width` by the controller. Set to 0
-    /// for the non-notched fallback (per SPEC §21.12 — the path
-    /// implementation handles `notchWidth == 0` as a degenerate
-    /// case rendering a plain rounded rectangle without shoulders).
-    var notchWidth: CGFloat
+    /// Quarter-ellipse radius for the concave top corners. The
+    /// horizontal span of each shoulder is `min(shoulderRadius,
+    /// rect.width / 2)`; the vertical span is the same value
+    /// clamped to `rect.height`. Set this small (≈ 14pt) for a
+    /// tight tuck that reads as continuous with the notch's lower
+    /// corners.
+    var shoulderRadius: CGFloat
 
-    /// Height of the physical notch — the offset of the panel's
-    /// straight top edge below the screen's true top. Always reads
-    /// the notch's `auxiliaryTopLeftArea.height`-style value, never
-    /// hardcoded.
-    var notchHeight: CGFloat
+    /// Quarter-ellipse radius for the convex bottom corners. ≈ 16pt
+    /// matches the system's NSPopover-style bottom rounding.
+    var bottomRadius: CGFloat
 
-    /// 0 = closed (off-screen / pill); 1 = open (full dropdown).
-    /// SwiftUI interpolates this for the open/close springs.
-    var progress: CGFloat
-
-    /// Animatable data — single CGFloat so SwiftUI's spring driver
-    /// can interpolate. `progress` is the only animatable input;
-    /// notch dimensions are screen-dependent and don't change
-    /// mid-animation.
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
+    /// Animatable so the corner radii can themselves be tweened if
+    /// the caller ever wants to morph between two shape variants.
+    /// In the current pipeline the radii stay constant and the
+    /// containing view's frame is what animates.
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(shoulderRadius, bottomRadius) }
+        set {
+            shoulderRadius = newValue.first
+            bottomRadius = newValue.second
+        }
     }
 
     func path(in rect: CGRect) -> Path {
+        // Clamp the radii so they can never overlap each other or
+        // exceed half the available width / height. Without this the
+        // path produces self-intersecting curves at very small
+        // animated frames.
+        let s = max(0, min(min(rect.width / 2, rect.height), shoulderRadius))
+        let bMaxX = max(0, (rect.width - 2 * s) / 2)
+        let bMaxY = max(0, rect.height - s)
+        let b = max(0, min(min(bMaxX, bMaxY), bottomRadius))
+
         var path = Path()
-        let p = max(0, min(1, progress))
 
-        // Effective panel height + width: at progress=0 the canvas
-        // collapses to a thin pill matching the notch dimensions; at
-        // progress=1 the canvas expands to the full rect.
-        let liveHeight = rect.height * p
-        // Width interpolates from notchWidth to rect.width. When
-        // notchWidth is 0 (no-notch fallback), this becomes a plain
-        // rounded-rect from a 0-width line to full width.
-        let liveWidth = notchWidth + (rect.width - notchWidth) * p
-        // Center the live shape horizontally in the canvas — keeps
-        // the notch centered + the shoulders mirroring left/right.
-        let leftEdge = (rect.width - liveWidth) / 2
-        let rightEdge = leftEdge + liveWidth
+        // Move to the canvas's top-left corner. The caller positions
+        // the panel so this lands at the notch's lower-left corner.
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
 
-        // Constants
-        let shoulderRadius = NotchBlendShapeConstants.shoulderRadius
-        let bottomRadius = NotchBlendShapeConstants.bottomRadius
-
-        // Notch span — clamp to the live width so a hugely wide notch
-        // value never overflows the panel.
-        let notchSpan = min(notchWidth, liveWidth)
-        let xL = leftEdge + (liveWidth - notchSpan) / 2
-        let xR = xL + notchSpan
-
-        // Top edge Y (notch's lower edge / panel top under the notch).
-        // When notchHeight is 0 (no-notch fallback) this is just 0 →
-        // the path's top edge sits at rect.minY.
-        let topY: CGFloat = notchHeight
-
-        // Bottom edge Y (clamped to liveHeight so the shape collapses
-        // cleanly at progress=0).
-        let bottomY = max(topY, liveHeight)
-
-        // Path traversal — clockwise starting from the notch's
-        // lower-left inner corner.
-        //
-        //   • Move to (xL, topY)
-        //   • Top straight under the notch  → (xR, topY)
-        //   • Right shoulder Bézier         → (rightEdge, topY + shoulderRadius)
-        //   • Right vertical down           → (rightEdge, bottomY - bottomRadius)
-        //   • Right bottom corner Bézier    → (rightEdge - bottomRadius, bottomY)
-        //   • Bottom straight               → (leftEdge + bottomRadius, bottomY)
-        //   • Left bottom corner Bézier     → (leftEdge, bottomY - bottomRadius)
-        //   • Left vertical up              → (leftEdge, topY + shoulderRadius)
-        //   • Left shoulder Bézier          → (xL, topY)
-        //   • Close
-
-        path.move(to: CGPoint(x: xL, y: topY))
-        path.addLine(to: CGPoint(x: xR, y: topY))
-
-        // Right shoulder — Bézier from notch corner to canvas edge.
-        // Control point at (xR + shoulderRadius, topY) — the
-        // right-angle corner the notch's vertical edge would meet.
-        // The quadratic curves naturally meet the notch tangentially.
-        let rightShoulderEnd = CGPoint(
-            x: min(xR + shoulderRadius, rightEdge),
-            y: topY + shoulderRadius
-        )
-        let rightShoulderControl = CGPoint(
-            x: min(xR + shoulderRadius, rightEdge),
-            y: topY
-        )
+        // Left concave shoulder: top-left corner curves inward to
+        // (s, s). Control at (s, 0) — the right-angle corner the
+        // notch's vertical edge would meet if extrapolated, which
+        // gives a smooth quarter-ellipse tangential to both the
+        // canvas top and the body's left vertical.
         path.addQuadCurve(
-            to: rightShoulderEnd,
-            control: rightShoulderControl
+            to: CGPoint(x: rect.minX + s, y: rect.minY + s),
+            control: CGPoint(x: rect.minX + s, y: rect.minY)
         )
 
-        // Right vertical down to where the bottom corner begins.
+        // Body left vertical down to the bottom-left corner anchor.
         path.addLine(
-            to: CGPoint(x: rightEdge, y: max(rightShoulderEnd.y, bottomY - bottomRadius))
+            to: CGPoint(x: rect.minX + s, y: rect.maxY - b)
         )
 
-        // Right bottom corner.
+        // Bottom-left convex rounded corner.
         path.addQuadCurve(
-            to: CGPoint(x: rightEdge - bottomRadius, y: bottomY),
-            control: CGPoint(x: rightEdge, y: bottomY)
+            to: CGPoint(x: rect.minX + s + b, y: rect.maxY),
+            control: CGPoint(x: rect.minX + s, y: rect.maxY)
         )
 
-        // Bottom straight.
-        path.addLine(to: CGPoint(x: leftEdge + bottomRadius, y: bottomY))
+        // Bottom edge straight across.
+        path.addLine(
+            to: CGPoint(x: rect.maxX - s - b, y: rect.maxY)
+        )
 
-        // Left bottom corner.
+        // Bottom-right convex rounded corner.
         path.addQuadCurve(
-            to: CGPoint(x: leftEdge, y: bottomY - bottomRadius),
-            control: CGPoint(x: leftEdge, y: bottomY)
+            to: CGPoint(x: rect.maxX - s, y: rect.maxY - b),
+            control: CGPoint(x: rect.maxX - s, y: rect.maxY)
         )
 
-        // Left vertical up.
-        let leftShoulderEnd = CGPoint(
-            x: max(xL - shoulderRadius, leftEdge),
-            y: topY + shoulderRadius
+        // Body right vertical up to the top-right shoulder anchor.
+        path.addLine(
+            to: CGPoint(x: rect.maxX - s, y: rect.minY + s)
         )
-        path.addLine(to: leftShoulderEnd)
 
-        // Left shoulder — mirror of the right shoulder. Control at
-        // (xL - shoulderRadius, topY).
-        let leftShoulderControl = CGPoint(
-            x: max(xL - shoulderRadius, leftEdge),
-            y: topY
-        )
+        // Right concave shoulder: mirror of the left one. Control at
+        // (rect.maxX - s, rect.minY) so the curve sweeps from the
+        // body's top edge out to the canvas's top-right corner.
         path.addQuadCurve(
-            to: CGPoint(x: xL, y: topY),
-            control: leftShoulderControl
+            to: CGPoint(x: rect.maxX, y: rect.minY),
+            control: CGPoint(x: rect.maxX - s, y: rect.minY)
         )
 
+        // Close the canvas top edge back to the start.
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
         path.closeSubpath()
+
         return path
     }
 }
@@ -199,15 +149,12 @@ struct NotchBlendShape: Shape {
 // MARK: - Constants
 
 enum NotchBlendShapeConstants {
-    /// Shoulder Bézier radius. ~14pt produces the "blended" sweep
-    /// from the notch's vertical edge out to the panel's edge,
-    /// matching the visual rhythm of the macOS Dynamic-Island-style
-    /// notch overlays the user already sees in macOS's own UI.
-    /// Pulled from SPEC §21.3.
+    /// Default shoulder radius — concave top corner sweep. Tight
+    /// (~14pt) so the curve reads as a continuation of the notch's
+    /// lower-corner rounding rather than a separate scoop.
     static let shoulderRadius: CGFloat = 14.0
 
-    /// Bottom corner radius. ~16pt matches the proportion the
-    /// system uses on similar overlay surfaces (NSPopover, etc.) so
-    /// the dropdown reads as part of the same visual family.
+    /// Default bottom corner radius. ~16pt matches the system's
+    /// NSPopover-style overlay vocabulary.
     static let bottomRadius: CGFloat = 16.0
 }

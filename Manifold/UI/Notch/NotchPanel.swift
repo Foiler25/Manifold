@@ -44,9 +44,22 @@ final class NotchPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
-        self.level = .statusBar
+        // `.popUpMenu` (101) is above the system menubar (24) and
+        // above `.statusBar` (25) — using `.statusBar` produced a
+        // race where the panel was z-ordered behind the menubar on
+        // some macOS Tahoe builds. `.popUpMenu` is what NSMenu /
+        // NSPopover use for transient overlays and reliably wins.
+        self.level = .popUpMenu
+        // `.canJoinAllSpaces` deliberately omitted: it triggers an
+        // AppKit cross-workspace layout cascade on `orderFront` that
+        // hits a Swift 6 strict-concurrency runtime bug in SwiftUI
+        // (executor-isolation check reads a freed `SerialExecutor`
+        // and crashes inside MainWindow's segmented Picker on macOS
+        // Tahoe). `.moveToActiveSpace` is enough to put the panel on
+        // whatever Space the user is currently on — the cost is the
+        // panel doesn't follow them if they switch Spaces while it
+        // is open, which is fine given the 3-second auto-dismiss.
         self.collectionBehavior = [
-            .canJoinAllSpaces,
             .moveToActiveSpace,
             .fullScreenAuxiliary
         ]

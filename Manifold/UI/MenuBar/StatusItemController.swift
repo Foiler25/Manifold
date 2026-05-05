@@ -135,9 +135,18 @@ final class StatusItemController {
 
     // MARK: - Click handling
 
+    /// AppKit invokes this via target/action. `nonisolated` +
+    /// `MainActor.assumeIsolated` skips Swift 6's `_checkExpectedExecutor`
+    /// thunk, which has a runtime bug that occasionally reads a
+    /// corrupted `SerialExecutorRef` and crashes inside
+    /// `swift_getObjectType` while deciding "is this MainActor".
+    /// Target/action dispatch is documented to run on the main thread,
+    /// so `assumeIsolated` is sound.
     @objc
-    private func buttonClicked(_ sender: Any?) {
-        showPopover()
+    nonisolated private func buttonClicked(_ sender: Any?) {
+        MainActor.assumeIsolated {
+            showPopover()
+        }
     }
 
     /// Open the popover programmatically. Used by `buttonClicked` and
