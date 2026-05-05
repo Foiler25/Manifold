@@ -267,7 +267,16 @@ struct TopologyCanvas: View {
     }
 
     private func emptyPortLabel(for port: ManifoldKit.Port) -> String {
-        String(
+        // SD slots aren't numbered like USB-C ports — render as
+        // "SD — Empty" so the row matches the chip-strip glyph
+        // and the user's mental model of "the slot." Phase 20.
+        if port.kind == .sd {
+            return NSLocalizedString(
+                "popover.port.empty.sd",
+                comment: "Topology row label for the empty built-in SD card slot."
+            )
+        }
+        return String(
             format: NSLocalizedString(
                 "popover.port.empty",
                 comment: "Inline label for an empty port slot."

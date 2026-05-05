@@ -36,6 +36,17 @@ struct PortOccupancyView: View {
 
     let ports: [PhysicalPort]
 
+    /// Numbered chips first (USB-C / MagSafe / unknown), then the SD
+    /// chip(s) on the right. Phase 20: split so the SD chip can use
+    /// a custom glyph instead of a position number, keeping the row
+    /// readable as "the USB-C ports, plus the SD slot."
+    private var numberedPorts: [PhysicalPort] {
+        ports.filter { $0.kind != .sd }
+    }
+    private var sdPorts: [PhysicalPort] {
+        ports.filter { $0.kind == .sd }
+    }
+
     var body: some View {
         if ports.isEmpty {
             EmptyView()
@@ -45,8 +56,11 @@ struct PortOccupancyView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
-                    ForEach(ports) { port in
+                    ForEach(numberedPorts) { port in
                         PortChip(port: port)
+                    }
+                    ForEach(sdPorts) { port in
+                        SDPortChip(port: port)
                     }
                     Spacer()
                 }
@@ -102,6 +116,69 @@ private struct PortChip: View {
             port.position,
             NSLocalizedString(stateKey, comment: "")
         )
+    }
+}
+
+// MARK: - SD chip
+
+/// Phase 20: chip variant for the built-in SD card slot. Same shape
+/// + dimensions as `PortChip` (so the row reads as a uniform strip),
+/// but renders an SF Symbol `sdcard` glyph inside instead of a
+/// position number — SD doesn't carry a meaningful "port 4" label
+/// next to USB-C 1/2/3, and the glyph distinguishes it at a glance.
+/// State tinting matches `PortChip.fill`.
+private struct SDPortChip: View {
+
+    let port: PhysicalPort
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(fill)
+                    .frame(width: 28, height: 14)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .stroke(Color.manifoldText.opacity(0.15), lineWidth: 0.5)
+                    )
+                Image(systemName: glyphName)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+            }
+            // Empty caption matching the height of the numbered chip's
+            // position label so the strip stays vertically aligned.
+            // No text content — the glyph carries the meaning.
+            Text(" ")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.clear)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var fill: Color {
+        switch port.state {
+        case .empty:      return Color.manifoldText.opacity(0.08)
+        case .dataDevice: return Color.manifoldAccent
+        case .powerOnly:  return Color.manifoldWarning
+        case .unknown:    return Color.manifoldText.opacity(0.15)
+        }
+    }
+
+    private var glyphName: String {
+        switch port.state {
+        case .dataDevice: return "sdcard.fill"
+        default:          return "sdcard"
+        }
+    }
+
+    private var accessibilityLabel: String {
+        let key: String
+        switch port.state {
+        case .dataDevice: key = "popover.physicalPorts.sd.accessibility.populated"
+        default:          key = "popover.physicalPorts.sd.accessibility.empty"
+        }
+        return NSLocalizedString(key, comment: "VoiceOver label for the SD card slot chip.")
     }
 }
 

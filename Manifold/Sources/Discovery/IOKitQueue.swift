@@ -88,6 +88,16 @@ actor IOKitQueue {
         try walker.walk()
     }
 
+    // MARK: - SD card slot
+
+    /// Phase 20: run an `SDCardSlotWalker.walk()` on the IOKit serial
+    /// executor. Reads `AppleSDXCSlot` to discover the built-in SD
+    /// reader on Apple Silicon MacBook Pros. Soft-fail-friendly —
+    /// Macs without the reader return zero matches, not an error.
+    func sdCardSlotWalk(walker: SDCardSlotWalker) throws -> [SDCardSlotSnapshot] {
+        try walker.walk()
+    }
+
     // MARK: - Displays
 
     /// Run a `DisplayResolver.resolve()` on the IOKit serial

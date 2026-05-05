@@ -96,7 +96,16 @@ struct PortRow: View {
     }
 
     private var emptyPortLabel: String {
-        String(
+        // SD slots aren't numbered like USB-C ports — render them as
+        // "SD — Empty" so the row label matches the chip-strip glyph
+        // and the user's mental model of "the slot." Phase 20.
+        if port.kind == .sd {
+            return NSLocalizedString(
+                "popover.port.empty.sd",
+                comment: "Label for the empty built-in SD card slot."
+            )
+        }
+        return String(
             format: NSLocalizedString(
                 "popover.port.empty",
                 comment: "Label for an empty port slot (no device connected)."

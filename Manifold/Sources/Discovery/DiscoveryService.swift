@@ -45,6 +45,7 @@ final class DiscoveryService {
     private let tbWalker: ThunderboltWalker
     private let displayResolver: DisplayResolver
     private let usbcPortWalker: USBCPortWalker
+    private let sdCardSlotWalker: SDCardSlotWalker
     private let builder: PortGraphBuilder
     private let hostMetadataOverride: HostMetadata?
 
@@ -53,6 +54,7 @@ final class DiscoveryService {
         tbWalker: ThunderboltWalker = ThunderboltWalker(),
         displayResolver: DisplayResolver = DisplayResolver(),
         usbcPortWalker: USBCPortWalker = USBCPortWalker(),
+        sdCardSlotWalker: SDCardSlotWalker = SDCardSlotWalker(),
         builder: PortGraphBuilder = PortGraphBuilder(),
         hostMetadataOverride: HostMetadata? = nil
     ) {
@@ -60,6 +62,7 @@ final class DiscoveryService {
         self.tbWalker = tbWalker
         self.displayResolver = displayResolver
         self.usbcPortWalker = usbcPortWalker
+        self.sdCardSlotWalker = sdCardSlotWalker
         self.builder = builder
         self.hostMetadataOverride = hostMetadataOverride
     }
@@ -81,6 +84,7 @@ final class DiscoveryService {
         async let tbAwait = Self.tryTBWalk(via: tbWalker)
         async let displaysAwait = Self.tryResolveDisplays(via: displayResolver)
         async let usbcPortsAwait = Self.tryUSBCPortWalk(via: usbcPortWalker)
+        async let sdCardSlotsAwait = Self.trySDCardSlotWalk(via: sdCardSlotWalker)
         let metadata: HostMetadata
         if let override = hostMetadataOverride {
             metadata = override
@@ -88,13 +92,14 @@ final class DiscoveryService {
             metadata = await IOKitQueue.shared.resolveHostMetadata()
         }
 
-        // Surface USB errors; TB, Display, and USB-C-port soft-fail
-        // to empty arrays so a missing class on Intel / older Macs
-        // doesn't break discovery entirely.
+        // Surface USB errors; TB, Display, USB-C-port, and SD-slot
+        // walks soft-fail to empty arrays so a missing class on
+        // Intel / older Macs doesn't break discovery entirely.
         let usbSnapshots = try await usbAwait
         let tbSnapshots = await tbAwait
         let displaySnapshots = await displaysAwait
         let usbcPortSnapshots = await usbcPortsAwait
+        let sdCardSlotSnapshots = await sdCardSlotsAwait
 
         // Look up friendly volume names for any mounted USB / TB
         // storage device. Cheap (DiskArbitration enumeration of a
@@ -109,6 +114,7 @@ final class DiscoveryService {
             tbDevices: tbSnapshots,
             displays: displaySnapshots,
             usbcPorts: usbcPortSnapshots,
+            sdCardSlots: sdCardSlotSnapshots,
             volumeNames: volumeNames
         )
         return [host]
@@ -150,6 +156,19 @@ final class DiscoveryService {
             return try await IOKitQueue.shared.usbcPortWalk(walker: walker)
         } catch {
             Log.discovery.error("USB-C port walk failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
+    }
+
+    /// Phase 20: same soft-fail policy for the SD-card-slot walker.
+    /// Most Macs don't have an internal SD reader (M-series Air,
+    /// base 13" Pro, all desktops) — `AppleSDXCSlot` enumerates
+    /// empty there, the snapshot list is empty, and no SD UI shows.
+    private static func trySDCardSlotWalk(via walker: SDCardSlotWalker) async -> [SDCardSlotSnapshot] {
+        do {
+            return try await IOKitQueue.shared.sdCardSlotWalk(walker: walker)
+        } catch {
+            Log.discovery.error("SD card slot walk failed: \(String(describing: error), privacy: .public)")
             return []
         }
     }

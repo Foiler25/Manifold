@@ -170,6 +170,14 @@ final class PortGraphMutationTests: XCTestCase {
     /// Found-port .attached replaces connectedDevice; clears negotiated
     /// + powerDraw (per §4.6.1 — next telemetry tick will fill them).
     /// children stays — a hub announces its own children separately.
+    ///
+    /// Phase 20 update: `.attached` now ALWAYS sets `needsFullRefresh`,
+    /// even on the surgical "found" path. The chassis snapshot in
+    /// `host.physicalPorts` lives outside `mutatePort`'s reach and
+    /// only `rebuildGraph` refreshes it — without the rebuild a
+    /// chassis port whose state just flipped `.empty → .dataDevice`
+    /// would keep rendering as "Port N — Empty" alongside the new
+    /// active row.
     func test_attached_foundPort_replacesDeviceClearsLinkAndPower() {
         let graph = PortGraph()
         let portID = PortID("/host/port-1")
@@ -182,7 +190,7 @@ final class PortGraphMutationTests: XCTestCase {
         XCTAssertEqual(port.connectedDevice, newDevice)
         XCTAssertNil(port.negotiated, "Negotiated cleared per §4.6.1.")
         XCTAssertNil(port.powerDraw, "Power cleared per §4.6.1.")
-        XCTAssertFalse(graph.needsFullRefresh)
+        XCTAssertTrue(graph.needsFullRefresh, "Phase 20: every .attached triggers a chassis-state refresh.")
     }
 
     /// Not-found .attached sets `needsFullRefresh` per §4.6.1 ("emit
@@ -211,10 +219,16 @@ final class PortGraphMutationTests: XCTestCase {
 
     // MARK: - .detached
 
-    /// Found-port .detached clears every device-bound field. children
-    /// drops to [] per §4.6.1 ("a hub being removed kills its
-    /// downstream tree").
-    func test_detached_foundPort_clearsDeviceLinkPowerAndChildren() {
+    /// Found-port `.detached` removes the port from `host.ports`
+    /// entirely (and any downstream children with it — "a hub being
+    /// removed kills its tree"). Phase 20 evolution from the
+    /// original "preserve as empty" path: the empty-row UX now
+    /// comes from `host.physicalPorts` via
+    /// `displayableRootPorts(for:)`, so the active-port array only
+    /// tracks ports with currently connected devices. `removePort`
+    /// is the surgical step; `needsFullRefresh = true` triggers the
+    /// follow-up rebuild that refreshes chassis state.
+    func test_detached_foundPort_removesPortAndChildren() {
         let graph = PortGraph()
         let portID = PortID("/host/port-1")
         let hostWithChild = makeHostWithChildPort(parentID: portID)
@@ -224,12 +238,11 @@ final class PortGraphMutationTests: XCTestCase {
 
         graph.apply(.detached(deviceID: DeviceID("ignored"), from: portID))
 
-        let port = graph.hosts[0].ports[0]
-        XCTAssertNil(port.connectedDevice)
-        XCTAssertNil(port.negotiated)
-        XCTAssertNil(port.powerDraw)
-        XCTAssertTrue(port.children.isEmpty, "Children dropped per §4.6.1.")
-        XCTAssertFalse(graph.needsFullRefresh)
+        XCTAssertTrue(
+            graph.hosts[0].ports.allSatisfy { $0.id != portID },
+            "Detached port is removed from host.ports entirely (Phase 20)."
+        )
+        XCTAssertTrue(graph.needsFullRefresh, "Phase 20: detach triggers a chassis-state refresh.")
     }
 
     /// Not-found .detached drops silently. lastUpdated NOT bumped.
@@ -296,6 +309,11 @@ final class PortGraphMutationTests: XCTestCase {
     /// updates the child without disturbing the parent's port slot.
     /// Confirms the COW path rebuilds the parent containing the
     /// mutated child.
+    ///
+    /// Phase 20 update: every `.attached` raises `needsFullRefresh`
+    /// (chassis state refresh). The surgical mutation still happens
+    /// — that's what this test verifies — and the refresh just runs
+    /// afterward to keep `host.physicalPorts` consistent.
     func test_mutatePort_recursesIntoChildren() {
         let graph = PortGraph()
         let parentID = PortID("/host/parent")
@@ -309,7 +327,7 @@ final class PortGraphMutationTests: XCTestCase {
         XCTAssertEqual(parent.id, parentID, "Parent untouched.")
         XCTAssertEqual(parent.children[0].id, childID)
         XCTAssertEqual(parent.children[0].connectedDevice, newDevice, "Child device replaced.")
-        XCTAssertFalse(graph.needsFullRefresh)
+        XCTAssertTrue(graph.needsFullRefresh, "Phase 20: every .attached triggers a chassis-state refresh.")
     }
 
     // MARK: - Helpers

@@ -64,6 +64,14 @@ public struct PhysicalPort: Identifiable, Hashable, Sendable, Codable {
     public enum PhysicalPortKind: String, Sendable, Codable, CaseIterable {
         case usbC
         case magsafe
+        /// Built-in SD card reader (Apple Silicon MacBook Pro 14"/16").
+        /// Source: `AppleSDXCSlot` registry entries — see
+        /// `SDCardSlotWalker.swift`. Distinct from `usbC` because the
+        /// SD chip strip in `PortOccupancyView` renders a glyph instead
+        /// of a position number, and the row ordering in
+        /// `PortGraph.displayableRootPorts` puts SD between occupied
+        /// USB-C and empty USB-C.
+        case sd
         case unknown
     }
 

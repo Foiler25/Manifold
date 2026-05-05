@@ -104,6 +104,7 @@ struct PortGraphBuilder: Sendable {
         tbDevices: [TBDeviceSnapshot] = [],
         displays: [DisplaySnapshot] = [],
         usbcPorts: [USBCPortSnapshot] = [],
+        sdCardSlots: [SDCardSlotSnapshot] = [],
         volumeNames: [String: String] = [:],
         timestamp: Date = .now
     ) -> ManifoldKit.Host {
@@ -114,7 +115,15 @@ struct PortGraphBuilder: Sendable {
         let tbPorts: [ManifoldKit.Port] = tbDevices.enumerated().map { index, snap in
             Self.makePort(fromTB: snap, position: index + 1, timestamp: timestamp)
         }
-        var flat: [ManifoldKit.Port] = usbPorts + tbPorts
+        // Phase 20: synthesize a Port for each SD slot whose card is
+        // present. Empty slots stay out of `Host.ports`; they're
+        // surfaced through `Host.physicalPorts` (Step 4) and lifted
+        // back into the device-row list by
+        // `PortGraph.displayableRootPorts(for:)`.
+        let sdPorts: [ManifoldKit.Port] = sdCardSlots.compactMap { snap in
+            Self.makePort(fromSD: snap, volumeNames: volumeNames, timestamp: timestamp)
+        }
+        var flat: [ManifoldKit.Port] = usbPorts + tbPorts + sdPorts
 
         // Step 2: enrich USB ports with display info where the
         // display's parent path matches the port's path. A display
@@ -127,11 +136,13 @@ struct PortGraphBuilder: Sendable {
         // path. Children find their nearest-prefix parent.
         let nested = Self.nestByRegistryPath(flat)
 
-        // Step 4: lift USB-C chassis-port snapshots into PhysicalPort
-        // values. Distinct from `Port` — covers empty + power-only
-        // states the data tree can't represent (a charging-only USB-C
-        // sink never enters IOUSB).
+        // Step 4: lift chassis-port snapshots (USB-C + SD) into
+        // PhysicalPort values. Distinct from `Port` — covers empty +
+        // power-only states the data tree can't represent (a
+        // charging-only USB-C sink never enters IOUSB; an empty SD
+        // slot has no descriptor at all).
         let physicalPorts = Self.makePhysicalPorts(from: usbcPorts)
+            + Self.makePhysicalPorts(fromSD: sdCardSlots)
 
         return ManifoldKit.Host(
             id: metadata.id,
@@ -179,6 +190,97 @@ struct PortGraphBuilder: Sendable {
         case let s? where s.hasPrefix("MagSafe"): return .magsafe
         default: return .unknown
         }
+    }
+
+    /// Phase 20: lift `SDCardSlotSnapshot` → `PhysicalPort` with kind
+    /// `.sd`. State is `.dataDevice` when a card is enumerated and
+    /// `.empty` otherwise. The "power-only" state doesn't apply to
+    /// SD — there's no CC contract, just a card or no card.
+    static func makePhysicalPorts(fromSD snapshots: [SDCardSlotSnapshot]) -> [PhysicalPort] {
+        snapshots.map { snap in
+            PhysicalPort(
+                position: snap.position,
+                kind: .sd,
+                state: snap.cardPresent ? .dataDevice : .empty
+            )
+        }
+    }
+
+    /// Phase 20: synthesize a root `Port` for an inserted SD card. The
+    /// port's `connectedDevice` carries the card's metadata so the row
+    /// renders alongside USB storage with the same volume-name → model
+    /// → fallback rules. Returns nil when no card is present so empty
+    /// slots stay out of `Host.ports` (they surface through
+    /// `Host.physicalPorts` instead).
+    ///
+    /// The synthetic registry path `"sd-slot/<position>"` is stable
+    /// across replug events on the same slot — same `PortID` semantics
+    /// the USB / TB walkers rely on.
+    private static func makePort(
+        fromSD snapshot: SDCardSlotSnapshot,
+        volumeNames: [String: String],
+        timestamp: Date
+    ) -> ManifoldKit.Port? {
+        guard snapshot.cardPresent, let card = snapshot.card else { return nil }
+
+        let device = makeDevice(fromSD: card, volumeNames: volumeNames, timestamp: timestamp)
+        let path = "sd-slot/\(snapshot.position)"
+
+        return ManifoldKit.Port(
+            id: PortID(path),
+            position: snapshot.position,
+            kind: .sd,
+            parentID: nil,
+            connectedDevice: device,
+            negotiated: nil,         // SD doesn't expose a USB-style
+                                     // link-speed string we surface today
+            powerDraw: nil,          // SD bus power isn't reported per port
+            availablePower: nil,
+            children: []
+        )
+    }
+
+    /// Phase 20: build a `Device` for an inserted SD card. Mirrors
+    /// `makeDevice(from: USBDeviceSnapshot…)` so the row renders
+    /// consistently — `friendlyName` (volume label if mounted) →
+    /// `name` (card model or "SD Card") → vendor/product fallback in
+    /// the UI all flow through the same paths.
+    static func makeDevice(
+        fromSD card: SDCardCharacteristics,
+        volumeNames: [String: String],
+        timestamp: Date
+    ) -> Device {
+        let resolvedName = card.productName ?? "SD Card"
+        // Match against the volume-name map the same way the USB
+        // path does. Volume resolvers key on the card's product
+        // string today; if a future revision keys on BSDName we
+        // can extend `VolumeNameResolver` instead of bending the
+        // builder.
+        let trimmedProduct = resolvedName.trimmingCharacters(in: .whitespaces)
+        let friendly = volumeNames[trimmedProduct] ?? volumeNames[resolvedName]
+
+        // SD doesn't have a USB-style productID. Use 0 (matches the
+        // existing fallback the UI handles for missing-PID devices).
+        let id = DeviceID.make(
+            vendorID: card.manufacturerID ?? 0,
+            productID: 0,
+            serial: card.serial,
+            registryPath: "sd-slot/\(resolvedName)"
+        )
+
+        return Device(
+            id: id,
+            name: resolvedName,
+            friendlyName: friendly,
+            kind: .storage,
+            vendorID: card.manufacturerID ?? 0,
+            productID: 0,
+            serial: card.serial,
+            usbVersion: nil,
+            displayInfo: nil,
+            firstSeen: timestamp,
+            lastSeen: timestamp
+        )
     }
 
     // MARK: - Snapshot → Port / Device

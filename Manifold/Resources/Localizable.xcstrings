@@ -887,6 +887,21 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port %1$lld, %2$@" } } }
     },
+    "popover.physicalPorts.sd.accessibility.empty" : {
+      "comment" : "VoiceOver label for the SD card slot chip when no card is inserted (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SD card slot, empty" } } }
+    },
+    "popover.physicalPorts.sd.accessibility.populated" : {
+      "comment" : "VoiceOver label for the SD card slot chip when a card is inserted (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SD card slot, card inserted" } } }
+    },
+    "popover.port.empty.sd" : {
+      "comment" : "Row label for the empty built-in SD card slot — used in place of the numbered \"Port N — Empty\" template (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SD — Empty" } } }
+    },
     "popover.port.empty" : {
       "comment" : "Inline label for an empty port slot. %lld = port position.",
       "extractionState" : "manual",

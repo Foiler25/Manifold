@@ -75,6 +75,10 @@ final class EventService: @unchecked Sendable {
     /// IOUSBHostDevice subscription. Released on `shutdown()`.
     private var usbToken: NotificationToken?
 
+    /// Phase 20: token for the `AppleSDXCBlockStorageDevice` subscription
+    /// — fires on SD card insert / eject. Released on `shutdown()`.
+    private var sdToken: NotificationToken?
+
     /// True once `shutdown()` has been called. Subsequent `requestRefresh`
     /// or `events()` calls become no-ops.
     private var stopped = false
@@ -102,6 +106,16 @@ final class EventService: @unchecked Sendable {
             // so the app is degraded but functional.
             Log.events.error("EventService failed to register notifications: \(String(describing: error), privacy: .public)")
         }
+        // Phase 20: SD card insert / eject subscription. Independent
+        // of USB registration — soft-fails so the rest of EventService
+        // stays functional on Macs without an internal SD reader (the
+        // matching dict simply never fires `onMatch`).
+        do {
+            try registerSDCardNotifications()
+            Log.events.notice("EventService initialised; AppleSDXCBlockStorageDevice notifications registered.")
+        } catch {
+            Log.events.error("EventService failed to register SD notifications: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// Tear down notifications, stop the IOKit run loop, terminate every
@@ -115,12 +129,17 @@ final class EventService: @unchecked Sendable {
         stopped = true
         let token = usbToken
         usbToken = nil
+        let sdReleaseToken = sdToken
+        sdToken = nil
         let conts = Array(continuations.values)
         continuations.removeAll()
         lock.unlock()
 
         if let token, let nc = notificationCenter {
             nc.unregister(token)
+        }
+        if let sdReleaseToken, let nc = notificationCenter {
+            nc.unregister(sdReleaseToken)
         }
         notificationCenter?.shutdown()
 
@@ -184,6 +203,34 @@ final class EventService: @unchecked Sendable {
             },
             onTerminated: { [weak self] entry in
                 self?.handleDetached(entry: entry)
+            }
+        )
+    }
+
+    /// Phase 20: register first-match + terminated notifications for
+    /// `AppleSDXCBlockStorageDevice` — the IOService node that
+    /// represents an inserted SD card (child of `AppleSDXCSlot`).
+    /// We don't synthesize a `.attached` / `.detached` event from
+    /// the IOKit entry directly because the SD slot's identity isn't
+    /// captured in our existing PortID-derived-from-USB-registry-path
+    /// model. Instead, both insert and eject emit `.fullRefresh`,
+    /// which triggers a full re-walk and lets the SD walker pick up
+    /// the new state cleanly. The 200 ms IOReg-settle delay applied
+    /// by AppDelegate before `rebuildGraph` covers chassis vs IOUSB
+    /// propagation for the same reason it covers the USB side.
+    ///
+    /// On Macs without an internal SD reader the matching dictionary
+    /// matches zero services and `onMatch` / `onTerminated` simply
+    /// never fire. Registration itself succeeds (a no-op subscription).
+    private func registerSDCardNotifications() throws {
+        guard let nc = notificationCenter else { return }
+        sdToken = try nc.register(
+            matchingClass: "AppleSDXCBlockStorageDevice",
+            onMatch: { [weak self] _ in
+                self?.emit(.fullRefresh)
+            },
+            onTerminated: { [weak self] _ in
+                self?.emit(.fullRefresh)
             }
         )
     }

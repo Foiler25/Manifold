@@ -470,12 +470,35 @@ final class PortGraph {
     /// don't synthesize a row for those. Synthetic IDs use a
     /// `chassis-<kind>-<position>` prefix that won't collide with
     /// real registry paths.
+    ///
+    /// Phase 20 ordering rule (per user direction):
+    ///   1. Occupied non-SD root ports, sorted by `position`.
+    ///   2. Occupied SD root ports (sorted by `position` for
+    ///      multi-slot symmetry — typically there's just one).
+    ///   3. Empty USB-C / MagSafe / unknown chassis ports, sorted
+    ///      by `position`.
+    ///   4. Empty SD chassis ports.
+    /// Concrete example with USB-C 1 + 3 occupied (e.g. dock + drive),
+    /// USB-C 2 empty, and an SD card inserted: `1, 3, SD, 2 empty`.
     static func displayableRootPorts(for host: ManifoldKit.Host) -> [ManifoldKit.Port] {
-        let emptyChassis = host.physicalPorts
-            .filter { $0.state == .empty }
+        let activeNonSD = host.ports
+            .filter { $0.kind != .sd }
+            .sorted { $0.position < $1.position }
+        let activeSD = host.ports
+            .filter { $0.kind == .sd }
+            .sorted { $0.position < $1.position }
+
+        let emptyChassis = host.physicalPorts.filter { $0.state == .empty }
+        let emptyNonSD = emptyChassis
+            .filter { $0.kind != .sd }
             .sorted { $0.position < $1.position }
             .map(syntheticEmptyPort(for:))
-        return host.ports + emptyChassis
+        let emptySD = emptyChassis
+            .filter { $0.kind == .sd }
+            .sorted { $0.position < $1.position }
+            .map(syntheticEmptyPort(for:))
+
+        return activeNonSD + activeSD + emptyNonSD + emptySD
     }
 
     /// Build a connection-less `Port` from an empty `PhysicalPort`.
@@ -487,6 +510,7 @@ final class PortGraph {
             switch chassis.kind {
             case .usbC:    return .usbC
             case .magsafe: return .magsafe
+            case .sd:      return .sd
             case .unknown: return .unknown
             }
         }()
