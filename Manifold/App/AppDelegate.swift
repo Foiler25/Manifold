@@ -376,6 +376,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             portGraph.apply(event)
             if portGraph.needsFullRefresh {
                 portGraph.acknowledgeRefreshRequest()
+                // Brief settling delay before re-walking IOReg.
+                // The chassis controller (`AppleTCControllerType10`)
+                // and the USB plane (`IOUSBHostDevice`) propagate
+                // plug / unplug events at different rates — a
+                // rebuild that fires the instant the IOKit
+                // notification arrives can read one source pre-
+                // propagation and the other post-, which is exactly
+                // how phantom rows like "USB Receiver still showing
+                // alongside Port 2 — Empty" leak in. 200 ms is well
+                // under the human-visible threshold for plug events
+                // and large enough that both registries have caught
+                // up in the field.
+                try? await Task.sleep(for: .milliseconds(200))
                 await rebuildGraph()
             }
             // Phase 13: schedule a debounced snapshot write. The

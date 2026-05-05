@@ -242,6 +242,16 @@ final class PortGraph {
     /// telemetry tick fills them), leave `children` (a hub announces
     /// its own downstream ports via separate `.attached` events).
     /// Not-found: set `needsFullRefresh = true` per §4.6.1.
+    ///
+    /// Always sets `needsFullRefresh = true` regardless of whether
+    /// the port was found, because `host.physicalPorts` (the chassis
+    /// snapshot) lives outside `mutatePort`'s reach. Chassis IOReg
+    /// (`AppleTCControllerType10`) and IOUSB IOReg propagate at
+    /// different rates after a plug event — the chassis state needs
+    /// to be re-read on every attach so the empty-chassis-port
+    /// synthesis in `displayableRootPorts` doesn't keep rendering a
+    /// "Port N — Empty" row for a chassis port that just became
+    /// occupied.
     private func applyAttached(device: Device, at portID: PortID) {
         let found = mutatePort(id: portID) { port in
             port = ManifoldKit.Port(
@@ -257,18 +267,11 @@ final class PortGraph {
             )
         }
 
-        if found {
-            lastUpdated = .now
-        } else {
-            // §4.6.1: "the event references a port that wasn't in the
-            // last walk — emit .fullRefresh instead of inventing a port."
-            // We surface via the `needsFullRefresh` flag rather than a
-            // re-entrant `apply(.fullRefresh)` so the consumer owns the
-            // walk-then-replace sequencing.
+        if !found {
             Log.events.notice("attached to unknown port \(portID.rawValue, privacy: .public); requesting full refresh")
-            needsFullRefresh = true
-            lastUpdated = .now
         }
+        needsFullRefresh = true
+        lastUpdated = .now
     }
 
     /// `.detached` — surgical structural. Found: clear device + all
