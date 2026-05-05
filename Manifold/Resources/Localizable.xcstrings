@@ -326,6 +326,16 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Adds a second status item next to the device count. Auto-hidden on Macs without a battery. Toggle anytime in Settings → Menu Bar." } } }
     },
+    "onboarding.battery.live.badge" : {
+      "comment" : "Step-2 demo card overlay shown when the graph has a real battery snapshot.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Live" } } }
+    },
+    "onboarding.battery.demo.badge" : {
+      "comment" : "Step-2 demo card overlay shown when the graph has no battery snapshot yet (cold start) or when running on a desktop Mac.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Demo" } } }
+    },
     "onboarding.menubar.detail" : {
       "comment" : "Detail under the menu bar onboarding row.",
       "extractionState" : "manual",

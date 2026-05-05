@@ -166,7 +166,10 @@ struct MainWindow: View {
             )
         }
         .sheet(isPresented: $isOnboardingPresented) {
-            OnboardingSheet()
+            // Pass the live graph so step 2's demo card renders the
+            // user's actual battery state — animates with each
+            // sampler tick rather than showing a static seed.
+            OnboardingSheet(graph: graph)
         }
         .onAppear {
             // Phase 15 #7: present the onboarding sheet on first

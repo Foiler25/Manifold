@@ -23,9 +23,14 @@
 //
 //   Step 1 — Welcome / permissions explainer (unchanged content).
 //   Step 2 — Battery monitor: live ChargeBannerSection rendering
-//            BatteryViewPreviewData.healthy as a demo, plus a
-//            "Show in menu bar" toggle bound to the same
-//            @AppStorage key the Menu Bar settings pane uses.
+//            *the live `PortGraph.battery` snapshot* — so the user
+//            sees their own current battery state, not a sterile
+//            demo. Falls back to a hardcoded seed only when the
+//            sampler hasn't produced a value yet (cold-start race
+//            window — typically <1s) or on a desktop Mac without
+//            an AppleSmartBattery service. A "Show in menu bar"
+//            toggle binds to the same @AppStorage key the Menu Bar
+//            settings pane uses.
 //
 // One-shot affordance gated by `@AppStorage(SettingsKeys.onboarding-
 // Completed)`. The toggle on step 2 binds to the live preference
@@ -37,6 +42,14 @@ import SwiftUI
 import ManifoldKit
 
 struct OnboardingSheet: View {
+
+    /// Live `PortGraph` from MainWindow. Step 2's demo card reads
+    /// `graph.battery` directly — the @Observable graph drives
+    /// per-tick re-renders of the demo as the sampler ticks, so the
+    /// user sees their actual percent / state / time-left animate
+    /// during onboarding. Optional so the `#Preview` can pass nil
+    /// and fall through to the hardcoded fallback seed.
+    var graph: PortGraph?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -133,16 +146,36 @@ struct OnboardingSheet: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
 
-            // Live demo card — renders the real ChargeBannerSection
-            // against BatteryViewPreviewData.healthy so any future UI
-            // change to the popover flows through automatically.
-            ChargeBannerSection(battery: OnboardingDemoData.battery)
+            // Live demo card — `graph?.battery` flows in via the
+            // @Bindable @Observable graph, so the card animates as
+            // the sampler ticks. Falls back to a hardcoded seed only
+            // when the sampler hasn't produced a sample yet (cold
+            // start <1s) or on a desktop Mac with no battery — keeps
+            // the card from rendering empty during onboarding.
+            ChargeBannerSection(battery: graph?.battery ?? OnboardingDemoData.battery)
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.manifoldCard)
                 )
                 .padding(.horizontal, 8)
+                .overlay(alignment: .topTrailing) {
+                    // Tiny "demo" / "live" label so the user knows
+                    // whether they're looking at their actual battery
+                    // or the seed fallback. Drives off the same
+                    // graph?.battery presence check.
+                    Text(graph?.battery == nil
+                         ? "onboarding.battery.demo.badge"
+                         : "onboarding.battery.live.badge")
+                        .font(.caption2.smallCaps())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule().fill(Color.manifoldSurface.opacity(0.7))
+                        )
+                        .padding(8)
+                }
 
             // Live-bound toggle — flipping this during onboarding
             // triggers AppDelegate's UserDefaults observer, which
@@ -211,9 +244,13 @@ struct OnboardingSheet: View {
 
 // MARK: - Demo seed
 
-/// Hardcoded `BatteryInfo` used by the onboarding battery demo card.
-/// Uses realistic mid-cycle values so the static preview reads as
-/// a snapshot of a healthy laptop, not a sterile placeholder.
+/// Hardcoded `BatteryInfo` used by the onboarding battery demo card
+/// **only as a fallback** — the primary path renders `graph.battery`
+/// live. This seed steps in when the sampler hasn't produced a
+/// sample yet (cold-start race window, typically <1 s) or when the
+/// host is a desktop Mac with no `AppleSmartBattery` service. Realistic
+/// mid-cycle values so the fallback reads as a healthy snapshot, not
+/// a sterile placeholder.
 private enum OnboardingDemoData {
     static let battery = BatteryInfo(
         chargePercent: 84,
