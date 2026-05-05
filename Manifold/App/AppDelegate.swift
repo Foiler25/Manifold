@@ -153,6 +153,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the user has the secondary menubar item visible.
     private var batteryAlertEngineObservationTask: Task<Void, Never>?
 
+    /// Phase 20: scheduled follow-up rebuild that catches DiskArbitration
+    /// volume-name resolution after a plug event.
+    ///
+    /// DiskArbitration mounts a USB or SD volume asynchronously after
+    /// the IOKit `.attached` event lands — typically 1–2 seconds later
+    /// for USB drives, near-instant for SD. The 200 ms IOReg-settle
+    /// rebuild already runs (see `handle(event:)`) but usually misses
+    /// the volume-name window, so `friendlyName` stays nil and the row
+    /// renders the USB product string ("Creator SSD") instead of the
+    /// user's volume label ("PlanckSSD"). A second rebuild ~2 seconds
+    /// after every plug-triggered refresh catches DA's mount and the
+    /// row updates in place.
+    ///
+    /// Cancelled when a fresh plug event arrives (debounced — multiple
+    /// plug events in quick succession collapse to one trailing
+    /// rebuild) and on `applicationWillTerminate`.
+    private var deferredVolumeNameRefreshTask: Task<Void, Never>?
+
     // MARK: - Phase 10 Storage
 
     /// Lazily constructed in `applicationDidFinishLaunching` so a
@@ -327,6 +345,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the notch panel so a half-open panel doesn't linger as the
         // app exits (per SPEC §21.11).
         batteryAlertEngineObservationTask?.cancel()
+        // Phase 20: drop any pending volume-name follow-up rebuild.
+        deferredVolumeNameRefreshTask?.cancel()
         notchPanelController?.dismiss()
         samplerLifecycle.shutdown()
         eventService?.shutdown()
@@ -364,6 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch event {
         case .fullRefresh:
             await rebuildGraph()
+            scheduleDeferredVolumeNameRefresh()
         default:
             // Phase 9: notify BEFORE apply so `.detached` can still
             // resolve the device name from the pre-apply graph.
@@ -390,6 +411,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // up in the field.
                 try? await Task.sleep(for: .milliseconds(200))
                 await rebuildGraph()
+                // Phase 20: schedule a deferred second rebuild that
+                // catches DiskArbitration's volume-name mount, which
+                // typically lands 1–2 s after the `.attached` event
+                // for USB drives. Without it the row stays on the
+                // USB product string ("Creator SSD") forever even
+                // though the user's volume label ("PlanckSSD") is
+                // available shortly after. Debounced via the
+                // `Task` cancel-and-replace below.
+                scheduleDeferredVolumeNameRefresh()
             }
             // Phase 13: schedule a debounced snapshot write. The
             // 500 ms debounce means a 1 Hz telemetry tick + a
@@ -397,6 +427,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // snapshot file + one widget reload.
             recordEventForSnapshot(event)
             snapshotCoordinator?.requestUpdate()
+        }
+    }
+
+    /// Phase 20: cancel any in-flight deferred rebuild and schedule a
+    /// fresh one ~2 seconds out. Multiple plug events in quick
+    /// succession collapse to one trailing rebuild — what we want, since
+    /// the rebuild only needs to run once after DA has settled. 2.0 s
+    /// is the upper bound observed for USB drive mount latency on
+    /// Apple Silicon; SD cards mount in well under a second so the
+    /// timer is generous either way.
+    @MainActor
+    private func scheduleDeferredVolumeNameRefresh() {
+        deferredVolumeNameRefreshTask?.cancel()
+        deferredVolumeNameRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.rebuildGraph()
         }
     }
 
