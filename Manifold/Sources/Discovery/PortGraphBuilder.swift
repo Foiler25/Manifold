@@ -226,14 +226,23 @@ struct PortGraphBuilder: Sendable {
         let device = makeDevice(fromSD: card, volumeNames: volumeNames, timestamp: timestamp)
         let path = "sd-slot/\(snapshot.position)"
 
+        // Synthesize a `LinkSpeed` so the row's protocol caption shows
+        // "SDHC" / "SDXC" instead of the generic "Unknown link"
+        // fallback. Bitrate is left at zero — the SD spec's Speed Mode
+        // (e.g. UHS SDR104) maps to a bitrate, but we don't surface a
+        // numeric MB/s anywhere in the row today; the protocol label is
+        // the readable summary.
+        let negotiated = card.cardType.map {
+            LinkSpeed(protocolName: $0, bitrate: Bitrate(bitsPerSecond: 0))
+        }
+
         return ManifoldKit.Port(
             id: PortID(path),
             position: snapshot.position,
             kind: .sd,
             parentID: nil,
             connectedDevice: device,
-            negotiated: nil,         // SD doesn't expose a USB-style
-                                     // link-speed string we surface today
+            negotiated: negotiated,
             powerDraw: nil,          // SD bus power isn't reported per port
             availablePower: nil,
             children: []
@@ -268,6 +277,11 @@ struct PortGraphBuilder: Sendable {
             registryPath: "sd-slot/\(resolvedName)"
         )
 
+        // SD blocks are 512 bytes per the SDHC / SDXC spec regardless
+        // of card class, so total bytes = blockCount * 512. Used by
+        // the UI to render "32 GB" in the trailing column.
+        let capacityBytes = card.blockCount.map { $0 * 512 }
+
         return Device(
             id: id,
             name: resolvedName,
@@ -278,6 +292,7 @@ struct PortGraphBuilder: Sendable {
             serial: card.serial,
             usbVersion: nil,
             displayInfo: nil,
+            storageCapacityBytes: capacityBytes,
             firstSeen: timestamp,
             lastSeen: timestamp
         )

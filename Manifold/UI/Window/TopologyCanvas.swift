@@ -190,6 +190,12 @@ struct TopologyCanvas: View {
                 Text(watts.formatted)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+            } else if let capacity = capacityCaption(for: port) {
+                // Phase 20: SD card capacity in the same column USB
+                // shows watts in. Mirrors DeviceRow.
+                Text(capacity)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             } else if port.connectedDevice != nil, portCarriesUSB(port) {
                 // Mirrors DeviceRow's behaviour: macOS sometimes omits
                 // the power property on small HID dongles. Surface an
@@ -204,6 +210,25 @@ struct TopologyCanvas: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel(for: port))
     }
+
+    /// Phase 20: capacity caption ("32 GB") for storage devices that
+    /// advertise it. Returns nil for everything that doesn't fill
+    /// `Device.storageCapacityBytes` (every non-SD device today).
+    private func capacityCaption(for port: ManifoldKit.Port) -> String? {
+        guard let bytes = port.connectedDevice?.storageCapacityBytes,
+              bytes > 0 else { return nil }
+        return Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
+    }
+
+    /// Decimal style so a 32 GB card reads "32 GB" — matches the
+    /// number printed on the sticker. Binary would render "29.7 GB"
+    /// for the same card.
+    private static let byteCountFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .decimal
+        f.allowsNonnumericFormatting = false
+        return f
+    }()
 
     /// True for ports that carry USB protocol — USB-A, USB-C,
     /// Thunderbolt. Matches the DeviceRow scoping rule: silence is

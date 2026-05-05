@@ -91,6 +91,13 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
     /// Display-specific metadata — only populated when `kind == .display`.
     public let displayInfo: DisplayInfo?
 
+    /// Phase 20: storage capacity in bytes for `kind == .storage`
+    /// devices that advertise it. Populated for inserted SD cards
+    /// (computed from the card's block count). USB storage doesn't
+    /// fill this today — left optional so future phases can extend
+    /// it without a model migration.
+    public let storageCapacityBytes: UInt64?
+
     /// First time we observed this DeviceID. Persisted to GRDB in
     /// Phase 10; for a freshly-discovered device this matches `lastSeen`.
     public let firstSeen: Date
@@ -109,6 +116,7 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
         serial: String?,
         usbVersion: USBVersion?,
         displayInfo: DisplayInfo?,
+        storageCapacityBytes: UInt64? = nil,
         firstSeen: Date,
         lastSeen: Date
     ) {
@@ -121,6 +129,7 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
         self.serial = serial
         self.usbVersion = usbVersion
         self.displayInfo = displayInfo
+        self.storageCapacityBytes = storageCapacityBytes
         self.firstSeen = firstSeen
         self.lastSeen = lastSeen
     }
@@ -136,7 +145,8 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, friendlyName, kind, vendorID, productID
-        case serial, usbVersion, displayInfo, firstSeen, lastSeen
+        case serial, usbVersion, displayInfo, storageCapacityBytes
+        case firstSeen, lastSeen
     }
 
     public init(from decoder: any Decoder) throws {
@@ -150,6 +160,10 @@ public struct Device: Identifiable, Hashable, Sendable, Codable {
         self.serial = try c.decodeIfPresent(String.self, forKey: .serial)
         self.usbVersion = try c.decodeIfPresent(USBVersion.self, forKey: .usbVersion)
         self.displayInfo = try c.decodeIfPresent(DisplayInfo.self, forKey: .displayInfo)
+        // `decodeIfPresent` so older snapshot files (Phase 13's on-disk
+        // PortGraphSnapshot, Phase 10's GRDB device rows) decode cleanly
+        // — they predate Phase 20's capacity field.
+        self.storageCapacityBytes = try c.decodeIfPresent(UInt64.self, forKey: .storageCapacityBytes)
         self.firstSeen = try c.decode(Date.self, forKey: .firstSeen)
         self.lastSeen = try c.decode(Date.self, forKey: .lastSeen)
     }

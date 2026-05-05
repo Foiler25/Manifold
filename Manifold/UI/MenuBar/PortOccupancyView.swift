@@ -55,7 +55,13 @@ struct PortOccupancyView: View {
                 Text("popover.physicalPorts.title")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
+                // `.top` alignment so the chip rectangles always
+                // share a top baseline. Without it the HStack's
+                // default center alignment pushes the SD chip down
+                // when its caption (a small SF Symbol) renders at a
+                // different intrinsic height than the digit captions
+                // on the numbered chips.
+                HStack(alignment: .top, spacing: 8) {
                     ForEach(numberedPorts) { port in
                         PortChip(port: port)
                     }
@@ -84,7 +90,7 @@ private struct PortChip: View {
                         .stroke(Color.manifoldText.opacity(0.15), lineWidth: 0.5)
                 )
             Text("\(port.position)")
-                .font(.caption2.monospacedDigit())
+                .font(.caption2.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .ignore)
@@ -121,36 +127,38 @@ private struct PortChip: View {
 
 // MARK: - SD chip
 
-/// Phase 20: chip variant for the built-in SD card slot. Same shape
-/// + dimensions as `PortChip` (so the row reads as a uniform strip),
-/// but renders an SF Symbol `sdcard` glyph inside instead of a
-/// position number — SD doesn't carry a meaningful "port 4" label
-/// next to USB-C 1/2/3, and the glyph distinguishes it at a glance.
-/// State tinting matches `PortChip.fill`.
+/// Phase 20: chip variant for the built-in SD card slot. Same chip
+/// shape + dimensions + tinting as `PortChip` so the strip reads as
+/// a uniform row. The caption beneath shows an SF Symbol `sdcard`
+/// glyph instead of a position number — SD doesn't carry a meaningful
+/// "port 4" label next to USB-C 1/2/3, but the glyph keeps the
+/// caption row visually balanced with the numbered chips and tells
+/// the user "this one is the SD slot."
 private struct SDPortChip: View {
 
     let port: PhysicalPort
 
     var body: some View {
         VStack(spacing: 4) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(fill)
-                    .frame(width: 28, height: 14)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .stroke(Color.manifoldText.opacity(0.15), lineWidth: 0.5)
-                    )
-                Image(systemName: glyphName)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
-            }
-            // Empty caption matching the height of the numbered chip's
-            // position label so the strip stays vertically aligned.
-            // No text content — the glyph carries the meaning.
-            Text(" ")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.clear)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(fill)
+                .frame(width: 28, height: 14)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(Color.manifoldText.opacity(0.15), lineWidth: 0.5)
+                )
+            // Glyph caption — sized to match the visual height of
+            // the numbered chips' "1" / "2" / "3" digits. SF Symbols
+            // draw to the full cap-height of the font box while
+            // digits only fill cap-height-to-baseline, so a glyph at
+            // the same point size as the digits looks visibly
+            // larger. `.imageScale(.small)` shrinks the symbol's
+            // drawn box to ~80%, which lands the glyph at about the
+            // same visible height as the bold digits beside it.
+            Image(systemName: glyphName)
+                .font(.caption2.weight(.semibold))
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
@@ -165,6 +173,8 @@ private struct SDPortChip: View {
         }
     }
 
+    /// Filled glyph when a card is inserted (matches the populated-
+    /// chip "this one has stuff" cue), outlined otherwise.
     private var glyphName: String {
         switch port.state {
         case .dataDevice: return "sdcard.fill"

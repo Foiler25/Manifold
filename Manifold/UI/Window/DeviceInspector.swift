@@ -86,6 +86,17 @@ struct DeviceInspector: View {
                     } else if portCarriesUSB(port) {
                         powerUnavailableRow
                     }
+                    // Phase 20: surface storage capacity for SD cards
+                    // (and any future device that fills the field).
+                    // Sits in the same per-port section as power /
+                    // protocol so the row reads as "what is this port
+                    // delivering."
+                    if let bytes = device.storageCapacityBytes, bytes > 0 {
+                        keyValueText(
+                            "window.inspector.field.capacity",
+                            Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
+                        )
+                    }
                 }
                 section(titleKey: "window.inspector.section.telemetry") {
                     TelemetryChart(
@@ -237,6 +248,16 @@ struct DeviceInspector: View {
         case .hdmi, .sd, .audio, .ethernet, .magsafe, .unknown: return false
         }
     }
+
+    /// Phase 20: decimal-style byte formatter for the capacity row.
+    /// Decimal (32 GB → "32 GB") matches the number printed on SD
+    /// stickers; binary would render "29.7 GB" for the same card.
+    private static let byteCountFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .decimal
+        f.allowsNonnumericFormatting = false
+        return f
+    }()
 
     private var emptyState: some View {
         VStack(spacing: 8) {

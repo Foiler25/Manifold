@@ -862,9 +862,9 @@
       }
     },
     "popover.physicalPorts.title" : {
-      "comment" : "Section heading above the chassis-port occupancy strip.",
+      "comment" : "Section heading above the chassis-port occupancy strip. Generic — covers USB-C, MagSafe, and SD slots together.",
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB-C Ports" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Physical Ports" } } }
     },
     "popover.physicalPorts.state.empty" : {
       "extractionState" : "manual",
@@ -1340,6 +1340,11 @@
     "window.inspector.field.power" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+    },
+    "window.inspector.field.capacity" : {
+      "comment" : "Inspector field label for storage device capacity (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Capacity" } } }
     },
     "window.inspector.telemetry.caption" : {
       "extractionState" : "manual",

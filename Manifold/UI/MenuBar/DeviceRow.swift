@@ -79,6 +79,17 @@ struct DeviceRow: View {
                     Text(watts.formatted)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                } else if let capacity = capacityCaption {
+                    // Phase 20: SD cards (and any future storage device
+                    // that fills `storageCapacityBytes`) get capacity
+                    // in the trailing column instead of watts. SD slots
+                    // don't expose a per-port power reading, but
+                    // capacity is the meaningful "size" metric for the
+                    // user — same column position keeps the row layout
+                    // consistent with the wattage column on USB rows.
+                    Text(capacity)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 } else if portCarriesUSB {
                     // macOS sometimes omits the power property on small
                     // HID dongles (e.g. Logitech Bolt receivers). Surface
@@ -157,6 +168,25 @@ struct DeviceRow: View {
         case .hdmi, .sd, .audio, .ethernet, .magsafe, .unknown: return false
         }
     }
+
+    /// Phase 20: human-readable capacity string for storage devices
+    /// that advertise it ("32 GB" / "1 TB"). Returns nil when the
+    /// device doesn't carry capacity (USB drives currently don't fill
+    /// `storageCapacityBytes`; only SD cards do today).
+    private var capacityCaption: String? {
+        guard let bytes = device.storageCapacityBytes, bytes > 0 else { return nil }
+        return Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
+    }
+
+    /// `binary` would render "29.7 GB" for a 32 GB card (since the
+    /// sticker GB is decimal). `decimal` reads as the user-facing
+    /// number printed on the card, which is what the row should show.
+    private static let byteCountFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .decimal
+        f.allowsNonnumericFormatting = false
+        return f
+    }()
 
     /// Map `DeviceKind` to an SF Symbol. Phase 15's polish pass may
     /// replace these with custom symbols; the SF Symbol fallbacks
