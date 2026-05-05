@@ -431,20 +431,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Phase 20: cancel any in-flight deferred rebuild and schedule a
-    /// fresh one ~2 seconds out. Multiple plug events in quick
-    /// succession collapse to one trailing rebuild — what we want, since
-    /// the rebuild only needs to run once after DA has settled. 2.0 s
-    /// is the upper bound observed for USB drive mount latency on
-    /// Apple Silicon; SD cards mount in well under a second so the
-    /// timer is generous either way.
+    /// fresh staggered poll. DiskArbitration mount latency varies
+    /// widely — small USB sticks resolve their volume name in <1 s,
+    /// SSDs over slow USB-A hubs can take 5–8 s, encrypted
+    /// FileVault disks can take longer still. A single fixed delay
+    /// either fires too early (volume name still nil) or wastes time
+    /// (volume already mounted but we wait pointlessly). Polling at
+    /// 1s / 3s / 6s / 10s catches both extremes and bails out as
+    /// soon as every storage row has a resolved friendly name, so
+    /// the typical fast-mount path runs only one rebuild and slow
+    /// mounts get the full window.
+    ///
+    /// Multiple plug events in quick succession cancel the in-flight
+    /// poll and start a fresh one — debounced naturally.
     @MainActor
     private func scheduleDeferredVolumeNameRefresh() {
         deferredVolumeNameRefreshTask?.cancel()
         deferredVolumeNameRefreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            await self?.rebuildGraph()
+            // Cumulative delays from the trigger: 1s, 3s, 6s, 10s.
+            for delayMs in [1000, 2000, 3000, 4000] {
+                try? await Task.sleep(for: .milliseconds(delayMs))
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                await self.rebuildGraph()
+                if Self.allStorageHasFriendlyName(in: self.portGraph.hosts) {
+                    return
+                }
+            }
         }
+    }
+
+    /// True when every connected storage device on every host has a
+    /// non-empty `friendlyName`. The poll terminates early on this
+    /// signal so a fast-mount path doesn't burn the whole 10 s window.
+    /// Hubs and non-storage devices are skipped — they don't have a
+    /// volume label to wait for.
+    private static func allStorageHasFriendlyName(in hosts: [ManifoldKit.Host]) -> Bool {
+        func walk(_ ports: [ManifoldKit.Port]) -> Bool {
+            for port in ports {
+                if let device = port.connectedDevice,
+                   device.kind == .storage,
+                   (device.friendlyName?.isEmpty ?? true) {
+                    return false
+                }
+                if !walk(port.children) { return false }
+            }
+            return true
+        }
+        return hosts.allSatisfy { walk($0.ports) }
     }
 
     /// Stamp `lastEventAt` on the snapshot coordinator for
