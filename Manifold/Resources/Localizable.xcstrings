@@ -1470,6 +1470,11 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Fully charged" } } }
     },
+    "window.battery.toppedOff" : {
+      "comment" : "Right-side banner copy on the Battery tab when the cell is fully charged — replaces an awkward '∞ Until full' stack.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Topped off" } } }
+    },
     "host.battery.chargeState.charging" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charging" } } }

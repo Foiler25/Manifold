@@ -61,23 +61,11 @@ struct ChargeBannerSection: View {
 
             // Charge-state pill stacked below the percent. Pill tint
             // tracks state + level — green charging/full, yellow on
-            // battery, red when very low.
+            // battery, red when very low. Carries the state copy on
+            // its own; the longer time-remaining caption sits on the
+            // top row's right side, so we don't repeat either signal
+            // as a subtitle below the pill.
             ChargeStatePill(state: battery.chargeState, percent: battery.chargePercent)
-
-            // Subtitle: time-until-full / time-until-empty / static
-            // fallback. Decorated with a leading bolt when fully
-            // charged so the dual signal (pill + caption) reads as
-            // intentional rather than redundant.
-            HStack(spacing: 6) {
-                if battery.chargeState == .fullyCharged {
-                    Image(systemName: "bolt.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.manifoldWarning)
-                }
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
 
             // Solid proportional capacity bar — tinted by charge level
             // so a healthy battery reads green whether plugged in or
@@ -120,12 +108,13 @@ struct ChargeBannerSection: View {
                     .font(.caption.smallCaps())
                     .foregroundStyle(.secondary)
             case .fullyCharged:
-                Text("∞")
-                    .font(.largeTitle.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("window.battery.untilFull.label")
-                    .font(.caption.smallCaps())
-                    .foregroundStyle(.secondary)
+                // "∞ UNTIL FULL" reads as a unit-conversion glitch
+                // when the battery is already full. Show a single
+                // friendly line instead — same vertical real estate,
+                // none of the infinity-time confusion.
+                Text("window.battery.toppedOff")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.manifoldAccent)
             case .notCharging, .unknown:
                 EmptyView()
             }
@@ -133,50 +122,12 @@ struct ChargeBannerSection: View {
     }
 
     /// Compact `1h 24m` formatter for the right-aligned banner caption.
-    /// Different from the long-form formatter `subtitle` uses (which
-    /// favors localization completeness over compactness).
     private static let shortFormatter: DateComponentsFormatter = {
         let f = DateComponentsFormatter()
         f.allowedUnits = [.hour, .minute]
         f.unitsStyle = .abbreviated
         return f
     }()
-
-    /// Long-form subtitle — unchanged shape from the prior
-    /// implementation, just lifted into its own computed for clarity.
-    private var subtitle: String {
-        switch battery.chargeState {
-        case .fullyCharged:
-            return NSLocalizedString("window.battery.fullyCharged", comment: "")
-        case .charging:
-            if let minutes = battery.timeUntilFullMinutes,
-               let formatted = formatMinutes(minutes) {
-                return String.localizedStringWithFormat(
-                    NSLocalizedString("window.battery.timeUntilFull", comment: ""),
-                    formatted
-                )
-            }
-            return NSLocalizedString(battery.chargeState.labelKey, comment: "")
-        case .discharging:
-            if let minutes = battery.timeUntilEmptyMinutes,
-               let formatted = formatMinutes(minutes) {
-                return String.localizedStringWithFormat(
-                    NSLocalizedString("window.battery.timeUntilEmpty", comment: ""),
-                    formatted
-                )
-            }
-            return NSLocalizedString(battery.chargeState.labelKey, comment: "")
-        case .notCharging, .unknown:
-            return NSLocalizedString(battery.chargeState.labelKey, comment: "")
-        }
-    }
-
-    private func formatMinutes(_ minutes: Int) -> String? {
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.hour, .minute]
-        formatter.unitsStyle = .full
-        return formatter.string(from: TimeInterval(minutes * BatteryViewSectionsConstants.secondsPerMinute))
-    }
 }
 
 /// Charge-state pill — colored capsule matching the
