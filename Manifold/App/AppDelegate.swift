@@ -121,6 +121,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Mirrors the `startBadgeObserver` Pattern A from §13.5.
     private var batteryObservationTask: Task<Void, Never>?
 
+    // MARK: - Phase 19 Battery alerts (notch-pop)
+
+    /// Notch-anchored panel controller. Shared owner of the
+    /// `NotchPanel` + `NSHostingController`. Constructed only when
+    /// `batteryHardwarePresent == true` per SPEC §21.11; nil on
+    /// desktop Macs.
+    private var notchPanelController: NotchPanelController?
+
+    /// Stateful consumer of `BatteryInfo` per SPEC §21.5. Wired into
+    /// the existing 50ms battery observer — `engine.handle(info)` is
+    /// called alongside `controller.setBattery(info)` in
+    /// `startBatteryObserver`. Constructed only on portable Macs.
+    private var batteryAlertEngine: BatteryAlertEngine?
+
+    /// `@Observable` user preferences shared between MenuBarPane and
+    /// the alert engine. Source of truth for the alert list + the
+    /// power-source flags + the master sound toggle. Seeded on first
+    /// read per SPEC §21.7. Constructed only on portable Macs.
+    private var batteryAlertPreferences: BatteryAlertPreferences?
+
+    /// Public accessor so `ManifoldApp` can pass the same
+    /// preferences instance into `MenuBarPane` for the Settings UI.
+    /// nil on desktop Macs (battery probe returned nil) — the pane
+    /// hides its battery-alert sections in that case.
+    var publishedBatteryAlertPreferences: BatteryAlertPreferences? { batteryAlertPreferences }
+
+    /// Per-`graph.battery` observer task that feeds the alert
+    /// engine. Independent of `batteryObservationTask` (which feeds
+    /// the status item) so the engine fires regardless of whether
+    /// the user has the secondary menubar item visible.
+    private var batteryAlertEngineObservationTask: Task<Void, Never>?
+
     // MARK: - Phase 10 Storage
 
     /// Lazily constructed in `applicationDidFinishLaunching` so a
@@ -291,6 +323,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         eventConsumerTask?.cancel()
         graphObservationTask?.cancel()
         batteryObservationTask?.cancel()
+        // Phase 19: cancel the engine observer + synchronously dismiss
+        // the notch panel so a half-open panel doesn't linger as the
+        // app exits (per SPEC §21.11).
+        batteryAlertEngineObservationTask?.cancel()
+        notchPanelController?.dismiss()
         samplerLifecycle.shutdown()
         eventService?.shutdown()
         downsamplingJob?.stop()
@@ -582,6 +619,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the secondary status item is installed iff the probe returns
     /// non-nil AND the AppStorage toggle is true. Desktop Macs
     /// (probe nil) never install regardless of the toggle.
+    ///
+    /// Phase 19: this is also where the alert stack
+    /// (`BatteryAlertPreferences`, `NotchPanelController`,
+    /// `BatteryAlertEngine`) gets instantiated — gated on
+    /// `batteryHardwarePresent` per SPEC §21.11.
     private func installBatteryStatusItemIfEligible() {
         let probe = BatterySnapshotReader.currentSnapshot()
         let probeHasBattery = (probe != nil)
@@ -593,6 +635,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             portGraph.applyBattery(probe)
         }
 
+        // Phase 19 alert stack — entire stack only when
+        // batteryHardwarePresent. Desktop Macs see nothing.
+        if probeHasBattery {
+            installBatteryAlertStack()
+        }
+
         let toggleOn = (UserDefaults.standard.object(forKey: SettingsKeys.menubarBatteryItemVisible) as? Bool)
             ?? SettingsDefaults.menubarBatteryItemVisible
         lastObservedBatteryItemVisible = toggleOn
@@ -601,6 +649,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         installBatteryStatusItemController()
+    }
+
+    /// Stand up the Phase 19 alert stack — preferences, notch panel
+    /// controller, alert engine. The engine's adapter-description
+    /// closure walks the live `portGraph.hosts` for an
+    /// `inputAdapter.description`, falling back to nil so the engine
+    /// uses its localized fallback subtitle.
+    ///
+    /// The engine observer is started here (not gated on the status
+    /// item being installed) so battery alerts continue to fire when
+    /// the user has the menubar item disabled but still wants
+    /// alerts. The observer mirrors the §13.5 Pattern A loop the
+    /// status item uses, with its own 50ms cadence.
+    private func installBatteryAlertStack() {
+        let preferences = BatteryAlertPreferences()
+        let panelController = NotchPanelController()
+        let engine = BatteryAlertEngine(
+            preferences: preferences,
+            notchPanelController: panelController,
+            adapterDescription: { [weak self] in
+                self?.portGraph.hosts.first?.inputAdapter?.description
+            }
+        )
+        self.batteryAlertPreferences = preferences
+        self.notchPanelController = panelController
+        self.batteryAlertEngine = engine
+        startBatteryAlertEngineObserver(engine: engine)
+    }
+
+    /// Per-graph battery observer for the alert engine. Feeds
+    /// `engine.handle(info)` on every change to `portGraph.battery`.
+    /// Independent of the status-item observer so the engine fires
+    /// regardless of whether the user has the secondary menubar
+    /// item visible.
+    private func startBatteryAlertEngineObserver(engine: BatteryAlertEngine) {
+        batteryAlertEngineObservationTask?.cancel()
+        batteryAlertEngineObservationTask = Task { @MainActor [weak self, weak engine] in
+            while !Task.isCancelled {
+                guard let self, let engine else { return }
+                let info = withObservationTracking {
+                    self.portGraph.battery
+                } onChange: { }
+                if let info {
+                    engine.handle(info)
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
     }
 
     /// Concrete install path. Builds the controller, runs `install()`,

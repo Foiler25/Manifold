@@ -741,6 +741,30 @@
         }
       }
     },
+    "popover.device.power.unavailable.accessibility" : {
+      "comment" : "VoiceOver label for the info icon shown when macOS doesn't expose a power figure for a USB device.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Power unavailable — macOS isn't reporting a value for this device."
+          }
+        }
+      }
+    },
+    "popover.device.power.unavailable.tooltip" : {
+      "comment" : "Hover tooltip on the info icon shown when macOS doesn't expose a power figure for a USB device.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS isn't reporting a power figure for this device. Low-power USB accessories like wireless receivers and HID dongles typically draw under 50 mA (≈ 250 mW)."
+          }
+        }
+      }
+    },
     "popover.device.unknown.power" : {
       "comment" : "Fallback when no power reading is available.",
       "extractionState" : "manual",
@@ -1623,6 +1647,151 @@
     "settings.menubar.sampleRate.detail" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "How often Manifold reads battery state from the system. Higher rates respond more quickly to plug / unplug events; lower rates use less power." } } }
+    },
+    "settings.menubar.alerts.section.master" : {
+      "comment" : "Phase 19 Settings — battery alerts master section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery alerts" } } }
+    },
+    "settings.menubar.alerts.master.title" : {
+      "comment" : "Phase 19 Settings — master toggle title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enable battery alerts" } } }
+    },
+    "settings.menubar.alerts.master.detail" : {
+      "comment" : "Phase 19 Settings — master toggle explainer copy.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold pops a notification out of your Mac's notch when the battery crosses a threshold or the charger plugs in or out." } } }
+    },
+    "settings.menubar.alerts.section.sounds" : {
+      "comment" : "Phase 19 Settings — sounds master section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sounds" } } }
+    },
+    "settings.menubar.alerts.sounds.master.title" : {
+      "comment" : "Phase 19 Settings — master sounds toggle title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Play alert sounds" } } }
+    },
+    "settings.menubar.alerts.sounds.master.detail" : {
+      "comment" : "Phase 19 Settings — master sounds explainer copy.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Mute or unmute every alert chime in one click. Per-alert sound preferences are kept when this is off." } } }
+    },
+    "settings.menubar.alerts.section.low" : {
+      "comment" : "Phase 19 Settings — low-battery alerts list section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Low Battery Alerts" } } }
+    },
+    "settings.menubar.alerts.section.charged" : {
+      "comment" : "Phase 19 Settings — charged alerts list section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charged Alerts" } } }
+    },
+    "settings.menubar.alerts.section.powerSource" : {
+      "comment" : "Phase 19 Settings — power source alerts section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power Source Alerts" } } }
+    },
+    "settings.menubar.alerts.low.add" : {
+      "comment" : "Phase 19 Settings — Add low alert button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add low alert" } } }
+    },
+    "settings.menubar.alerts.charged.add" : {
+      "comment" : "Phase 19 Settings — Add charged alert button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Add charged alert" } } }
+    },
+    "settings.menubar.alerts.add.cancel" : {
+      "comment" : "Phase 19 Settings — Cancel button in inline add editor.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } } }
+    },
+    "settings.menubar.alerts.add.save" : {
+      "comment" : "Phase 19 Settings — Save button in inline add editor.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Save" } } }
+    },
+    "settings.menubar.alerts.pluggedIn.title" : {
+      "comment" : "Phase 19 Settings — Plugged-in row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Plugged In" } } }
+    },
+    "settings.menubar.alerts.unplugged.title" : {
+      "comment" : "Phase 19 Settings — Unplugged row title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unplugged" } } }
+    },
+    "settings.menubar.alerts.row.enabled.label" : {
+      "comment" : "Phase 19 Settings — accessibility label for the per-row enabled toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Enabled" } } }
+    },
+    "settings.menubar.alerts.row.sound.label" : {
+      "comment" : "Phase 19 Settings — accessibility label for the per-row sound toggle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Play sound for this alert" } } }
+    },
+    "settings.menubar.alerts.row.delete.label" : {
+      "comment" : "Phase 19 Settings — accessibility label for the per-row trash button.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete alert" } } }
+    },
+    "notch.battery.alert.low.title" : {
+      "comment" : "Phase 19 notch alert — low battery title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery low" } } }
+    },
+    "notch.battery.alert.low.subtitle" : {
+      "comment" : "Phase 19 notch alert — preview / fallback low-battery subtitle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charge running low" } } }
+    },
+    "notch.battery.alert.low.subtitle.format" : {
+      "comment" : "Phase 19 notch alert — low-battery subtitle with current percent. %1$lld = current percent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$lld%% remaining" } } }
+    },
+    "notch.battery.alert.charged.title" : {
+      "comment" : "Phase 19 notch alert — preview / fallback charged title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charged" } } }
+    },
+    "notch.battery.alert.charged.title.format" : {
+      "comment" : "Phase 19 notch alert — charged title with threshold percent. %1$lld = threshold percent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charged to %1$lld%%" } } }
+    },
+    "notch.battery.alert.charged.subtitle" : {
+      "comment" : "Phase 19 notch alert — preview / fallback charged subtitle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery topped up" } } }
+    },
+    "notch.battery.alert.charged.subtitle.format" : {
+      "comment" : "Phase 19 notch alert — charged subtitle with current percent. %1$lld = current percent.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Now at %1$lld%%" } } }
+    },
+    "notch.battery.alert.pluggedIn.title" : {
+      "comment" : "Phase 19 notch alert — plug-in title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Plugged in" } } }
+    },
+    "notch.battery.alert.pluggedIn.subtitle" : {
+      "comment" : "Phase 19 notch alert — plug-in fallback subtitle when adapter description is unavailable.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charger connected" } } }
+    },
+    "notch.battery.alert.unplugged.title" : {
+      "comment" : "Phase 19 notch alert — unplug title.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Unplugged" } } }
+    },
+    "notch.battery.alert.unplugged.subtitle" : {
+      "comment" : "Phase 19 notch alert — unplug subtitle.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Running on battery" } } }
     }
   },
   "version" : "1.0"

@@ -114,7 +114,9 @@ struct ManifoldApp: App {
 
         // Phase 14: Settings tab view per SPEC §13. Phase 16
         // adds the Sparkle UpdaterController for the Updates
-        // pane's "Check for updates now" button.
+        // pane's "Check for updates now" button. Phase 19 threads
+        // the alert preferences (and the live PortGraph for the
+        // batteryHardwarePresent gate) into MenuBarPane.
         SettingsScene(
             onSampleRateChange: { rate in
                 appDelegate.applySampleRate(rate)
@@ -125,7 +127,9 @@ struct ManifoldApp: App {
             loginItemController: LiveLoginItemController(),
             databaseManager: appDelegate.publishedDatabaseManager,
             downsamplingJob: appDelegate.publishedDownsamplingJob,
-            updaterController: appDelegate.publishedUpdaterController
+            updaterController: appDelegate.publishedUpdaterController,
+            graph: appDelegate.publishedPortGraph,
+            batteryAlertPreferences: appDelegate.publishedBatteryAlertPreferences
         )
     }
 

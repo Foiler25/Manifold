@@ -55,6 +55,18 @@ struct SettingsScene: Scene {
     /// AppDelegate's lazy controller.
     let updaterController: UpdaterController?
 
+    /// Phase 19 — live `PortGraph` so MenuBarPane can hide its
+    /// battery-alert sections on desktop Macs (where `graph.battery
+    /// == nil` at app start). Bound, not value-passed, so the pane
+    /// re-renders if the battery probe later finds hardware (rare —
+    /// the probe is one-shot at app start).
+    let graph: PortGraph
+
+    /// Phase 19 — shared alert preferences instance. nil on desktop
+    /// Macs (the AppDelegate didn't construct the alert stack); the
+    /// MenuBarPane hides its battery-alert sections in that case.
+    let batteryAlertPreferences: BatteryAlertPreferences?
+
     /// Persisted selection bound to `TabView` so deep-link callers
     /// (e.g. the battery popover's gear button writing `"menubar"`)
     /// can land the user on a specific pane on next open. Tagged
@@ -84,9 +96,13 @@ struct SettingsScene: Scene {
                 .tabItem { Label("settings.tab.history", systemImage: "clock") }
                 .tag(SettingsTabID.history.rawValue)
 
-                MenuBarPane(onBatterySampleRateChange: onBatterySampleRateChange)
-                    .tabItem { Label("settings.tab.menubar", systemImage: "menubar.rectangle") }
-                    .tag(SettingsTabID.menubar.rawValue)
+                MenuBarPane(
+                    onBatterySampleRateChange: onBatterySampleRateChange,
+                    graph: graph,
+                    batteryAlertPreferences: batteryAlertPreferences
+                )
+                .tabItem { Label("settings.tab.menubar", systemImage: "menubar.rectangle") }
+                .tag(SettingsTabID.menubar.rawValue)
 
                 UpdatesPane(updaterController: updaterController)
                     .tabItem { Label("settings.tab.updates", systemImage: "arrow.down.circle") }

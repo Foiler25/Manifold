@@ -97,6 +97,36 @@ enum SettingsKeys {
     /// `openSettings`. Pane ids match the `SettingsTabID.<case>.rawValue`
     /// strings.
     static let selectedSettingsPaneId = "settings.selectedPaneId"
+
+    // MARK: - Phase 19 — Battery alerts (notch-pop)
+
+    /// Master gate for the entire battery-alert feature. When `false`,
+    /// `BatteryAlertEngine.handle(_:)` is a no-op (no state mutation,
+    /// no alert fires) per SPEC §21.5. Default `true`.
+    static let batteryAlertsEnabled = "settings.battery.alerts.enabled"
+
+    /// Master sound mute for battery alerts. AND-composed with each
+    /// alert's per-row `playsSound` flag (or the dedicated plug /
+    /// unplug sound flag) before any `BatteryAlertSound.play*()` call,
+    /// per SPEC §21.5 / §21.7. Default `true` — the per-row defaults
+    /// already make low / charged silent.
+    static let batteryAlertsSoundEnabled = "settings.battery.alerts.soundEnabled"
+
+    /// JSON-encoded `[BatteryAlertConfig]` array — the user-managed
+    /// list of low + charged thresholds. Stored as a single String
+    /// (not an array of dicts) because `@AppStorage` does not
+    /// natively bind `[Codable]`; `BatteryAlertPreferences` does the
+    /// encode/decode + first-read seed per SPEC §21.6 / §21.7 / §21.10.
+    static let batteryAlertConfigs = "settings.battery.alerts.configs"
+
+    /// Plug / unplug fixed-row toggles. Plug + unplug share the same
+    /// shape (main toggle + per-row sound flag) so their flags live as
+    /// four scalar UserDefaults keys rather than embedded in the
+    /// `BatteryAlertConfig` array — they're not user-managed list rows.
+    static let pluggedInAlertEnabled = "settings.battery.alerts.pluggedIn.enabled"
+    static let pluggedInAlertPlaysSound = "settings.battery.alerts.pluggedIn.playsSound"
+    static let unpluggedAlertEnabled = "settings.battery.alerts.unplugged.enabled"
+    static let unpluggedAlertPlaysSound = "settings.battery.alerts.unplugged.playsSound"
 }
 
 /// Stable string ids for each `SettingsScene` pane. Used both as
@@ -125,6 +155,27 @@ enum SettingsDefaults {
     /// why we run at the slider's max by default (sampler pauses
     /// when no UI is visible, so idle cost stays at zero).
     static let batterySampleRateHz: Double = 5.0
+
+    // MARK: - Phase 19 — Battery alerts (notch-pop)
+
+    /// Master gate for the entire battery-alert feature. Reviewer-pinned
+    /// to `true` per SPEC §21 acceptance — a fresh install starts with
+    /// alerts on, the user can disable in Settings.
+    static let batteryAlertsEnabled: Bool = true
+
+    /// Master sound mute. `true` so the per-row sound flags (which
+    /// default off for low/charged, on for plug/unplug) decide whether
+    /// an alert chimes; flipping this to `false` mutes everything in
+    /// one click without losing per-row preferences.
+    static let batteryAlertsSoundEnabled: Bool = true
+
+    /// Plug / unplug fixed-row defaults. Sound on by default for both
+    /// because audio confirms a physical action the user just took
+    /// (low signal, low surprise). Per SPEC §21.7 + D22.
+    static let pluggedInAlertEnabled: Bool = true
+    static let pluggedInAlertPlaysSound: Bool = true
+    static let unpluggedAlertEnabled: Bool = true
+    static let unpluggedAlertPlaysSound: Bool = true
 }
 
 // MARK: - ThemePreference
