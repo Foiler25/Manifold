@@ -125,7 +125,12 @@ struct BatteryNotchContent: View {
                         )
                         .monospacedDigit()
                     )
-                    .foregroundStyle(BatteryNotchContentConstants.tint(for: kind))
+                    .foregroundStyle(
+                        BatteryNotchContentConstants.percentTint(
+                            for: kind,
+                            percent: percent
+                        )
+                    )
                     .lineLimit(1)
                     .padding(.trailing, BatteryNotchContentConstants.percentTrailingInset)
                     .accessibilityLabel(Text("\(percent) percent"))
@@ -187,15 +192,36 @@ enum BatteryNotchContentConstants {
         }
     }
 
-    /// Tint for each alert kind. Drawn from `Color.manifold*` tokens
-    /// so the palette refresh hooks in if/when Phase 15-style theming
-    /// changes the values.
+    /// Tint for each alert kind's *icon glyph*. Distinct from the
+    /// percent-badge tint (`percentTint(for:percent:)`) — the icon
+    /// signals the alert category (low / charged / plug / unplug),
+    /// while the percent badge signals the actual battery level.
+    /// Drawn from `Color.manifold*` tokens so a palette refresh
+    /// hooks in if/when Phase 15-style theming changes the values.
     static func tint(for kind: BatteryNotchContent.Kind) -> Color {
         switch kind {
         case .lowBattery: return Color.manifoldCritical
         case .charged:    return Color.manifoldAccent
         case .pluggedIn:  return Color.manifoldAccent
         case .unplugged:  return Color.manifoldWarning
+        }
+    }
+
+    /// Tint for the trailing percent badge. The badge reflects the
+    /// **current battery level**, not the alert category, so a
+    /// low-battery alert at 18% reads yellow but at 5% reads red —
+    /// matching the popover's level-based palette. Reuses
+    /// `BatteryViewSectionsConstants.levelTint(percent:)` so the
+    /// thresholds stay coherent across surfaces. For non-level
+    /// alerts (charged / plug / unplug) the badge falls back to
+    /// the alert's icon tint so the row reads as a single color
+    /// signal.
+    static func percentTint(for kind: BatteryNotchContent.Kind, percent: Int) -> Color {
+        switch kind {
+        case .lowBattery, .unplugged:
+            return BatteryViewSectionsConstants.levelTint(percent: percent)
+        case .charged, .pluggedIn:
+            return tint(for: kind)
         }
     }
 }

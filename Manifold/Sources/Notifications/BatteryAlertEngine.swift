@@ -282,14 +282,22 @@ final class BatteryAlertEngine {
     // MARK: - Fire paths
 
     private func fireLowBattery(percent: Int, row: BatteryAlertConfig) {
+        // Subtitle shows the *threshold* the user configured, not the
+        // current percent — when the sampler skips integer values
+        // (battery drops 26 → 23 between ticks because the laptop
+        // was idle / sleeping), the alert fires when we first observe
+        // the cross. The current percent in that moment can be
+        // several points below the threshold, which made users think
+        // their alert "fired at the wrong percent." Showing the
+        // threshold instead matches what they configured.
         let content = BatteryNotchContent(
             kind: .lowBattery,
             title: "notch.battery.alert.low.title",
             subtitle: LocalizedStringKey(
                 String(format: NSLocalizedString(
                     "notch.battery.alert.low.subtitle.format",
-                    comment: "Phase 19 low-battery subtitle. %1$lld = current percent."
-                ), percent)
+                    comment: "Phase 19 low-battery subtitle showing the configured threshold. %1$lld = threshold percent."
+                ), row.percent)
             ),
             percent: percent
         )

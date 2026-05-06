@@ -733,19 +733,20 @@ enum BatteryViewSectionsConstants {
     static let temperatureWarningStart: Double = 40
     static let temperatureCriticalStart: Double = 45
 
-    /// Level-based percent / bar color. ≥20% healthy (green), 11–19%
+    /// Level-based percent / bar color. ≥21% healthy (green), 11–20%
     /// low (amber), ≤10% critical (red). Tracks the *level* of the
     /// battery, not the charge state — a healthy 95% on battery
-    /// still reads green even though it's discharging. Inflection
-    /// points match the macOS native low-battery alert thresholds
-    /// (10% / 20% are the system-wide warning levels).
+    /// still reads green even though it's discharging.
+    /// `levelLowThreshold` is the highest percent that still reads
+    /// as low (inclusive); the warning range covers
+    /// `(levelCriticalThreshold + 1) ... levelLowThreshold`.
     static let levelLowThreshold: Int = 20
     static let levelCriticalThreshold: Int = 10
 
     static func levelTint(percent: Int) -> Color {
         switch percent {
         case ...levelCriticalThreshold:                  return Color.manifoldCritical
-        case (levelCriticalThreshold + 1)..<levelLowThreshold: return Color.manifoldWarning
+        case (levelCriticalThreshold + 1)...levelLowThreshold: return Color.manifoldWarning
         default:                                          return Color.manifoldAccent
         }
     }

@@ -1803,9 +1803,9 @@
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charge running low" } } }
     },
     "notch.battery.alert.low.subtitle.format" : {
-      "comment" : "Phase 19 notch alert — low-battery subtitle with current percent. %1$lld = current percent.",
+      "comment" : "Phase 19 notch alert — low-battery subtitle showing the threshold the user configured. %1$lld = the user-set threshold percent.",
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "%1$lld%% remaining" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Below %1$lld%%" } } }
     },
     "notch.battery.alert.charged.title" : {
       "comment" : "Phase 19 notch alert — preview / fallback charged title.",

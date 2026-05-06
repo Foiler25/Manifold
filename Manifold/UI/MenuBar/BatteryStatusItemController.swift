@@ -120,7 +120,7 @@ final class BatteryStatusItemController {
             return
         }
 
-        button.image = makeBatteryIcon(percent: 50)
+        button.image = makeBatteryIcon(percent: 50, charging: false)
         button.imagePosition = .imageOnly
         button.imageHugsTitle = true
         button.target = self
@@ -168,7 +168,7 @@ final class BatteryStatusItemController {
         guard let button = statusItem?.button else { return }
 
         guard let info else {
-            button.image = makeBatteryIcon(percent: 0)
+            button.image = makeBatteryIcon(percent: 0, charging: false)
             button.imagePosition = .imageOnly
             button.attributedTitle = NSAttributedString()
             return
@@ -176,8 +176,13 @@ final class BatteryStatusItemController {
 
         // One image, no separate text label. The percentage lives
         // inside the battery body so the slot stays a single compact
-        // icon at the menu bar scale.
-        button.image = makeBatteryIcon(percent: info.chargePercent)
+        // icon at the menu bar scale. When charging, a small bolt
+        // glyph appears to the left of the percentage so the slot
+        // visually conveys "this is charging right now."
+        button.image = makeBatteryIcon(
+            percent: info.chargePercent,
+            charging: info.chargeState == .charging
+        )
         button.imagePosition = .imageOnly
         button.attributedTitle = NSAttributedString()
 
@@ -290,11 +295,13 @@ final class BatteryStatusItemController {
     /// inside the body. Single-color (template) so the menu bar tint
     /// follows light/dark mode automatically.
     ///
-    /// No internal fill bar, no charging overlay — the percentage
-    /// itself communicates the level, and charge state is surfaced in
-    /// the popover. Per Brandon's UX feedback (2026-05-04): "make it
-    /// a simple icon."
-    private func makeBatteryIcon(percent: Int) -> NSImage {
+    /// When `charging == true`, a small `bolt.fill` SF Symbol is
+    /// drawn to the left of the percentage text — both centered as
+    /// a unit inside the body. The bolt visually communicates "this
+    /// is charging right now" without losing the percentage readout.
+    /// Discharging / fully-charged states omit the bolt and center
+    /// just the percentage.
+    private func makeBatteryIcon(percent: Int, charging: Bool) -> NSImage {
         let width = BatteryStatusItemControllerConstants.iconWidth
         let height = BatteryStatusItemControllerConstants.iconHeight
         let bodyWidth = BatteryStatusItemControllerConstants.iconBodyWidth
@@ -304,6 +311,12 @@ final class BatteryStatusItemController {
         let cornerRadius = BatteryStatusItemControllerConstants.iconCornerRadius
         let nubCornerRadius = BatteryStatusItemControllerConstants.iconNubCornerRadius
         let fontSize = BatteryStatusItemControllerConstants.iconTextFontSize
+        let boltGap = BatteryStatusItemControllerConstants.iconChargingBoltGap
+
+        // Pre-render the bolt symbol outside the drawing block so we
+        // can measure its size for the centered layout below.
+        let boltImage: NSImage? = charging ? Self.chargingBoltImage(at: fontSize) : nil
+        let boltSize = boltImage?.size ?? .zero
 
         let image = NSImage(
             size: NSSize(width: width, height: height),
@@ -339,15 +352,55 @@ final class BatteryStatusItemController {
                 yRadius: nubCornerRadius
             ).fill()
 
-            // Percentage text, centered in the body.
+            // Percentage text + (optional) charging bolt, centered as
+            // one unit inside the body. Without the bolt we just
+            // center the digits as before; with the bolt the unit
+            // width grows by `boltSize.width + boltGap` and we offset
+            // the start-x so the combined glyph stays centered.
+            //
+            // The bolt SF Symbol's `.size` includes a small amount of
+            // transparent left/right padding inside the image — the
+            // visible bolt sits a pixel or two in from the bounds.
+            // Pure mathematical centering gives equal *math* padding
+            // on each side, but the visible left gap looks larger
+            // than the visible right gap because of that internal
+            // whitespace. Shifting the centered unit slightly left by
+            // `iconTextTrailingInset` adds matching visible padding
+            // to the right of the digits.
             let text = "\(percent)" as NSString
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.menuBarFont(ofSize: fontSize).withWeightApplied(.bold),
                 .foregroundColor: NSColor.black
             ]
             let textSize = text.size(withAttributes: attrs)
+            let totalWidth: CGFloat = boltImage == nil
+                ? textSize.width
+                : boltSize.width + boltGap + textSize.width
+            let trailingInset = boltImage == nil
+                ? 0
+                : BatteryStatusItemControllerConstants.iconTextTrailingInset
+            let startX = bodyRect.midX - totalWidth / 2 - trailingInset / 2
+
+            if let boltImage {
+                let boltRect = NSRect(
+                    x: startX,
+                    y: bodyRect.midY - boltSize.height / 2,
+                    width: boltSize.width,
+                    height: boltSize.height
+                )
+                boltImage.draw(
+                    in: boltRect,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1.0
+                )
+            }
+
+            let textX: CGFloat = boltImage == nil
+                ? startX
+                : startX + boltSize.width + boltGap
             let textRect = NSRect(
-                x: bodyRect.midX - textSize.width / 2,
+                x: textX,
                 y: bodyRect.midY - textSize.height / 2,
                 width: textSize.width,
                 height: textSize.height
@@ -366,6 +419,27 @@ final class BatteryStatusItemController {
             comment: ""
         )
         return image
+    }
+
+    /// Pre-rendered `bolt.fill` SF Symbol used as the charging
+    /// indicator inside the icon body. SF Symbols return template
+    /// images by default — drawn into a flipped:false NSImage they
+    /// keep their alpha mask, which is what we want for menu bar
+    /// tint inheritance. Static so the symbol-config render only
+    /// happens once per icon size, not per icon redraw.
+    private static func chargingBoltImage(at fontSize: CGFloat) -> NSImage? {
+        let symbolConfig = NSImage.SymbolConfiguration(
+            pointSize: fontSize,
+            weight: .heavy
+        )
+        guard let bolt = NSImage(
+            systemSymbolName: "bolt.fill",
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(symbolConfig) else {
+            return nil
+        }
+        bolt.isTemplate = true
+        return bolt
     }
 
     // MARK: - Accessibility summary
@@ -427,37 +501,54 @@ enum BatteryStatusItemControllerConstants {
     /// Total drawn-image width in points. Body width + nub width.
     /// Sized so the menu bar slot stays compact while leaving room for
     /// "100" inside the body without the digits crowding the outline.
-    static let iconWidth: CGFloat = 28
+    /// Bumped from 28 → 34 alongside the height increase so the
+    /// extra vertical room doesn't make the icon read as squat.
+    static let iconWidth: CGFloat = 34
 
-    /// Total drawn-image height in points. Sized to read clearly in
-    /// the standard menu bar slot (~22pt tall) without dominating it.
-    static let iconHeight: CGFloat = 14
+    /// Total drawn-image height in points. The standard macOS menu
+    /// bar slot is ~22pt tall — this leaves a ~3pt margin top and
+    /// bottom while making the digits inside the body comfortable
+    /// to read at typical viewing distance.
+    static let iconHeight: CGFloat = 17
 
     /// Width of the rounded-rectangle "body" portion (the inset of
     /// `iconWidth` reserved for the percentage text). Remaining width
     /// is the terminal nub.
-    static let iconBodyWidth: CGFloat = 26
+    static let iconBodyWidth: CGFloat = 31
 
     /// Width of the right-side terminal nub.
-    static let iconNubWidth: CGFloat = 2
+    static let iconNubWidth: CGFloat = 3
 
     /// Height of the right-side terminal nub. ~half the body height —
     /// matches the proportions of the SF Symbol battery family.
-    static let iconNubHeight: CGFloat = 6
+    static let iconNubHeight: CGFloat = 8
 
     /// Stroke width of the body outline.
-    static let iconStrokeWidth: CGFloat = 1
+    static let iconStrokeWidth: CGFloat = 1.2
 
     /// Corner radius of the rounded-rectangle body outline.
-    static let iconCornerRadius: CGFloat = 2
+    static let iconCornerRadius: CGFloat = 3
 
     /// Corner radius of the terminal nub.
-    static let iconNubCornerRadius: CGFloat = 1
+    static let iconNubCornerRadius: CGFloat = 1.5
 
     /// Point size of the percentage text drawn inside the body. Sized
     /// so "100" fits within the body interior with breathing room on
     /// either side.
-    static let iconTextFontSize: CGFloat = 9
+    static let iconTextFontSize: CGFloat = 11
+
+    /// Horizontal gap between the charging bolt and the percentage
+    /// text. Tuned so the two glyphs read as a single "this is
+    /// charging" unit at menu-bar scale, neither cramped together
+    /// nor floating apart.
+    static let iconChargingBoltGap: CGFloat = 1
+
+    /// Trailing inset added to the right of the percentage when the
+    /// charging bolt is shown — compensates for the SF Symbol bolt's
+    /// built-in transparent padding inside its image bounds, so the
+    /// visible left gap (bolt → body edge) and the visible right gap
+    /// (digits → body edge) read as the same width.
+    static let iconTextTrailingInset: CGFloat = 2
 
     /// 1 minute → 60 seconds for `DateComponentsFormatter`.
     static let secondsPerMinute: Int = 60
