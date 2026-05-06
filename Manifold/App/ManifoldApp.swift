@@ -51,6 +51,7 @@ struct ManifoldApp: App {
                 graph: appDelegate.publishedPortGraph,
                 eventRepository: appDelegate.publishedEventRepository,
                 sampleRepository: appDelegate.publishedSampleRepository,
+                cableEngine: appDelegate.publishedCableEngine,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
             )
@@ -109,6 +110,18 @@ struct ManifoldApp: App {
                     )
                 }
                 .keyboardShortcut("4", modifiers: [.command])
+
+                // Phase 21: ⌘5 jumps to the Cables tab. Same pattern
+                // as the other shortcuts — process-wide notification
+                // routes to MainWindow's selectedTab binding.
+                Button("window.tab.cables.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.cables.rawValue]
+                    )
+                }
+                .keyboardShortcut("5", modifiers: [.command])
             }
         }
 

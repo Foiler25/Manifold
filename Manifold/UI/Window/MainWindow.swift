@@ -51,6 +51,11 @@ struct MainWindow: View {
     /// export path. nil when persistence init failed.
     let sampleRepository: SampleRepository?
 
+    /// Phase 21: cable-diagnostics engine, drives the Cables tab.
+    /// Owned by AppDelegate; passed in here so the engine instance
+    /// survives across window close/reopen cycles.
+    @Bindable var cableEngine: CableEngine
+
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void
 
@@ -246,6 +251,8 @@ struct MainWindow: View {
             DiagnosticsBanner(graph: graph)
         case .battery:
             BatteryView(graph: graph, host: host)
+        case .cables:
+            CablesView(engine: cableEngine, graph: graph)
         }
     }
 
@@ -280,6 +287,7 @@ struct MainWindow: View {
         graph: graph,
         eventRepository: nil,
         sampleRepository: nil,
+        cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [.empty])),
         onWindowAppear: {},
         onWindowDisappear: {}
     )
@@ -291,6 +299,7 @@ struct MainWindow: View {
         graph: PortGraph(),
         eventRepository: nil,
         sampleRepository: nil,
+        cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [])),
         onWindowAppear: {},
         onWindowDisappear: {}
     )

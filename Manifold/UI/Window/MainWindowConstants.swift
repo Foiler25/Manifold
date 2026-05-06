@@ -124,6 +124,11 @@ enum WindowTab: String, CaseIterable, Identifiable {
     case history
     case diagnostics
     case battery
+    /// Phase 21: per-cable USB-C / Thunderbolt diagnostics (e-marker,
+    /// PD power profile, transport capabilities). Backed by the
+    /// `CableEngine` adapter on top of the absorbed cable-diagnostics
+    /// engine — see `Manifold/Sources/Cables/`.
+    case cables
 
     var id: String { rawValue }
 
@@ -141,6 +146,7 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .history:     return "clock.arrow.circlepath"
         case .diagnostics: return "exclamationmark.triangle"
         case .battery:     return "bolt.batteryblock"
+        case .cables:      return "cable.connector"
         }
     }
 }
