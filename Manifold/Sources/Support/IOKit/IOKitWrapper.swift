@@ -170,6 +170,33 @@ func registryPath(
     }
 }
 
+/// Phase 20: registry path of an entry's parent on a given plane.
+/// Used by the USB walker to capture the controller-port's
+/// IODeviceTree path — the IOUSBHostDevice itself doesn't appear in
+/// the IODeviceTree plane, but its parent (the USB controller port,
+/// e.g. `usb-drd1-port-ss@01200000`) does, and that path is exactly
+/// what DiskArbitration's `kDADiskDescriptionBusPathKey` reports.
+/// Lets `PortGraphBuilder` join DA volumes back to the USB device
+/// that hosts them.
+///
+/// Returns nil when the entry has no parent on the requested plane,
+/// or when the parent's path read fails. The transient parent
+/// handle is released via `IOObject`'s ~Copyable wrapper.
+func parentRegistryPath(
+    of entry: borrowing IOObject,
+    plane: String
+) -> String? {
+    var rawParent: io_registry_entry_t = 0
+    // The parent walk happens on the IOService plane (where every
+    // node lives) — only the *output* path is read on the requested
+    // plane. Walking on IOService means we always find the parent
+    // even when the entry isn't present on the target plane.
+    let result = IORegistryEntryGetParentEntry(entry.raw, kIOServicePlane, &rawParent)
+    guard result == KERN_SUCCESS, rawParent != 0 else { return nil }
+    let parent = IOObject(rawParent)
+    return registryPath(of: parent, plane: plane)
+}
+
 // MARK: - Scoped iterators
 
 /// Acquire a child iterator on a given plane, hand it to `body`, and

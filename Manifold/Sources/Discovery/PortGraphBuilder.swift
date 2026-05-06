@@ -105,6 +105,7 @@ struct PortGraphBuilder: Sendable {
         displays: [DisplaySnapshot] = [],
         usbcPorts: [USBCPortSnapshot] = [],
         sdCardSlots: [SDCardSlotSnapshot] = [],
+        usbVolumes: [USBVolumeInfo] = [],
         volumeNames: [String: String] = [:],
         timestamp: Date = .now
     ) -> ManifoldKit.Host {
@@ -134,7 +135,31 @@ struct PortGraphBuilder: Sendable {
         // Step 3: nest ports by registry-path prefix matching. Roots
         // are ports whose paths aren't prefixed by any other port's
         // path. Children find their nearest-prefix parent.
-        let nested = Self.nestByRegistryPath(flat)
+        var nested = Self.nestByRegistryPath(flat)
+
+        // Step 3b — Phase 20: attach DA-known volumes. For each USB
+        // storage port, find DA volumes whose `busPath` matches the
+        // device's IODeviceTree path:
+        //   - 0 matches: leave the port untouched.
+        //   - 1 match: refine the device's `friendlyName` and
+        //     `storageCapacityBytes` from the DA description (more
+        //     reliable than the model→volume map, which fails when
+        //     the SCSI inquiry differs from the USB product string —
+        //     "USB3.0 Card Reader" vs "MassStorageClass" on cheap
+        //     enclosures).
+        //   - 2+ matches: keep the device row as-is and synthesize a
+        //     child Port per LUN (a USB SD-card reader with two card
+        //     slots renders as two card rows nested under the
+        //     reader).
+        let snapshotByPath: [String: USBDeviceSnapshot] = Dictionary(
+            uniqueKeysWithValues: usbDevices.map { ($0.registryPath, $0) }
+        )
+        nested = Self.attachUSBVolumes(
+            to: nested,
+            volumes: usbVolumes,
+            snapshotByPath: snapshotByPath,
+            timestamp: timestamp
+        )
 
         // Step 4: lift chassis-port snapshots (USB-C + SD) into
         // PhysicalPort values. Distinct from `Port` — covers empty +
@@ -153,6 +178,200 @@ struct PortGraphBuilder: Sendable {
             ports: nested,
             physicalPorts: physicalPorts
         )
+    }
+
+    // MARK: - Phase 20 USB volume attachment
+
+    /// Recursive pass that walks the nested port tree and refines
+    /// each USB-storage Port using the DA-volume list. See `merge`
+    /// for the matching rules.
+    private static func attachUSBVolumes(
+        to ports: [ManifoldKit.Port],
+        volumes: [USBVolumeInfo],
+        snapshotByPath: [String: USBDeviceSnapshot],
+        timestamp: Date
+    ) -> [ManifoldKit.Port] {
+        ports.map { port in
+            // Recurse into existing children first so the LUN
+            // attachment correctly handles deep hub trees that
+            // contain a card reader.
+            let updatedChildren = attachUSBVolumes(
+                to: port.children,
+                volumes: volumes,
+                snapshotByPath: snapshotByPath,
+                timestamp: timestamp
+            )
+
+            // Look up this port's parent (controller-port) IODeviceTree
+            // path; without it we can't match against DA's busPath.
+            // (Synthetic SD-slot ports + TB ports won't have a matching
+            // snapshot — they skip this enrichment.)
+            guard let snapshot = snapshotByPath[port.id.rawValue],
+                  let busPath = snapshot.busDeviceTreePath else {
+                return port.replacingChildren(updatedChildren)
+            }
+
+            // DA's busPath equals our captured parent path (both are
+            // the IODeviceTree path of the same controller-port node).
+            let matches = volumes.filter { $0.busPath == busPath }
+
+            switch matches.count {
+            case 0:
+                return port.replacingChildren(updatedChildren)
+            case 1:
+                // Single volume: enrich the device's friendlyName +
+                // capacity in place. Keeps the row as a single line.
+                return refineDevice(
+                    of: port,
+                    using: matches[0],
+                    children: updatedChildren
+                )
+            default:
+                // Multi-LUN: synthesize a child Port per volume,
+                // keeping the parent row as the carrier device.
+                let lunChildren = matches.enumerated().map { idx, vol in
+                    Self.makePort(
+                        forLUN: vol,
+                        index: idx,
+                        parentID: port.id,
+                        timestamp: timestamp
+                    )
+                }
+                return port.replacingChildren(updatedChildren + lunChildren)
+            }
+        }
+    }
+
+    /// Replace `connectedDevice.friendlyName` + `storageCapacityBytes`
+    /// using DA-supplied volume info. Used for the single-volume
+    /// match path. The original device's other fields (id, kind,
+    /// VID/PID, etc.) are preserved.
+    private static func refineDevice(
+        of port: ManifoldKit.Port,
+        using volume: USBVolumeInfo,
+        children: [ManifoldKit.Port]
+    ) -> ManifoldKit.Port {
+        guard let device = port.connectedDevice else {
+            return port.replacingChildren(children)
+        }
+        let refined = Device(
+            id: device.id,
+            name: device.name,
+            friendlyName: volume.volumeName ?? device.friendlyName,
+            kind: device.kind,
+            vendorID: device.vendorID,
+            productID: device.productID,
+            serial: device.serial,
+            usbVersion: device.usbVersion,
+            displayInfo: device.displayInfo,
+            storageCapacityBytes: volume.bytesTotal ?? device.storageCapacityBytes,
+            firstSeen: device.firstSeen,
+            lastSeen: device.lastSeen
+        )
+        return ManifoldKit.Port(
+            id: port.id,
+            position: port.position,
+            kind: port.kind,
+            parentID: port.parentID,
+            connectedDevice: refined,
+            negotiated: port.negotiated,
+            powerDraw: port.powerDraw,
+            availablePower: port.availablePower,
+            children: children
+        )
+    }
+
+    /// Synthesize a child `Port` for one LUN of a multi-LUN USB
+    /// storage device. Each LUN renders as its own row beneath the
+    /// carrier device's row.
+    ///
+    /// The synthetic `PortID` uses the volume's `bsdName` when DA
+    /// reports it (stable across replug events on the same slot —
+    /// `disk7s2` is the same disk every time it's mounted with the
+    /// same partition layout) and falls back to a positional id on
+    /// the rare hardware where DA didn't publish a BSD name.
+    private static func makePort(
+        forLUN volume: USBVolumeInfo,
+        index: Int,
+        parentID: PortID,
+        timestamp: Date
+    ) -> ManifoldKit.Port {
+        let pathSuffix = volume.bsdName ?? "lun-\(index)"
+        let pathString = "\(parentID.rawValue)/\(pathSuffix)"
+        let displayName = volume.volumeName
+            ?? volume.model
+            ?? "Volume \(index + 1)"
+
+        let id = DeviceID.make(
+            vendorID: 0,
+            productID: 0,
+            serial: volume.bsdName,
+            registryPath: pathString
+        )
+
+        let device = Device(
+            id: id,
+            name: volume.model ?? displayName,
+            friendlyName: volume.volumeName,
+            kind: .storage,
+            vendorID: 0,
+            productID: 0,
+            serial: volume.bsdName,
+            usbVersion: nil,
+            displayInfo: nil,
+            storageCapacityBytes: volume.bytesTotal,
+            firstSeen: timestamp,
+            lastSeen: timestamp
+        )
+
+        // Use the file-system kind as the protocol caption so the
+        // subtitle reads "ExFAT · 32 GB" instead of falling back to
+        // "Unknown link". Bitrate stays zero — there's no meaningful
+        // per-LUN link speed in the SCSI peripheral world that we
+        // also surface anywhere as a numeric MB/s today.
+        let negotiated = volume.volumeKind.map {
+            LinkSpeed(
+                protocolName: friendlyFilesystemName(for: $0),
+                bitrate: Bitrate(bitsPerSecond: 0)
+            )
+        }
+
+        return ManifoldKit.Port(
+            id: PortID(pathString),
+            position: index + 1,
+            // `.usbA` reads as "downstream USB" in the existing port-
+            // kind-icon switch and matches the existing scoping rule
+            // (USB protocol, info icon for missing power). The actual
+            // physical interface is the SD slot in the card reader,
+            // but `.sd` is reserved for built-in chassis SD readers,
+            // and surfacing it on a USB-bridged card would visually
+            // collide with the chip strip.
+            kind: .usbA,
+            parentID: parentID,
+            connectedDevice: device,
+            negotiated: negotiated,
+            powerDraw: nil,
+            availablePower: nil,
+            children: []
+        )
+    }
+
+    /// Map DA's lowercase file-system identifier to a user-facing
+    /// label. Phase 20 — covers the common cases on consumer
+    /// removable media; everything else falls through to an
+    /// uppercase echo of the DA value (e.g. an unknown
+    /// `"someotherfs"` becomes `"SOMEOTHERFS"`, which still beats
+    /// the "Unknown link" fallback).
+    private static func friendlyFilesystemName(for kind: String) -> String {
+        switch kind.lowercased() {
+        case "exfat":            return "ExFAT"
+        case "msdos":            return "FAT32"
+        case "apfs":             return "APFS"
+        case "hfs":              return "HFS+"
+        case "ntfs", "ufsd_ntfs": return "NTFS"
+        case "ext", "ext2", "ext3", "ext4": return "Ext"
+        default:                 return kind.uppercased()
+        }
     }
 
     /// Map raw `USBCPortSnapshot` entries to public `PhysicalPort`
@@ -638,6 +857,28 @@ struct PortGraphBuilder: Sendable {
         case 5: return Bitrate(bitsPerSecond: 20_000_000_000) // Super Speed++ (USB 3.2 Gen 2x2)
         default: return Bitrate(bitsPerSecond: 0)
         }
+    }
+}
+
+// MARK: - Port helpers
+
+private extension ManifoldKit.Port {
+    /// Phase 20: returns a copy of this port with `children` replaced.
+    /// Convenience for the recursive volume-attachment pass — keeps
+    /// every other field stable while we splice in or update child
+    /// nodes during the post-nesting LUN walk.
+    func replacingChildren(_ children: [ManifoldKit.Port]) -> ManifoldKit.Port {
+        ManifoldKit.Port(
+            id: id,
+            position: position,
+            kind: kind,
+            parentID: parentID,
+            connectedDevice: connectedDevice,
+            negotiated: negotiated,
+            powerDraw: powerDraw,
+            availablePower: availablePower,
+            children: children
+        )
     }
 }
 

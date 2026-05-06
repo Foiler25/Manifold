@@ -79,17 +79,19 @@ struct DeviceRow: View {
                     Text(watts.formatted)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
-                } else if let capacity = capacityCaption {
-                    // Phase 20: SD cards (and any future storage device
-                    // that fills `storageCapacityBytes`) get capacity
-                    // in the trailing column instead of watts. SD slots
-                    // don't expose a per-port power reading, but
-                    // capacity is the meaningful "size" metric for the
-                    // user — same column position keeps the row layout
-                    // consistent with the wattage column on USB rows.
-                    Text(capacity)
-                        .font(.caption.monospacedDigit())
+                } else if port.kind == .sd {
+                    // SD slots don't expose bus power to userspace —
+                    // there's no "Requested Power" property on
+                    // AppleSDXCSlot the way IOUSBHostDevice publishes
+                    // one. Surface an info icon with an SD-specific
+                    // tooltip so the column reads consistently with
+                    // USB rows ("power, or its absence") rather than
+                    // re-purposing the column for capacity.
+                    Image(systemName: "info.circle")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                        .help("popover.device.power.unavailable.sd.tooltip")
+                        .accessibilityHidden(true)
                 } else if portCarriesUSB {
                     // macOS sometimes omits the power property on small
                     // HID dongles (e.g. Logitech Bolt receivers). Surface
@@ -149,12 +151,25 @@ struct DeviceRow: View {
         return device.name
     }
 
-    /// "VID:PID · Protocol". Power lives in the trailing column above
-    /// so it doesn't appear here.
+    /// "[VID:PID · ] Protocol [· Capacity]". Power lives in the
+    /// trailing column so it doesn't appear here. Capacity is
+    /// appended for storage devices that advertise it (today: SD
+    /// cards via `Card Characteristics.Block Count`, plus USB
+    /// drives via DA's media-size key once volumes mount). VID:PID
+    /// is omitted when both are zero — that's the synthetic ID we
+    /// use for multi-LUN children of a USB Mass Storage device,
+    /// where the parent row already carries the real VID:PID.
     private var detailLine: String {
         let proto = port.negotiated?.protocolName
             ?? NSLocalizedString("popover.device.unknown.protocol", comment: "Fallback protocol label.")
-        return String(format: "%04X:%04X · %@", device.vendorID, device.productID, proto)
+        let hasRealID = device.vendorID != 0 || device.productID != 0
+        var line = hasRealID
+            ? String(format: "%04X:%04X · %@", device.vendorID, device.productID, proto)
+            : proto
+        if let bytes = device.storageCapacityBytes, bytes > 0 {
+            line += " · " + Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
+        }
+        return line
     }
 
     /// True when the port carries the USB protocol — i.e. macOS *should*
@@ -169,18 +184,10 @@ struct DeviceRow: View {
         }
     }
 
-    /// Phase 20: human-readable capacity string for storage devices
-    /// that advertise it ("32 GB" / "1 TB"). Returns nil when the
-    /// device doesn't carry capacity (USB drives currently don't fill
-    /// `storageCapacityBytes`; only SD cards do today).
-    private var capacityCaption: String? {
-        guard let bytes = device.storageCapacityBytes, bytes > 0 else { return nil }
-        return Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
-    }
-
-    /// `binary` would render "29.7 GB" for a 32 GB card (since the
-    /// sticker GB is decimal). `decimal` reads as the user-facing
-    /// number printed on the card, which is what the row should show.
+    /// `decimal` reads as the user-facing number printed on the card
+    /// (32 GB → "32 GB"). `binary` would render "29.7 GB" for the
+    /// same card. Used for the capacity trailing-segment on the
+    /// detail line.
     private static let byteCountFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.countStyle = .decimal

@@ -153,22 +153,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the user has the secondary menubar item visible.
     private var batteryAlertEngineObservationTask: Task<Void, Never>?
 
-    /// Phase 20: scheduled follow-up rebuild that catches DiskArbitration
-    /// volume-name resolution after a plug event.
-    ///
-    /// DiskArbitration mounts a USB or SD volume asynchronously after
-    /// the IOKit `.attached` event lands — typically 1–2 seconds later
-    /// for USB drives, near-instant for SD. The 200 ms IOReg-settle
-    /// rebuild already runs (see `handle(event:)`) but usually misses
-    /// the volume-name window, so `friendlyName` stays nil and the row
-    /// renders the USB product string ("Creator SSD") instead of the
-    /// user's volume label ("PlanckSSD"). A second rebuild ~2 seconds
-    /// after every plug-triggered refresh catches DA's mount and the
-    /// row updates in place.
-    ///
-    /// Cancelled when a fresh plug event arrives (debounced — multiple
-    /// plug events in quick succession collapse to one trailing
-    /// rebuild) and on `applicationWillTerminate`.
+    /// Phase 20: DiskArbitration callback subscription. Fires a
+    /// `.fullRefresh` whenever a USB / TB volume mounts, unmounts,
+    /// or its description changes (volume name appearing post-mount).
+    /// Most plug events resolve through this fast (<1 s on a single-
+    /// volume drive).
+    private var volumeMountObserver: VolumeMountObserver?
+
+    /// Phase 20: staggered poll fallback for the rare cases where
+    /// DA's callback pipeline doesn't fire for late mounts —
+    /// observed on multi-LUN USB Mass Storage devices (a card reader
+    /// with two cards) where the second-card mount can land after
+    /// the DA observer's burst settles, and on Macs where USB
+    /// accessory authorization gates the mount until the user
+    /// consents (delayed several seconds, sometimes minutes). The
+    /// poll bails out as soon as every storage device has a
+    /// `friendlyName`, so the typical fast-mount path it doesn't
+    /// run extra rebuilds.
     private var deferredVolumeNameRefreshTask: Task<Void, Never>?
 
     // MARK: - Phase 10 Storage
@@ -225,6 +226,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let service = EventService()
         eventService = service
+
+        // Phase 20: subscribe to DiskArbitration mount events so a
+        // newly-mounted USB / TB / SD volume's name (e.g. "PlanckSSD")
+        // lands in the row the moment DA publishes it — without us
+        // having to poll on a timer. The observer debounces internally,
+        // so DA's natural callback burst at mount (disk-appeared +
+        // description-changed for each LUN) collapses to one
+        // `.fullRefresh` emission. AppDelegate's existing event
+        // handler picks that up and runs `rebuildGraph()`.
+        volumeMountObserver = VolumeMountObserver { [weak self] in
+            self?.eventService?.requestRefresh()
+        }
         // Phase 10: open the GRDB store + spin up repositories. If
         // it throws, persistence is silently disabled (the app
         // still works in-memory); every storage call site below
@@ -345,7 +358,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the notch panel so a half-open panel doesn't linger as the
         // app exits (per SPEC §21.11).
         batteryAlertEngineObservationTask?.cancel()
-        // Phase 20: drop any pending volume-name follow-up rebuild.
+        // Phase 20: tear down the DA volume-mount subscription before
+        // the AppDelegate strong reference drops.
+        volumeMountObserver?.stop()
+        volumeMountObserver = nil
         deferredVolumeNameRefreshTask?.cancel()
         notchPanelController?.dismiss()
         samplerLifecycle.shutdown()
@@ -384,7 +400,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch event {
         case .fullRefresh:
             await rebuildGraph()
-            scheduleDeferredVolumeNameRefresh()
         default:
             // Phase 9: notify BEFORE apply so `.detached` can still
             // resolve the device name from the pre-apply graph.
@@ -411,14 +426,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // up in the field.
                 try? await Task.sleep(for: .milliseconds(200))
                 await rebuildGraph()
-                // Phase 20: schedule a deferred second rebuild that
-                // catches DiskArbitration's volume-name mount, which
-                // typically lands 1–2 s after the `.attached` event
-                // for USB drives. Without it the row stays on the
-                // USB product string ("Creator SSD") forever even
-                // though the user's volume label ("PlanckSSD") is
-                // available shortly after. Debounced via the
-                // `Task` cancel-and-replace below.
+                // Phase 20: schedule a staggered poll as a fallback
+                // to the DA observer. Multi-LUN USB Mass Storage
+                // (e.g. a card reader with two cards) sometimes has
+                // its second mount land after the DA observer's
+                // initial post-attach burst settles, and macOS USB
+                // accessory authorization can delay the mount
+                // beyond a single observer-debounce window. The
+                // poll cancels itself early once every storage row
+                // has a `friendlyName`, so single-volume drives
+                // (handled fast by the DA observer) don't run the
+                // extra rebuilds.
                 scheduleDeferredVolumeNameRefresh()
             }
             // Phase 13: schedule a debounced snapshot write. The
@@ -430,55 +448,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Phase 20: cancel any in-flight deferred rebuild and schedule a
-    /// fresh staggered poll. DiskArbitration mount latency varies
-    /// widely — small USB sticks resolve their volume name in <1 s,
-    /// SSDs over slow USB-A hubs can take 5–8 s, encrypted
-    /// FileVault disks can take longer still. A single fixed delay
-    /// either fires too early (volume name still nil) or wastes time
-    /// (volume already mounted but we wait pointlessly). Polling at
-    /// 1s / 3s / 6s / 10s catches both extremes and bails out as
-    /// soon as every storage row has a resolved friendly name, so
-    /// the typical fast-mount path runs only one rebuild and slow
-    /// mounts get the full window.
+    /// Phase 20 fallback: staggered re-walks at 1 s, 3 s, 6 s, 10 s
+    /// after a plug event. Always runs the full set; early-bailing
+    /// on "every storage device has a friendlyName" was tried first
+    /// but proved too aggressive — a multi-LUN card reader's parent
+    /// port has `kind = .other` (Phase 2 default), so the bail check
+    /// passed as soon as any other already-mounted drive's row was
+    /// stable, killing the poll before the card reader's LUNs got
+    /// a chance to mount. Four extra rebuilds at ≈1 ms each is well
+    /// inside the noise floor — safer to always run them.
     ///
     /// Multiple plug events in quick succession cancel the in-flight
-    /// poll and start a fresh one — debounced naturally.
+    /// poll (debounced).
     @MainActor
     private func scheduleDeferredVolumeNameRefresh() {
         deferredVolumeNameRefreshTask?.cancel()
         deferredVolumeNameRefreshTask = Task { @MainActor [weak self] in
-            // Cumulative delays from the trigger: 1s, 3s, 6s, 10s.
             for delayMs in [1000, 2000, 3000, 4000] {
                 try? await Task.sleep(for: .milliseconds(delayMs))
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
+                guard !Task.isCancelled, let self else { return }
                 await self.rebuildGraph()
-                if Self.allStorageHasFriendlyName(in: self.portGraph.hosts) {
-                    return
-                }
             }
         }
-    }
-
-    /// True when every connected storage device on every host has a
-    /// non-empty `friendlyName`. The poll terminates early on this
-    /// signal so a fast-mount path doesn't burn the whole 10 s window.
-    /// Hubs and non-storage devices are skipped — they don't have a
-    /// volume label to wait for.
-    private static func allStorageHasFriendlyName(in hosts: [ManifoldKit.Host]) -> Bool {
-        func walk(_ ports: [ManifoldKit.Port]) -> Bool {
-            for port in ports {
-                if let device = port.connectedDevice,
-                   device.kind == .storage,
-                   (device.friendlyName?.isEmpty ?? true) {
-                    return false
-                }
-                if !walk(port.children) { return false }
-            }
-            return true
-        }
-        return hosts.allSatisfy { walk($0.ports) }
     }
 
     /// Stamp `lastEventAt` on the snapshot coordinator for

@@ -765,6 +765,30 @@
         }
       }
     },
+    "popover.device.power.unavailable.sd.tooltip" : {
+      "comment" : "Hover tooltip on the info icon for the built-in SD card slot row — explains why no power figure is shown (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS doesn't publish a per-port power figure for the SD card slot. SD cards draw negligible bus power compared to USB devices — typically well under 100 mW."
+          }
+        }
+      }
+    },
+    "popover.device.power.unavailable.sd.accessibility" : {
+      "comment" : "VoiceOver label for the SD slot's power-unavailable info icon (Phase 20).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Power not reported for SD slots."
+          }
+        }
+      }
+    },
     "popover.device.unknown.power" : {
       "comment" : "Fallback when no power reading is available.",
       "extractionState" : "manual",

@@ -107,6 +107,16 @@ final class DiscoveryService {
         // hot-plugging an SSD between walks reliably picks up the new
         // volume name after the next sample.
         let volumeNames = VolumeNameResolver.mountedVolumeNamesByDeviceModel()
+        // Phase 20: also pull the per-disk DA records (with bus path,
+        // media path, capacity). PortGraphBuilder uses these to
+        // expand multi-LUN USB devices (a card reader with two card
+        // slots becomes a parent row + two LUN children) and to
+        // resolve volume names on devices whose SCSI inquiry doesn't
+        // match the USB product string.
+        let usbVolumes = VolumeNameResolver.mountedUSBVolumes()
+        Log.discovery.debug(
+            "walk: usbDevices=\(usbSnapshots.count, privacy: .public) usbVolumes=\(usbVolumes.count, privacy: .public)"
+        )
 
         let host = builder.merge(
             metadata: metadata,
@@ -115,6 +125,7 @@ final class DiscoveryService {
             displays: displaySnapshots,
             usbcPorts: usbcPortSnapshots,
             sdCardSlots: sdCardSlotSnapshots,
+            usbVolumes: usbVolumes,
             volumeNames: volumeNames
         )
         return [host]

@@ -55,6 +55,18 @@ struct USBDeviceSnapshot: Sendable, Equatable {
     /// this into a `PortID` and uses it as the device's parent-pointer.
     let registryPath: String
 
+    /// Phase 20: parent USB controller port's path on the
+    /// **IODeviceTree** plane. The IOUSBHostDevice node itself
+    /// doesn't exist in the IODeviceTree plane (only on IOService),
+    /// but its parent — the controller port, e.g.
+    /// `usb-drd1-port-ss@01200000` — does, and DiskArbitration's
+    /// `kDADiskDescriptionBusPathKey` reports exactly that path.
+    /// Storing it here lets `PortGraphBuilder` match DA volumes back
+    /// to this device by `busPath` equality, enabling multi-LUN
+    /// expansion (a USB SD-card reader with two card slots gets one
+    /// LUN per card under this device).
+    let busDeviceTreePath: String?
+
     /// USB Vendor ID (`idVendor`). 16 bits per the USB spec.
     let vendorID: UInt16
 
@@ -202,10 +214,19 @@ struct LiveIOKitUSBSource: USBRegistrySource {
         }
 
         let path = registryPath(of: entry) ?? "<unknown>"
+        // Phase 20: capture the parent (controller port) path on the
+        // IODeviceTree plane for DA-volume matching. The
+        // IOUSBHostDevice node only lives on IOService; its IOService
+        // parent is the controller-port driver node, which DOES live
+        // on IODeviceTree, and its IODeviceTree path is exactly DA's
+        // busPath value. Joining on this lets us locate the USB
+        // device that owns each DA-mounted volume.
+        let busDtPath = parentRegistryPath(of: entry, plane: kIODeviceTreePlane)
         let bcd = uint16Property(keys.bcdUSB, of: entry)
 
         return USBDeviceSnapshot(
             registryPath:        path,
+            busDeviceTreePath:   busDtPath,
             vendorID:            vid,
             productID:           pid,
             productName:         stringProperty(keys.usbProductName,  of: entry),
@@ -377,6 +398,7 @@ struct FixtureUSBSource: USBRegistrySource {
         func toSnapshot() -> USBDeviceSnapshot {
             USBDeviceSnapshot(
                 registryPath:        registryPath,
+                busDeviceTreePath:   nil,  // Not tracked in fixtures.
                 vendorID:            idVendor,
                 productID:           idProduct,
                 productName:         usbProductName,

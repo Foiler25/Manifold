@@ -258,7 +258,33 @@ struct PortOutline: View {
     /// threaded down so siblings agree.
     let anyExpandable: Bool
     @Bindable var graph: PortGraph
-    @State private var isExpanded: Bool = false
+    @State private var isExpanded: Bool
+
+    init(
+        port: ManifoldKit.Port,
+        depth: Int,
+        anyExpandable: Bool,
+        graph: PortGraph
+    ) {
+        self.port = port
+        self.depth = depth
+        self.anyExpandable = anyExpandable
+        self.graph = graph
+        self._isExpanded = State(
+            initialValue: PortOutline.shouldAutoExpand(for: port)
+        )
+    }
+
+    /// Phase 20: heuristic for "did we just attach LUN children to this
+    /// port and want them visible without a click?" Triggers when any
+    /// child carries a `.storage` `DeviceKind` — that's only true for
+    /// synthesized multi-LUN children today (real USB devices including
+    /// USB Mass Storage parents land at `.other` per Phase 2's default).
+    /// Real hubs (kind `.hub`) with mixed children stay collapsed.
+    private static func shouldAutoExpand(for port: ManifoldKit.Port) -> Bool {
+        guard !port.children.isEmpty else { return false }
+        return port.children.contains { $0.connectedDevice?.kind == .storage }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -288,6 +314,22 @@ struct PortOutline: View {
                         anyExpandable: anyExpandable,
                         graph: graph
                     )
+                }
+            }
+        }
+        // Phase 20: re-evaluate auto-expansion when children appear
+        // after the initial render. SwiftUI's `@State(initialValue:)`
+        // closure runs once per view identity, so a row that first
+        // renders with zero children (post-attach, pre-DA-mount)
+        // would stay collapsed even after the LUN children showed up
+        // on the next rebuild. The `shouldAutoExpand` check inspects
+        // the new children list directly so a card reader (whose
+        // own kind is `.other`) still expands when its synthesized
+        // `.storage` LUN children land.
+        .onChange(of: port.children.count) { _, _ in
+            if PortOutline.shouldAutoExpand(for: port) {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded = true
                 }
             }
         }

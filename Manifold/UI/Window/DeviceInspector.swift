@@ -83,8 +83,10 @@ struct DeviceInspector: View {
                     }
                     if let watts = port.powerDraw {
                         keyValueText("window.inspector.field.power", watts.formatted)
+                    } else if port.kind == .sd {
+                        powerUnavailableRow(forKind: .sd)
                     } else if portCarriesUSB(port) {
-                        powerUnavailableRow
+                        powerUnavailableRow(forKind: .usb)
                     }
                     // Phase 20: surface storage capacity for SD cards
                     // (and any future device that fills the field).
@@ -219,13 +221,28 @@ struct DeviceInspector: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Selector for which "no power available" tooltip to show. SD
+    /// has its own copy explaining that SD slots don't advertise
+    /// power; USB falls back to the existing HID-dongle tooltip.
+    private enum PowerUnavailableKind { case usb, sd }
+
     /// Power-row variant for the case where the port has a connected
-    /// USB device but macOS didn't expose a power property — small HID
-    /// dongles routinely hit this. The trailing info icon mirrors
-    /// DeviceRow / TopologyCanvas; hover surfaces the same tooltip
-    /// from the shared catalog key.
-    private var powerUnavailableRow: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+    /// device but macOS doesn't expose a power property — applies to
+    /// HID dongles (USB, no power property) and the built-in SD slot
+    /// (no per-port power figure exists at all). Trailing info icon
+    /// mirrors DeviceRow / TopologyCanvas.
+    private func powerUnavailableRow(forKind kind: PowerUnavailableKind) -> some View {
+        let tooltip: LocalizedStringKey
+        let voLabel: LocalizedStringKey
+        switch kind {
+        case .usb:
+            tooltip = "popover.device.power.unavailable.tooltip"
+            voLabel = "popover.device.power.unavailable.accessibility"
+        case .sd:
+            tooltip = "popover.device.power.unavailable.sd.tooltip"
+            voLabel = "popover.device.power.unavailable.sd.accessibility"
+        }
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text("window.inspector.field.power")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -233,8 +250,8 @@ struct DeviceInspector: View {
             Image(systemName: "info.circle")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .help("popover.device.power.unavailable.tooltip")
-                .accessibilityLabel(Text("popover.device.power.unavailable.accessibility"))
+                .help(tooltip)
+                .accessibilityLabel(Text(voLabel))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

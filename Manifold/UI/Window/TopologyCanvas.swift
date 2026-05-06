@@ -190,12 +190,16 @@ struct TopologyCanvas: View {
                 Text(watts.formatted)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-            } else if let capacity = capacityCaption(for: port) {
-                // Phase 20: SD card capacity in the same column USB
-                // shows watts in. Mirrors DeviceRow.
-                Text(capacity)
-                    .font(.caption.monospacedDigit())
+            } else if port.connectedDevice != nil, port.kind == .sd {
+                // SD slots don't expose bus power; show the SD-
+                // specific tooltip so the column reads consistently
+                // with USB rows ("power, or its absence"). Capacity
+                // is now in the device caption line below.
+                Image(systemName: "info.circle")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .help("popover.device.power.unavailable.sd.tooltip")
+                    .accessibilityHidden(true)
             } else if port.connectedDevice != nil, portCarriesUSB(port) {
                 // Mirrors DeviceRow's behaviour: macOS sometimes omits
                 // the power property on small HID dongles. Surface an
@@ -211,18 +215,10 @@ struct TopologyCanvas: View {
         .accessibilityLabel(accessibilityLabel(for: port))
     }
 
-    /// Phase 20: capacity caption ("32 GB") for storage devices that
-    /// advertise it. Returns nil for everything that doesn't fill
-    /// `Device.storageCapacityBytes` (every non-SD device today).
-    private func capacityCaption(for port: ManifoldKit.Port) -> String? {
-        guard let bytes = port.connectedDevice?.storageCapacityBytes,
-              bytes > 0 else { return nil }
-        return Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
-    }
-
     /// Decimal style so a 32 GB card reads "32 GB" — matches the
     /// number printed on the sticker. Binary would render "29.7 GB"
-    /// for the same card.
+    /// for the same card. Used by `deviceCaption` to append capacity
+    /// to the subtitle line for storage devices.
     private static let byteCountFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
         f.countStyle = .decimal
@@ -288,7 +284,22 @@ struct TopologyCanvas: View {
     private func deviceCaption(port: ManifoldKit.Port, device: Device) -> String {
         let proto = port.negotiated?.protocolName
             ?? NSLocalizedString("popover.device.unknown.protocol", comment: "")
-        return String(format: "%04X:%04X · %@", device.vendorID, device.productID, proto)
+        // Phase 20: hide the VID:PID prefix when both halves are
+        // zero — that's the synthetic ID we use for multi-LUN
+        // children of a USB Mass Storage device. The parent row
+        // already carries the real VID:PID.
+        let hasRealID = device.vendorID != 0 || device.productID != 0
+        var line = hasRealID
+            ? String(format: "%04X:%04X · %@", device.vendorID, device.productID, proto)
+            : proto
+        // Append capacity for storage devices that advertise it
+        // (SD cards, USB drives once DA mounts). Mirrors
+        // `DeviceRow.detailLine` — keeps the trailing column
+        // reserved for power semantics across all row kinds.
+        if let bytes = device.storageCapacityBytes, bytes > 0 {
+            line += " · " + Self.byteCountFormatter.string(fromByteCount: Int64(bytes))
+        }
+        return line
     }
 
     private func emptyPortLabel(for port: ManifoldKit.Port) -> String {
@@ -405,7 +416,34 @@ struct TopologyOutline<Row: View>: View {
     @Binding var selectedDeviceID: DeviceID?
     let rowContent: (ManifoldKit.Port) -> Row
     let isSelected: (ManifoldKit.Port) -> Bool
-    @State private var isExpanded: Bool = false
+    @State private var isExpanded: Bool
+
+    init(
+        port: ManifoldKit.Port,
+        depth: Int,
+        anyExpandable: Bool,
+        selectedDeviceID: Binding<DeviceID?>,
+        rowContent: @escaping (ManifoldKit.Port) -> Row,
+        isSelected: @escaping (ManifoldKit.Port) -> Bool
+    ) {
+        self.port = port
+        self.depth = depth
+        self.anyExpandable = anyExpandable
+        self._selectedDeviceID = selectedDeviceID
+        self.rowContent = rowContent
+        self.isSelected = isSelected
+        self._isExpanded = State(initialValue: Self.shouldAutoExpand(for: port))
+    }
+
+    /// Phase 20: same heuristic as `PortOutline.shouldAutoExpand`.
+    /// A multi-LUN card reader's parent device is `.other` (Phase 2
+    /// default for USB) but its synthesized LUN children all carry
+    /// `.storage`, so checking the children — not the parent — is
+    /// what actually catches this case.
+    private static func shouldAutoExpand(for port: ManifoldKit.Port) -> Bool {
+        guard !port.children.isEmpty else { return false }
+        return port.children.contains { $0.connectedDevice?.kind == .storage }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -444,6 +482,16 @@ struct TopologyOutline<Row: View>: View {
                         rowContent: rowContent,
                         isSelected: isSelected
                     )
+                }
+            }
+        }
+        // Phase 20: re-evaluate auto-expansion when children appear
+        // after the initial render. Mirrors PortOutline — see that
+        // file for the full rationale.
+        .onChange(of: port.children.count) { _, _ in
+            if Self.shouldAutoExpand(for: port) {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded = true
                 }
             }
         }
