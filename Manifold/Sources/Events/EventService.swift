@@ -227,9 +227,11 @@ final class EventService: @unchecked Sendable {
         sdToken = try nc.register(
             matchingClass: "AppleSDXCBlockStorageDevice",
             onMatch: { [weak self] _ in
+                Log.events.notice("SD card storage device matched (insert)")
                 self?.emit(.fullRefresh)
             },
             onTerminated: { [weak self] _ in
+                Log.events.notice("SD card storage device terminated (remove)")
                 self?.emit(.fullRefresh)
             }
         )

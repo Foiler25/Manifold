@@ -911,6 +911,11 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Port %1$lld, %2$@" } } }
     },
+    "popover.device.sd.ejectedSuffix" : {
+      "comment" : "Suffix appended to the SD card row name when the card is still in the slot but its volume isn't mounted (Finder-ejected). E.g. \"SR256 (Ejected)\".",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "(Ejected)" } } }
+    },
     "popover.physicalPorts.sd.accessibility.empty" : {
       "comment" : "VoiceOver label for the SD card slot chip when no card is inserted (Phase 20).",
       "extractionState" : "manual",

@@ -114,9 +114,22 @@ final class DiscoveryService {
         // resolve volume names on devices whose SCSI inquiry doesn't
         // match the USB product string.
         let usbVolumes = VolumeNameResolver.mountedUSBVolumes()
+        // Phase 20: built-in SD slot volume names. DA reports the SD
+        // slot's protocol as "Secure Digital", which the USB-keyed
+        // path skips — and DA's device-model field for SD cards is
+        // the *slot* name ("Built In SDXC Reader"), not the card's
+        // product string, so the model-keyed `volumeNames` map can
+        // never locate the volume for a built-in SD card. The
+        // dedicated SD lookup keys directly on protocol.
+        let sdVolumeNames = VolumeNameResolver.mountedSDCardVolumeNames()
         Log.discovery.debug(
-            "walk: usbDevices=\(usbSnapshots.count, privacy: .public) usbVolumes=\(usbVolumes.count, privacy: .public)"
+            "walk: usbDevices=\(usbSnapshots.count, privacy: .public) usbVolumes=\(usbVolumes.count, privacy: .public) sdVolumes=\(sdVolumeNames.count, privacy: .public)"
         )
+        for slot in sdCardSlotSnapshots {
+            Log.discovery.debug(
+                "walk SD slot pos=\(slot.position, privacy: .public) cardPresent=\(slot.cardPresent, privacy: .public) productName=\(slot.card?.productName ?? "-", privacy: .public)"
+            )
+        }
 
         let host = builder.merge(
             metadata: metadata,
@@ -126,6 +139,7 @@ final class DiscoveryService {
             usbcPorts: usbcPortSnapshots,
             sdCardSlots: sdCardSlotSnapshots,
             usbVolumes: usbVolumes,
+            sdVolumeNames: sdVolumeNames,
             volumeNames: volumeNames
         )
         return [host]

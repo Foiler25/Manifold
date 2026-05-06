@@ -144,6 +144,42 @@ enum VolumeNameResolver {
         return result
     }
 
+    /// Phase 20: volume name(s) currently mounted on the built-in
+    /// SD card slot. Keyed by DA's `kDADiskDescriptionDeviceProtocolKey
+    /// == "Secure Digital"` rather than the SCSI inquiry model
+    /// (which reports the *slot* — "Built In SDXC Reader" —
+    /// not the inserted card). Returned in the order DA enumerates;
+    /// callers that only support one SD slot use `.first`.
+    ///
+    /// Returns an empty array on Macs without an internal SD reader
+    /// or when no card is mounted.
+    static func mountedSDCardVolumeNames() -> [String] {
+        guard let session = DASessionCreate(kCFAllocatorDefault) else {
+            return []
+        }
+        let urls = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: nil,
+            options: []
+        ) ?? []
+        var result: [String] = []
+        for url in urls {
+            guard let disk = DADiskCreateFromVolumePath(
+                kCFAllocatorDefault,
+                session,
+                url as CFURL
+            ) else { continue }
+            guard let desc = DADiskCopyDescription(disk) as? [String: Any] else { continue }
+            let proto = desc[kDADiskDescriptionDeviceProtocolKey as String] as? String
+            guard proto == "Secure Digital" else { continue }
+            if let name = (desc[kDADiskDescriptionVolumeNameKey as String] as? String)?
+                .trimmingCharacters(in: .whitespaces),
+               !name.isEmpty {
+                result.append(name)
+            }
+        }
+        return result
+    }
+
     /// Phase 20: enumerate every mounted USB / TB volume, exposing
     /// per-disk metadata (busPath, mediaPath, BSD name, volume name,
     /// size, model, vendor). `PortGraphBuilder` consumes this list

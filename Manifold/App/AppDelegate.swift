@@ -172,6 +172,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// run extra rebuilds.
     private var deferredVolumeNameRefreshTask: Task<Void, Never>?
 
+    /// Phase 20: IOKit general-interest observer on `AppleSDXCSlot`.
+    /// Fires when the slot's properties change — most importantly
+    /// `Card Present` flipping after the
+    /// `AppleSDXCBlockStorageDevice`-doesn't-terminate quirk
+    /// (Finder-eject + physical pull leaves the BlockStorageDevice
+    /// in IOReg as a stale instance, but the slot's `Card Present`
+    /// does flip to No, and that flip emits a general-interest
+    /// message we can subscribe to). Replaces a previous
+    /// 3-second poll with proper IOKit-native event delivery —
+    /// idle CPU is zero now.
+    private var sdCardSlotInterestObserver: SDCardSlotInterestObserver?
+
     // MARK: - Phase 10 Storage
 
     /// Lazily constructed in `applicationDidFinishLaunching` so a
@@ -236,6 +248,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `.fullRefresh` emission. AppDelegate's existing event
         // handler picks that up and runs `rebuildGraph()`.
         volumeMountObserver = VolumeMountObserver { [weak self] in
+            self?.eventService?.requestRefresh()
+        }
+
+        // Phase 20: subscribe to AppleSDXCSlot general-interest
+        // messages. Catches the `AppleSDXCBlockStorageDevice` doesn't-
+        // terminate quirk without polling — see the observer's
+        // header comment for the bug detail.
+        sdCardSlotInterestObserver = SDCardSlotInterestObserver { [weak self] in
             self?.eventService?.requestRefresh()
         }
         // Phase 10: open the GRDB store + spin up repositories. If
@@ -362,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the AppDelegate strong reference drops.
         volumeMountObserver?.stop()
         volumeMountObserver = nil
+        sdCardSlotInterestObserver?.stop()
+        sdCardSlotInterestObserver = nil
         deferredVolumeNameRefreshTask?.cancel()
         notchPanelController?.dismiss()
         samplerLifecycle.shutdown()

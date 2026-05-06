@@ -106,6 +106,7 @@ struct PortGraphBuilder: Sendable {
         usbcPorts: [USBCPortSnapshot] = [],
         sdCardSlots: [SDCardSlotSnapshot] = [],
         usbVolumes: [USBVolumeInfo] = [],
+        sdVolumeNames: [String] = [],
         volumeNames: [String: String] = [:],
         timestamp: Date = .now
     ) -> ManifoldKit.Host {
@@ -121,8 +122,19 @@ struct PortGraphBuilder: Sendable {
         // surfaced through `Host.physicalPorts` (Step 4) and lifted
         // back into the device-row list by
         // `PortGraph.displayableRootPorts(for:)`.
-        let sdPorts: [ManifoldKit.Port] = sdCardSlots.compactMap { snap in
-            Self.makePort(fromSD: snap, volumeNames: volumeNames, timestamp: timestamp)
+        let sdPorts: [ManifoldKit.Port] = sdCardSlots.enumerated().compactMap { idx, snap in
+            // Pair each SD slot with the DA-reported volume name at
+            // the same position (typically only one SD slot exists,
+            // so the indexing is just defensive). Falls back to the
+            // existing model-keyed `volumeNames` map for anything
+            // not covered by the dedicated SD lookup.
+            let sdName = idx < sdVolumeNames.count ? sdVolumeNames[idx] : nil
+            return Self.makePort(
+                fromSD: snap,
+                sdVolumeName: sdName,
+                volumeNames: volumeNames,
+                timestamp: timestamp
+            )
         }
         var flat: [ManifoldKit.Port] = usbPorts + tbPorts + sdPorts
 
@@ -437,12 +449,18 @@ struct PortGraphBuilder: Sendable {
     /// the USB / TB walkers rely on.
     private static func makePort(
         fromSD snapshot: SDCardSlotSnapshot,
+        sdVolumeName: String?,
         volumeNames: [String: String],
         timestamp: Date
     ) -> ManifoldKit.Port? {
         guard snapshot.cardPresent, let card = snapshot.card else { return nil }
 
-        let device = makeDevice(fromSD: card, volumeNames: volumeNames, timestamp: timestamp)
+        let device = makeDevice(
+            fromSD: card,
+            sdVolumeName: sdVolumeName,
+            volumeNames: volumeNames,
+            timestamp: timestamp
+        )
         let path = "sd-slot/\(snapshot.position)"
 
         // Synthesize a `LinkSpeed` so the row's protocol caption shows
@@ -473,19 +491,49 @@ struct PortGraphBuilder: Sendable {
     /// consistently — `friendlyName` (volume label if mounted) →
     /// `name` (card model or "SD Card") → vendor/product fallback in
     /// the UI all flow through the same paths.
+    ///
+    /// `sdVolumeName` is the DA-resolved volume label specifically
+    /// for the built-in SD slot (DA's `kDADiskDescriptionDeviceProtocolKey
+    /// == "Secure Digital"`). Used in preference to the model-keyed
+    /// `volumeNames` map because DA reports the *slot* name ("Built In
+    /// SDXC Reader") as the device model — never the inserted card's
+    /// product string ("SR256") — so the existing model-based lookup
+    /// always misses for built-in SD slots.
     static func makeDevice(
         fromSD card: SDCardCharacteristics,
+        sdVolumeName: String? = nil,
         volumeNames: [String: String],
         timestamp: Date
     ) -> Device {
-        let resolvedName = card.productName ?? "SD Card"
-        // Match against the volume-name map the same way the USB
-        // path does. Volume resolvers key on the card's product
-        // string today; if a future revision keys on BSDName we
-        // can extend `VolumeNameResolver` instead of bending the
-        // builder.
-        let trimmedProduct = resolvedName.trimmingCharacters(in: .whitespaces)
-        let friendly = volumeNames[trimmedProduct] ?? volumeNames[resolvedName]
+        let baseName = card.productName ?? "SD Card"
+        // Prefer the SD-specific DA lookup; fall back to the
+        // model-keyed map for back-compat (a card reader would still
+        // route here today via the legacy path before Phase 20's
+        // path-based USB resolver took over).
+        let trimmedProduct = baseName.trimmingCharacters(in: .whitespaces)
+        let friendly: String? = sdVolumeName
+            ?? volumeNames[trimmedProduct]
+            ?? volumeNames[baseName]
+        // When the card is still in the slot but its volume isn't
+        // mounted (Finder-eject leaves the card hardware present
+        // but unmounts the file system), surface that explicitly
+        // in the row's name so it doesn't read as "stuck on the
+        // last card" — without the suffix, the row would show the
+        // card's IOReg product string and the user would have no
+        // visual cue that the card is no longer mountable. The
+        // suffix only shows when no friendly volume name exists
+        // (the volume hasn't mounted), and DeviceRow's display
+        // logic still prefers `friendlyName` over `name`, so a
+        // mounted card never sees this branch.
+        let resolvedName: String = {
+            if friendly == nil {
+                return baseName + " " + NSLocalizedString(
+                    "popover.device.sd.ejectedSuffix",
+                    comment: "Suffix appended to the SD card's row name when the card is in the slot but its volume isn't mounted (e.g. Finder-ejected)."
+                )
+            }
+            return baseName
+        }()
 
         // SD doesn't have a USB-style productID. Use 0 (matches the
         // existing fallback the UI handles for missing-PID devices).
