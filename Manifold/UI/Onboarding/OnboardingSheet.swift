@@ -61,8 +61,15 @@ struct OnboardingSheet: View {
 
     @State private var step: Step = .welcome
 
+    /// Phase 21: split the wizard into three panes — `welcome → cables
+    /// → battery`. Cables sits between the welcome explainer (which
+    /// covers menu bar / notifications / privacy) and the battery
+    /// monitor demo, so the user meets the discovery features in
+    /// roughly the order they'll first encounter them in the main
+    /// window.
     enum Step {
         case welcome
+        case cables
         case battery
     }
 
@@ -71,6 +78,9 @@ struct OnboardingSheet: View {
             switch step {
             case .welcome:
                 welcomePane
+                    .transition(.opacity)
+            case .cables:
+                cablesPane
                     .transition(.opacity)
             case .battery:
                 batteryPane
@@ -117,7 +127,7 @@ struct OnboardingSheet: View {
             Spacer(minLength: 0)
 
             Button {
-                step = .battery
+                step = .cables
             } label: {
                 Text("onboarding.next")
                     .frame(maxWidth: .infinity)
@@ -128,7 +138,67 @@ struct OnboardingSheet: View {
         }
     }
 
-    // MARK: - Step 2: Battery monitor
+    // MARK: - Step 2: Cables (Phase 21)
+
+    /// Three-row explainer for the new Cables tab. Same visual shape
+    /// as `welcomePane` (icon + title + subtitle + three rows + Next)
+    /// so the onboarding cadence stays consistent across steps.
+    private var cablesPane: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "cable.connector")
+                .font(.system(size: 56))
+                .foregroundStyle(Color.manifoldAccent)
+                .padding(.top, 12)
+
+            Text("onboarding.cables.title")
+                .font(.title.weight(.semibold))
+
+            Text("onboarding.cables.subtitle")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            VStack(alignment: .leading, spacing: 12) {
+                row(icon: "bolt.fill",
+                    title: "onboarding.cables.power.title",
+                    detail: "onboarding.cables.power.detail")
+                row(icon: "bolt.horizontal.fill",
+                    title: "onboarding.cables.thunderbolt.title",
+                    detail: "onboarding.cables.thunderbolt.detail")
+                row(icon: "checkmark.seal",
+                    title: "onboarding.cables.emarker.title",
+                    detail: "onboarding.cables.emarker.detail")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 12) {
+                Button {
+                    step = .welcome
+                } label: {
+                    Text("onboarding.back")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    step = .battery
+                } label: {
+                    Text("onboarding.next")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+    }
+
+    // MARK: - Step 3: Battery monitor
 
     private var batteryPane: some View {
         VStack(spacing: 16) {
@@ -197,7 +267,7 @@ struct OnboardingSheet: View {
 
             HStack(spacing: 12) {
                 Button {
-                    step = .welcome
+                    step = .cables
                 } label: {
                     Text("onboarding.back")
                         .frame(maxWidth: .infinity)
