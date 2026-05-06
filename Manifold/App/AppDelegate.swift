@@ -84,6 +84,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var eventConsumerTask: Task<Void, Never>?
     private var graphObservationTask: Task<Void, Never>?
 
+    // MARK: - Phase 21 Cable diagnostics
+
+    /// Phase 21: cable-diagnostics engine. Wraps the absorbed
+    /// `CableDarwinProvider` IOKit watchers and exposes an
+    /// `@Observable snapshot` for the Cables tab. Started/stopped
+    /// alongside the main window via `cableEngineLifecycle` so
+    /// idle CPU stays at zero when the window is closed.
+    private let cableEngine = CableEngine()
+    private let cableEngineLifecycle = CableEngineLifecycle()
+
+    /// Public accessor used by `ManifoldApp.body` — same
+    /// "private model, exposed via published accessor" pattern as
+    /// `publishedPortGraph`.
+    var publishedCableEngine: CableEngine { cableEngine }
+
     // MARK: - Phase 18 Battery
 
     /// Battery sampler — owns its own timer + rate. AppDelegate
@@ -296,6 +311,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         samplerLifecycle.attach(sampler: sampler)
 
+        // Phase 21: cable engine binds to its lifecycle. The engine
+        // itself is `@Observable` and lives on AppDelegate so the
+        // single instance is shared between MainWindow and any
+        // future surfaces (Settings tab, etc.).
+        cableEngineLifecycle.attach(cableEngine)
+
         // Phase 18: battery sampler on a parallel timer, lifecycle-
         // paused alongside the USB telemetry sampler. The closure
         // forwards each tick to `portGraph.applyBattery(_:)`.
@@ -387,6 +408,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         deferredVolumeNameRefreshTask?.cancel()
         notchPanelController?.dismiss()
         samplerLifecycle.shutdown()
+        // Phase 21: tear down the cable engine alongside the rest of
+        // the lifecycle-managed surfaces. Idempotent.
+        cableEngineLifecycle.shutdown()
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()
@@ -995,6 +1019,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the Dock icon appears alongside the visible window.
     func notifyMainWindowDidAppear() {
         samplerLifecycle.windowDidAppear()
+        // Phase 21: bring the cable engine online alongside the
+        // telemetry sampler. Idempotent — repeat appears are no-ops.
+        cableEngineLifecycle.windowDidAppear()
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
         }
@@ -1009,6 +1036,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `onAppear`-side counterpart.
     func notifyMainWindowDidDisappear() {
         samplerLifecycle.windowDidDisappear()
+        // Phase 21: stop the cable engine when the window closes —
+        // 1Hz IOKit polling is wasted work with no observer.
+        cableEngineLifecycle.windowDidDisappear()
         // Defer the policy flip one runloop tick. SwiftUI's
         // `onDisappear` fires before the NSWindow is fully closed;
         // switching policy mid-close can leave AppKit thinking a
