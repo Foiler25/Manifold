@@ -192,23 +192,27 @@ struct TopologyCanvas: View {
                     .foregroundStyle(.secondary)
             } else if port.connectedDevice != nil, port.kind == .sd {
                 // SD slots don't expose bus power; show the SD-
-                // specific tooltip so the column reads consistently
-                // with USB rows ("power, or its absence"). Capacity
-                // is now in the device caption line below.
-                Image(systemName: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("popover.device.power.unavailable.sd.tooltip")
-                    .accessibilityHidden(true)
+                // specific info popover so the column reads
+                // consistently with USB rows ("power, or its
+                // absence"). Click-to-open via `InfoPopoverButton` —
+                // matches the pattern used on the Battery tab's
+                // section headers, so the affordance behaves the
+                // same across surfaces.
+                InfoPopoverButton(
+                    titleKey: "popover.device.power.unavailable.sd.title",
+                    bodyKey: "popover.device.power.unavailable.sd.tooltip",
+                    accessibilityKey: "popover.device.power.unavailable.sd.accessibility"
+                )
             } else if port.connectedDevice != nil, portCarriesUSB(port) {
                 // Mirrors DeviceRow's behaviour: macOS sometimes omits
-                // the power property on small HID dongles. Surface an
-                // info icon so the row doesn't read as "0 W" by silence.
-                Image(systemName: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("popover.device.power.unavailable.tooltip")
-                    .accessibilityHidden(true)
+                // the power property on small HID dongles. The
+                // clickable info popover matches the Battery section
+                // headers' pattern.
+                InfoPopoverButton(
+                    titleKey: "popover.device.power.unavailable.title",
+                    bodyKey: "popover.device.power.unavailable.tooltip",
+                    accessibilityKey: "popover.device.power.unavailable.accessibility"
+                )
             }
         }
         .accessibilityElement(children: .combine)

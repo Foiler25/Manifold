@@ -101,11 +101,11 @@ struct ManifoldApp: App {
                 }
                 .keyboardShortcut("3", modifiers: [.command])
 
-                Button("window.tab.power.menu") {
+                Button("window.tab.battery.menu") {
                     NotificationCenter.default.post(
                         name: .manifoldSelectTab,
                         object: nil,
-                        userInfo: ["tab": WindowTab.power.rawValue]
+                        userInfo: ["tab": WindowTab.battery.rawValue]
                     )
                 }
                 .keyboardShortcut("4", modifiers: [.command])

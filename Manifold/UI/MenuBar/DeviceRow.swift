@@ -83,26 +83,23 @@ struct DeviceRow: View {
                     // SD slots don't expose bus power to userspace —
                     // there's no "Requested Power" property on
                     // AppleSDXCSlot the way IOUSBHostDevice publishes
-                    // one. Surface an info icon with an SD-specific
-                    // tooltip so the column reads consistently with
-                    // USB rows ("power, or its absence") rather than
-                    // re-purposing the column for capacity.
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .help("popover.device.power.unavailable.sd.tooltip")
-                        .accessibilityHidden(true)
+                    // one. Click-to-open `InfoPopoverButton` matches
+                    // the topology + Battery section-header pattern.
+                    InfoPopoverButton(
+                        titleKey: "popover.device.power.unavailable.sd.title",
+                        bodyKey: "popover.device.power.unavailable.sd.tooltip",
+                        accessibilityKey: "popover.device.power.unavailable.sd.accessibility"
+                    )
                 } else if portCarriesUSB {
                     // macOS sometimes omits the power property on small
-                    // HID dongles (e.g. Logitech Bolt receivers). Surface
-                    // an info icon so the row doesn't read as "0 W" by
-                    // omission. The row's accessibilityLabel already
-                    // includes the "power unknown" fallback for VO.
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .help("popover.device.power.unavailable.tooltip")
-                        .accessibilityHidden(true)
+                    // HID dongles (e.g. Logitech Bolt receivers).
+                    // Click-to-open `InfoPopoverButton` matches the
+                    // topology + Battery section-header pattern.
+                    InfoPopoverButton(
+                        titleKey: "popover.device.power.unavailable.title",
+                        bodyKey: "popover.device.power.unavailable.tooltip",
+                        accessibilityKey: "popover.device.power.unavailable.accessibility"
+                    )
                 }
             }
             .frame(maxWidth: .infinity)

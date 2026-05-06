@@ -230,28 +230,37 @@ struct DeviceInspector: View {
     /// device but macOS doesn't expose a power property — applies to
     /// HID dongles (USB, no power property) and the built-in SD slot
     /// (no per-port power figure exists at all). Trailing info icon
-    /// mirrors DeviceRow / TopologyCanvas.
+    /// mirrors DeviceRow / TopologyCanvas — click-to-open popover via
+    /// `InfoPopoverButton`, matching the Battery section-header
+    /// pattern and the topology row affordance.
     private func powerUnavailableRow(forKind kind: PowerUnavailableKind) -> some View {
-        let tooltip: LocalizedStringKey
-        let voLabel: LocalizedStringKey
+        let titleKey: LocalizedStringKey
+        let bodyKey: LocalizedStringKey
+        let voKey: LocalizedStringKey
         switch kind {
         case .usb:
-            tooltip = "popover.device.power.unavailable.tooltip"
-            voLabel = "popover.device.power.unavailable.accessibility"
+            titleKey = "popover.device.power.unavailable.title"
+            bodyKey = "popover.device.power.unavailable.tooltip"
+            voKey = "popover.device.power.unavailable.accessibility"
         case .sd:
-            tooltip = "popover.device.power.unavailable.sd.tooltip"
-            voLabel = "popover.device.power.unavailable.sd.accessibility"
+            titleKey = "popover.device.power.unavailable.sd.title"
+            bodyKey = "popover.device.power.unavailable.sd.tooltip"
+            voKey = "popover.device.power.unavailable.sd.accessibility"
         }
         return HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text("window.inspector.field.power")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Image(systemName: "info.circle")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .help(tooltip)
-                .accessibilityLabel(Text(voLabel))
+            // Inspector context — surrounding text is subhead size,
+            // so the icon uses subhead too (caption would read as
+            // undersized next to the field label).
+            InfoPopoverButton(
+                titleKey: titleKey,
+                bodyKey: bodyKey,
+                accessibilityKey: voKey,
+                iconFont: .subheadline
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

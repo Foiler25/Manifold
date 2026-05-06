@@ -68,12 +68,33 @@ struct BatteryPopoverRoot: View {
             if let battery = graph.battery {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        ChargeBannerSection(battery: battery)
+                        // Pass the active host's `inputAdapter` so the
+                        // charge banner can render its wattage caption
+                        // (e.g. "65 W · MagSafe") under the time-
+                        // remaining line — same as the merged Battery
+                        // tab in the main window.
+                        ChargeBannerSection(
+                            battery: battery,
+                            inputAdapter: graph.hosts.first?.inputAdapter
+                        )
                             .padding(BatteryPopoverRootConstants.cardPadding)
                             .background(
                                 RoundedRectangle(cornerRadius: BatteryPopoverRootConstants.cardCornerRadius)
                                     .fill(Color.manifoldCard)
                             )
+
+                        // USB Power Draw card — same spot under the
+                        // charge banner as the main window's Battery
+                        // tab, so the popover and the larger surface
+                        // read with the same vertical structure.
+                        if let host = graph.hosts.first {
+                            USBPowerDrawSection(host: host)
+                                .padding(BatteryPopoverRootConstants.cardPadding)
+                                .background(
+                                    RoundedRectangle(cornerRadius: BatteryPopoverRootConstants.cardCornerRadius)
+                                        .fill(Color.manifoldCard)
+                                )
+                        }
 
                         DisclosureGroup(
                             isExpanded: $isInfoExpanded

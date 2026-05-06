@@ -44,6 +44,12 @@ import ManifoldKit
 
 struct ChargeBannerSection: View {
     let battery: BatteryInfo
+    /// Active wall-power adapter, when one is connected. Surfaced as
+    /// a small caption underneath the right-side time-remaining /
+    /// "Topped off" text — was previously its own section in the
+    /// (now-removed) Power tab; folded in here so input + battery
+    /// state read as one unit.
+    var inputAdapter: AdapterInfo? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -82,7 +88,10 @@ struct ChargeBannerSection: View {
     /// rendered at title size, monospaced — with the "Until full" /
     /// "Until empty" caption sitting underneath in caption-smallcaps
     /// secondary. When fully charged the value is "∞" and the caption
-    /// is "Until full" by convention.
+    /// is "Until full" by convention. When a charger is connected,
+    /// the adapter wattage + source ("65 W (MagSafe)") sits in a
+    /// final caption line — folded in from the removed Power tab so
+    /// input and battery state are visible together.
     @ViewBuilder
     private var untilLabel: some View {
         VStack(alignment: .trailing, spacing: 0) {
@@ -118,6 +127,7 @@ struct ChargeBannerSection: View {
             case .notCharging, .unknown:
                 EmptyView()
             }
+            adapterCaption
         }
     }
 
@@ -128,6 +138,49 @@ struct ChargeBannerSection: View {
         f.unitsStyle = .abbreviated
         return f
     }()
+
+    /// Optional caption rendered below the time-remaining /
+    /// "Topped off" line. Shows the active wall-power adapter's
+    /// wattage and source ("65 W · MagSafe"). Hidden when no charger
+    /// is connected — the absence is itself the signal.
+    @ViewBuilder
+    private var adapterCaption: some View {
+        if let adapter = inputAdapter {
+            HStack(spacing: 4) {
+                Image(systemName: adapterIconName(for: adapter.source))
+                    .font(.caption2)
+                    .foregroundStyle(Color.manifoldAccent)
+                Text(adapterCaptionString(for: adapter))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    /// "65 W · MagSafe". Source label drops away when the adapter's
+    /// source is `.unknown` — printing "65 W · " with a trailing
+    /// dangling separator would look broken.
+    private func adapterCaptionString(for adapter: AdapterInfo) -> String {
+        let watts = adapter.watts.formatted
+        let source: String
+        switch adapter.source {
+        case .magsafe:  source = NSLocalizedString("host.adapter.source.magsafe",  comment: "")
+        case .usbC:     source = NSLocalizedString("host.adapter.source.usbC",     comment: "")
+        case .wireless: source = NSLocalizedString("host.adapter.source.wireless", comment: "")
+        case .unknown:  source = ""
+        }
+        return source.isEmpty ? watts : "\(watts) · \(source)"
+    }
+
+    private func adapterIconName(for source: AdapterInfo.Source) -> String {
+        switch source {
+        case .magsafe:  return "bolt.batteryblock.fill"
+        case .usbC:     return "bolt.fill"
+        case .wireless: return "bolt.badge.checkmark.fill"
+        case .unknown:  return "bolt.fill"
+        }
+    }
 }
 
 /// Charge-state pill — colored capsule matching the

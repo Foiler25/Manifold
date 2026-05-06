@@ -244,10 +244,8 @@ struct MainWindow: View {
             HistoryView(eventRepository: eventRepository)
         case .diagnostics:
             DiagnosticsBanner(graph: graph)
-        case .power:
-            PowerView(graph: graph, host: host)
         case .battery:
-            BatteryView(graph: graph)
+            BatteryView(graph: graph, host: host)
         }
     }
 

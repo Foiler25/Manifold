@@ -754,7 +754,7 @@
       }
     },
     "popover.device.power.unavailable.tooltip" : {
-      "comment" : "Hover tooltip on the info icon shown when macOS doesn't expose a power figure for a USB device.",
+      "comment" : "Body text of the info popover shown when macOS doesn't expose a power figure for a USB device.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -765,8 +765,13 @@
         }
       }
     },
+    "popover.device.power.unavailable.title" : {
+      "comment" : "Headline of the info popover shown when macOS doesn't expose a power figure for a USB device.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power not reported" } } }
+    },
     "popover.device.power.unavailable.sd.tooltip" : {
-      "comment" : "Hover tooltip on the info icon for the built-in SD card slot row — explains why no power figure is shown (Phase 20).",
+      "comment" : "Body text of the info popover for the built-in SD card slot row — explains why no power figure is shown (Phase 20).",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -776,6 +781,11 @@
           }
         }
       }
+    },
+    "popover.device.power.unavailable.sd.title" : {
+      "comment" : "Headline of the info popover for the built-in SD card slot's power-unavailable row.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "SD slot power" } } }
     },
     "popover.device.power.unavailable.sd.accessibility" : {
       "comment" : "VoiceOver label for the SD slot's power-unavailable info icon (Phase 20).",
@@ -1095,14 +1105,10 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Diagnostics" } } }
     },
-    "window.tab.power.label" : {
+    "window.tab.battery.menu" : {
+      "comment" : "View menu item — ⌘ 4 jumps to Battery tab (which now contains the USB power draw + active charger info that previously lived in the Power tab).",
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
-    },
-    "window.tab.power.menu" : {
-      "comment" : "View menu item — ⌘ 4 jumps to Power tab.",
-      "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery" } } }
     },
     "window.power.section.input" : {
       "extractionState" : "manual",
