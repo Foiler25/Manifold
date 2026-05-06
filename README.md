@@ -33,6 +33,9 @@ in one — no telemetry, no network, no sandbox compromises.
   - `Cable bottleneck` — TB4 device on a TB3 link.
   - `Daisy-chain depth` — chain past Apple's 6-device TB limit.
   - `Hub overcommit` — sum of downstream draw exceeds the hub budget.
+- **Cable diagnostics** (Phase 21). Per-port USB-C card showing PD
+  power profile, transport (USB 2 / 3 / 4 / Thunderbolt), e-marker
+  fingerprint, and trust signals. Apple Silicon only.
 - **Display info.** Connected displays show resolution, refresh rate,
   panel type, main-display flag, built-in flag.
 - **Persistent history.** SQLite-backed event log + downsampled
@@ -158,3 +161,14 @@ The GPL-3.0 choice is deliberate: Manifold's value is its USB/TB
 visibility primitives, and the GPL ensures any derivative work that
 ships those primitives also ships its source. If you fork Manifold,
 your fork stays open.
+
+---
+
+## Acknowledgements
+
+Cable diagnostics derive from
+[WhatCable](https://github.com/darrylmorley/whatcable) by Darryl
+Morley, originally MIT-licensed and re-licensed under GPL-3.0 as part
+of Manifold. The original copyright + permission notice is preserved
+verbatim in
+[`Manifold/Sources/Cables/ATTRIBUTION.md`](Manifold/Sources/Cables/ATTRIBUTION.md).

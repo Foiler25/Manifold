@@ -1451,6 +1451,81 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery" } } }
     },
+    "window.tab.cables.label" : {
+      "comment" : "Phase 21 — segmented-picker label for the Cables tab in the main window.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cables" } } }
+    },
+    "window.tab.cables.menu" : {
+      "comment" : "Phase 21 — View menu item for ⌘5 (Cables tab).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cables" } } }
+    },
+    "cables.loading.title" : {
+      "comment" : "Phase 21 — Cables tab cold-launch state, before the first IOKit snapshot arrives (typically <1s).",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Reading USB-C ports…" } } }
+    },
+    "cables.loading.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold is asking IOKit about each Type-C port and the cables plugged into them." } } }
+    },
+    "cables.empty.title" : {
+      "comment" : "Phase 21 — small inline hint shown beneath the port cards when no cables are currently plugged in.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No cables plugged in" } } }
+    },
+    "cables.empty.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Plug a USB-C or Thunderbolt cable into any port to see what it can do." } } }
+    },
+    "cables.intel.title" : {
+      "comment" : "Phase 21 — full-pane empty state shown when the Cables engine returns zero ports. Common on Intel Macs (TB3 controllers don't expose PD via public IOKit) and on Macs running under Rosetta.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cable diagnostics need an Apple-Silicon Mac" } } }
+    },
+    "cables.intel.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Intel Macs and machines running under Rosetta don't expose USB-C Power Delivery and e-marker data through the public IOKit interfaces Manifold reads." } } }
+    },
+    "cables.error.title" : {
+      "comment" : "Phase 21 — banner heading when CableEngine surfaces an error from the snapshot stream.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn't refresh cable info" } } }
+    },
+    "onboarding.cables.title" : {
+      "comment" : "Phase 21 — onboarding step 2 (Cables) headline.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Know your cables" } } }
+    },
+    "onboarding.cables.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Manifold reads each USB-C port and tells you, in plain English, what every cable can actually do." } } }
+    },
+    "onboarding.cables.power.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power Delivery profile" } } }
+    },
+    "onboarding.cables.power.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "See the negotiated wattage, voltage, and whether a slow cable is bottlenecking your charge." } } }
+    },
+    "onboarding.cables.thunderbolt.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Thunderbolt vs USB" } } }
+    },
+    "onboarding.cables.thunderbolt.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Spot at a glance whether your cable is carrying USB 2, USB 3.x, USB 4, or full Thunderbolt." } } }
+    },
+    "onboarding.cables.emarker.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "E-marker fingerprint" } } }
+    },
+    "onboarding.cables.emarker.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Read the cable's USB-IF certification ID and vendor info — Manifold flags suspicious values that suggest a counterfeit." } } }
+    },
     "window.battery.section.charge" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charge" } } }
