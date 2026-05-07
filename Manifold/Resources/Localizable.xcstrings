@@ -741,6 +741,54 @@
         }
       }
     },
+    "popover.charger.accessibility.noPort" : {
+      "comment" : "VoiceOver label for the charger row when no port is known. %1$@ source, %2$@ wattage.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charging via %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "popover.charger.accessibility.withPort" : {
+      "comment" : "VoiceOver label for the charger row when a port is known. %1$@ source, %2$lld port, %3$@ wattage.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charging via %1$@ on port %2$lld, %3$@"
+          }
+        }
+      }
+    },
+    "popover.charger.subtitle.withPort" : {
+      "comment" : "Charger row subtitle. %1$@ source label (e.g. USB-C), %2$lld chassis port position.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · Port %2$lld"
+          }
+        }
+      }
+    },
+    "popover.charger.title" : {
+      "comment" : "Title text for the synthetic charger row in the popover and topology view.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charging"
+          }
+        }
+      }
+    },
     "popover.device.power.unavailable.accessibility" : {
       "comment" : "VoiceOver label for the info icon shown when macOS doesn't expose a power figure for a USB device.",
       "extractionState" : "manual",

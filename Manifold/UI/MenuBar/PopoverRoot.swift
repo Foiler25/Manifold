@@ -76,6 +76,12 @@ struct PopoverRoot: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
+                // Charger affordance in the popover lives entirely
+                // inside the corresponding PortChip — the bolt icon
+                // overlaying the green pill is enough at this scale.
+                // The synthetic charger row is reserved for the
+                // main-window topology view where there's room for a
+                // wattage column.
             } else {
                 emptyState
             }

@@ -85,6 +85,17 @@ private struct PortChip: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(fill)
                 .frame(width: 28, height: 14)
+                // Bolt overlay for power-only (charger) ports — same
+                // glyph the battery menu-bar item uses for "charging".
+                // Tinted dark so it reads against the green chip the
+                // way the bolt reads against the white battery icon.
+                .overlay {
+                    if port.state == .powerOnly {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.black.opacity(0.75))
+                    }
+                }
                 .overlay(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .stroke(Color.manifoldText.opacity(0.15), lineWidth: 0.5)
@@ -101,7 +112,12 @@ private struct PortChip: View {
         switch port.state {
         case .empty:      return Color.manifoldText.opacity(0.08)
         case .dataDevice: return Color.manifoldAccent
-        case .powerOnly:  return Color.manifoldWarning
+        // `.powerOnly` is essentially "charger plugged in" on Mac
+        // hardware — flip to the same accent green the data-device
+        // case uses so the chip reads as "active" rather than
+        // "warning". The bolt overlay differentiates from a data
+        // device at a glance.
+        case .powerOnly:  return Color.manifoldAccent
         case .unknown:    return Color.manifoldText.opacity(0.15)
         }
     }
@@ -168,7 +184,9 @@ private struct SDPortChip: View {
         switch port.state {
         case .empty:      return Color.manifoldText.opacity(0.08)
         case .dataDevice: return Color.manifoldAccent
-        case .powerOnly:  return Color.manifoldWarning
+        // Match the numbered PortChip's powerOnly treatment so an
+        // SD-slot chip in the rare powerOnly case reads consistently.
+        case .powerOnly:  return Color.manifoldAccent
         case .unknown:    return Color.manifoldText.opacity(0.15)
         }
     }

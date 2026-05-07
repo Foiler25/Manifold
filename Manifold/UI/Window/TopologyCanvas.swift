@@ -57,6 +57,22 @@ struct TopologyCanvas: View {
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
                 topologyHeader(host: host)
+                // Synthetic row for the active charger — the port
+                // tree below only contains devices that enumerated
+                // USB, so a USB-C charger (which never enumerates)
+                // would otherwise be invisible here. Mirrors the
+                // popover layout.
+                if let adapter = host.inputAdapter {
+                    ChargerRow(
+                        adapter: adapter,
+                        portPosition: ChargerRow.portPosition(
+                            for: adapter,
+                            in: host.physicalPorts
+                        )
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                }
                 ForEach(rootPorts, id: \.id) { port in
                     TopologyOutline(
                         port: port,
