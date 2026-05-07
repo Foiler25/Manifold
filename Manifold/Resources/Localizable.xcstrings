@@ -1966,6 +1966,11 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Charger connected" } } }
     },
+    "notch.battery.alert.pluggedIn.subtitle.fullyCharged" : {
+      "comment" : "Notch plug-in subtitle when the battery is already at 100% / fully charged. Overrides the adapter-description string so the notification reads as informative rather than just echoing the adapter name (\"PD Charger\") — at 100% the charger isn't actually charging anything.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Battery already topped off" } } }
+    },
     "notch.battery.alert.unplugged.title" : {
       "comment" : "Phase 19 notch alert — unplug title.",
       "extractionState" : "manual",

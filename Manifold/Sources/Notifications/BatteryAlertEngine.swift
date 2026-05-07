@@ -386,14 +386,29 @@ final class BatteryAlertEngine {
             Log.app.info("BatteryAlertEngine — pluggedIn suppressed (preference disabled)")
             return
         }
-        let subtitle: LocalizedStringKey = adapterDescription()
-            .map { LocalizedStringKey($0) }
-            ?? "notch.battery.alert.pluggedIn.subtitle"
+        // When the battery is already topped off at the moment of
+        // plug-in, the adapter isn't actually charging anything —
+        // showing the raw adapter description ("PD Charger") just
+        // names the hardware without telling the user anything
+        // useful. Override with a state-aware subtitle so the
+        // notification reads as informative.
+        let isFullyCharged = currentInfo?.chargeState == .fullyCharged
+            || (currentInfo?.chargePercent ?? 0) >= 100
+        let subtitle: LocalizedStringKey
+        if isFullyCharged {
+            subtitle = "notch.battery.alert.pluggedIn.subtitle.fullyCharged"
+        } else if let description = adapterDescription() {
+            subtitle = LocalizedStringKey(description)
+        } else {
+            subtitle = "notch.battery.alert.pluggedIn.subtitle"
+        }
         let content = BatteryNotchContent(
             kind: .pluggedIn,
             title: "notch.battery.alert.pluggedIn.title",
             subtitle: subtitle,
-            timeRemaining: timeUntilFullCaption(),
+            // No "until full" caption when the battery is already
+            // full — would just say "0 minutes" or be missing.
+            timeRemaining: isFullyCharged ? nil : timeUntilFullCaption(),
             percent: currentInfo?.chargePercent
         )
         presenter(content, BatteryAlertEngineConstants.powerSourceAlertDuration)

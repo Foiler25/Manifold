@@ -301,6 +301,13 @@ final class BatteryStatusItemController {
     /// is charging right now" without losing the percentage readout.
     /// Discharging / fully-charged states omit the bolt and center
     /// just the percentage.
+    ///
+    /// At `percent >= 100` the body fills with an `∞` glyph instead
+    /// of the digits-plus-bolt unit. "100" + a bolt is the most
+    /// cramped state the icon ever gets into (three digits leave
+    /// almost no room for the bolt), and "fully charged" reads
+    /// naturally as "infinite battery left" — single tall glyph,
+    /// instantly recognisable at menu-bar scale.
     private func makeBatteryIcon(percent: Int, charging: Bool) -> NSImage {
         let width = BatteryStatusItemControllerConstants.iconWidth
         let height = BatteryStatusItemControllerConstants.iconHeight
@@ -311,11 +318,19 @@ final class BatteryStatusItemController {
         let cornerRadius = BatteryStatusItemControllerConstants.iconCornerRadius
         let nubCornerRadius = BatteryStatusItemControllerConstants.iconNubCornerRadius
         let fontSize = BatteryStatusItemControllerConstants.iconTextFontSize
+        let infinityFontSize = BatteryStatusItemControllerConstants.iconInfinityFontSize
         let boltGap = BatteryStatusItemControllerConstants.iconChargingBoltGap
 
+        // At full charge the body shows just an `∞` — no digits, no
+        // bolt. Captured up-front so the drawing block below can
+        // branch on a single boolean.
+        let isFull = percent >= 100
+
         // Pre-render the bolt symbol outside the drawing block so we
-        // can measure its size for the centered layout below.
-        let boltImage: NSImage? = charging ? Self.chargingBoltImage(at: fontSize) : nil
+        // can measure its size for the centered layout below. Skipped
+        // entirely when full — the infinity glyph subsumes both
+        // "what's the level?" and "is this plugged in?" signals.
+        let boltImage: NSImage? = (charging && !isFull) ? Self.chargingBoltImage(at: fontSize) : nil
         let boltSize = boltImage?.size ?? .zero
 
         let image = NSImage(
@@ -351,6 +366,37 @@ final class BatteryStatusItemController {
                 xRadius: nubCornerRadius,
                 yRadius: nubCornerRadius
             ).fill()
+
+            // Full-charge path: render `∞` centered in the body and
+            // bail out before the digits + bolt layout below.
+            //
+            // Visual centering quirk: `NSString.size(withAttributes:)`
+            // returns the typographic bounding box (ascender +
+            // descender), and `draw(in:)` aligns the baseline at
+            // `rect.y + descent`. For a digit pair like "100" that
+            // produces a visually-centered glyph, but the `∞`
+            // character is drawn around its **xHeight** midline, not
+            // its cap-height midline — symmetric symbols sit lower
+            // than the rect-center math expects. Nudging the rect up
+            // by `iconInfinityYOffset` aligns the glyph's visual
+            // midline with `bodyRect.midY`.
+            if isFull {
+                let inf = "∞" as NSString
+                let infAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.menuBarFont(ofSize: infinityFontSize).withWeightApplied(.bold),
+                    .foregroundColor: NSColor.black
+                ]
+                let infSize = inf.size(withAttributes: infAttrs)
+                let yOffset = BatteryStatusItemControllerConstants.iconInfinityYOffset
+                let infRect = NSRect(
+                    x: bodyRect.midX - infSize.width / 2,
+                    y: bodyRect.midY - infSize.height / 2 + yOffset,
+                    width: infSize.width,
+                    height: infSize.height
+                )
+                inf.draw(in: infRect, withAttributes: infAttrs)
+                return true
+            }
 
             // Percentage text + (optional) charging bolt, centered as
             // one unit inside the body. Without the bolt we just
@@ -536,6 +582,24 @@ enum BatteryStatusItemControllerConstants {
     /// so "100" fits within the body interior with breathing room on
     /// either side.
     static let iconTextFontSize: CGFloat = 11
+
+    /// Point size of the `∞` glyph drawn inside the body when the
+    /// battery is fully charged. Bumped above the digits' size so
+    /// the single-character glyph fills the body proportionally —
+    /// "∞" at 11 pt looks visually undersized next to a digit-pair
+    /// rendering at the same size.
+    static let iconInfinityFontSize: CGFloat = 14
+
+    /// Vertical nudge (points) applied to the `∞` glyph's drawing
+    /// rect at full charge. Pure rect-based centering aligns the
+    /// glyph's typographic bounding box, which is anchored on the
+    /// font's baseline + descender — but `∞` is drawn symmetrically
+    /// around its **xHeight** midline (lower than the cap-height
+    /// midline that digit-pair rendering implicitly targets), so the
+    /// glyph appears too low. Nudging the rect up brings the visual
+    /// midline back to `bodyRect.midY`. Tuned by inspection at the
+    /// menu-bar size.
+    static let iconInfinityYOffset: CGFloat = 1
 
     /// Horizontal gap between the charging bolt and the percentage
     /// text. Tuned so the two glyphs read as a single "this is
