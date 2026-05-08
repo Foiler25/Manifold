@@ -85,9 +85,13 @@ enum SettingsKeys {
     /// the value here. The MenuBarPane copy surfaces this explicitly.
     static let menubarBatteryItemVisible = "settings.menubar.batteryItemVisible"
 
-    /// Sample rate for `BatterySampler`, independent from the
-    /// General-pane USB telemetry rate per D18 / Q13. Default 1.0 Hz,
-    /// clamped 0.5–5.0 by the sampler's `didSet`.
+    /// Live-data refresh rate for `BatterySampler` — the safety-net
+    /// poll for AppleSmartBattery IORegistry-only fields (temperature,
+    /// voltage, cycle count, raw mAh, instantaneous current/power)
+    /// that the IOPS notification observer doesn't publish. Default
+    /// 1.0 Hz, clamped 0.2–2.0 by the sampler's `didSet`. The fast
+    /// path (percent, charging, plug/unplug) flows through
+    /// `BatteryNotificationObserver` and is unaffected by this rate.
     static let batterySampleRateHz = "settings.menubar.batterySampleRateHz"
 
     /// String id of the most recently selected `SettingsScene` pane.
@@ -150,11 +154,11 @@ enum SettingsDefaults {
     /// fallback.
     static let menubarBatteryItemVisible: Bool = true
 
-    /// Default battery sampler rate in Hz. 5 Hz matches
-    /// `BatterySamplerConstants.defaultRate` — see that comment for
-    /// why we run at the slider's max by default (sampler pauses
-    /// when no UI is visible, so idle cost stays at zero).
-    static let batterySampleRateHz: Double = 5.0
+    /// Default battery sampler rate in Hz. Matches
+    /// `BatterySamplerConstants.defaultRate`. 1 Hz keeps the steady-
+    /// state cost negligible while catching every kernel publication
+    /// of the AppleSmartBattery IORegistry-only fields within ~1 s.
+    static let batterySampleRateHz: Double = 1.0
 
     // MARK: - Phase 19 — Battery alerts (notch-pop)
 

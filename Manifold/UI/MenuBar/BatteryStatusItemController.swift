@@ -83,6 +83,33 @@ final class BatteryStatusItemController {
     /// survives the level elevation.
     private var clickOutsideMonitor: Any?
 
+    /// Compact key over the only fields the menu-bar slot actually
+    /// renders — percent inside the body, charging-bolt presence,
+    /// and the accessibility-label inputs. Paired with
+    /// `hasAppliedBattery` so the first call always renders even when
+    /// `info == nil`. Comparing the whole `BatteryInfo` would defeat
+    /// the guard because `sampledAt: Date` ticks on every sampler
+    /// fire even when the visible state is unchanged.
+    private struct VisibleBatteryKey: Equatable {
+        let chargePercent: Int
+        let charging: Bool
+        let chargeState: BatteryInfo.ChargeState
+        let timeUntilFullMinutes: Int?
+        let timeUntilEmptyMinutes: Int?
+
+        init(_ info: BatteryInfo) {
+            self.chargePercent = info.chargePercent
+            self.charging = info.chargeState == .charging
+            self.chargeState = info.chargeState
+            self.timeUntilFullMinutes = info.timeUntilFullMinutes
+            self.timeUntilEmptyMinutes = info.timeUntilEmptyMinutes
+        }
+    }
+
+    private var lastAppliedBatteryKey: VisibleBatteryKey?
+    private var lastAppliedBatteryWasNil: Bool = false
+    private var hasAppliedBattery: Bool = false
+
     // MARK: - Init
 
     init(
@@ -166,6 +193,21 @@ final class BatteryStatusItemController {
     /// keep the slot looking sensible).
     func setBattery(_ info: BatteryInfo?) {
         guard let button = statusItem?.button else { return }
+
+        // Idempotent: skip the redraw + accessibility recomputation
+        // when the visible state matches the last applied call. We
+        // compare only the fields the icon + accessibility label
+        // actually use, NOT the whole `BatteryInfo` — `sampledAt`
+        // ticks every sample and would defeat the guard.
+        let newKey = info.map(VisibleBatteryKey.init)
+        if hasAppliedBattery,
+           newKey == lastAppliedBatteryKey,
+           (info == nil) == lastAppliedBatteryWasNil {
+            return
+        }
+        hasAppliedBattery = true
+        lastAppliedBatteryKey = newKey
+        lastAppliedBatteryWasNil = (info == nil)
 
         guard let info else {
             button.image = makeBatteryIcon(percent: 0, charging: false)

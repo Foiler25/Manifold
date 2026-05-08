@@ -71,9 +71,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         telemetrySampler?.sampleRate = hz
     }
 
-    /// Phase 18: parallel knob for the battery sampler — invoked by
-    /// `SettingsScene`'s MenuBarPane. Forwards to BatterySampler
-    /// whose `didSet` clamps + re-arms the timer.
+    /// Phase 18: knob for the battery safety-poll rate — invoked by
+    /// `SettingsScene`'s MenuBarPane "Live data refresh" slider.
+    /// Forwards to `BatterySampler.sampleRate` whose `didSet` clamps
+    /// and re-arms the timer. The fast path (state changes — percent,
+    /// charging, plug/unplug) is push-driven by
+    /// `BatteryNotificationObserver` and not affected by this rate.
     func applyBatterySampleRate(_ hz: Double) {
         batterySampler?.sampleRate = hz
     }
@@ -101,12 +104,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Phase 18 Battery
 
-    /// Battery sampler — owns its own timer + rate. AppDelegate
-    /// instantiates this on launch regardless of whether the
-    /// secondary status item is installed (the BatteryView tab in
-    /// the main window always wants live data when the window is
-    /// visible).
+    /// Battery safety-net sampler — owns its own timer + rate.
+    /// Always-on, single rate; covers the IORegistry-only fields
+    /// (temperature, voltage, cycle count, raw mAh, instantaneous
+    /// current/power) that the IOPS notification observer doesn't
+    /// publish. The fast path (percent, charging, plug/unplug) flows
+    /// through `batteryNotificationObserver` instead.
     private var batterySampler: BatterySampler?
+
+    /// Push-driven observer for power-source state changes.
+    /// Subscribes to `IOPSNotificationCreateRunLoopSource`; macOS
+    /// fires the callback the moment the kernel publishes a fresh
+    /// percent / charging / plug-state value. Forwards each event
+    /// into `portGraph.applyBattery(_:)`, same sink the safety-net
+    /// sampler uses.
+    private var batteryNotificationObserver: BatteryNotificationObserver?
 
     /// Secondary `NSStatusItem` controller. nil on desktop Macs
     /// (probe returns nil) AND when the user has disabled the
@@ -399,6 +411,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the notch panel so a half-open panel doesn't linger as the
         // app exits (per SPEC §21.11).
         batteryAlertEngineObservationTask?.cancel()
+        // Phase 21.6 IOPS observer + safety-net sampler. Both are
+        // independent of `samplerLifecycle` (battery data path is no
+        // longer surface-gated), so they need explicit teardown here.
+        batteryNotificationObserver?.stop()
+        batteryNotificationObserver = nil
+        batterySampler?.stop()
+        batterySampler = nil
         // Phase 20: tear down the DA volume-mount subscription before
         // the AppDelegate strong reference drops.
         volumeMountObserver?.stop()
@@ -709,41 +728,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Badge observation
 
     /// Watch `portGraph.totalDeviceCount` and push updates to the
-    /// status-item badge. Uses `Observation.withObservationTracking`
-    /// in a tight loop — the @Observable property reads inside the
-    /// `apply` block re-register on every iteration so changes
-    /// continue to fire updates.
+    /// status-item badge. Change-driven via
+    /// `Observation.withObservationTracking`: the loop applies the
+    /// current value, then suspends on a `CheckedContinuation` until
+    /// the next mutation fires `onChange`. No tight polling, no idle
+    /// CPU between mutations.
     private func startBadgeObserver(controller: StatusItemController) {
         graphObservationTask = Task { @MainActor [weak self, weak controller] in
             while !Task.isCancelled {
                 guard let self, let controller else { return }
-                let count = withObservationTracking {
-                    self.portGraph.totalDeviceCount
-                } onChange: { }
-                controller.setDeviceCount(count)
-                // Wait for the next observation tick. Yielding lets
-                // pending PortGraph mutations land before we re-read.
-                try? await Task.sleep(for: .milliseconds(50))
+                controller.setDeviceCount(self.portGraph.totalDeviceCount)
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = self.portGraph.totalDeviceCount
+                    } onChange: {
+                        cont.resume()
+                    }
+                }
             }
         }
     }
 
     // MARK: - Phase 18 Battery wiring
 
-    /// Stand up the `BatterySampler`, attach to lifecycle, forward
-    /// each tick to `portGraph.applyBattery(_:)`. Called once at
-    /// app start.
+    /// Stand up the battery data path. Two pieces:
+    ///
+    ///   1. `BatteryNotificationObserver` — push-driven via IOPS;
+    ///      drives the fast path (percent, charging, plug/unplug,
+    ///      time-remaining) at near-zero latency.
+    ///   2. `BatterySampler` — slow always-on safety poll; drives
+    ///      the IORegistry-only fields (temperature, voltage, cycle
+    ///      count, raw mAh, instantaneous current/power) that IOPS
+    ///      doesn't publish.
+    ///
+    /// Both feed the same sink (`portGraph.applyBattery(_:)`), so
+    /// `@Observable` consumers don't care which path produced the
+    /// snapshot.
     private func installBatterySampler() {
+        // Slow safety-net poll. Always-on at a single user-tunable
+        // rate (`SettingsKeys.batterySampleRateHz`, default 1 Hz).
         let sampler = BatterySampler { [weak self] info in
             self?.portGraph.applyBattery(info)
         }
-        // Apply persisted sample rate; clamp via `didSet`.
         let persisted = UserDefaults.standard.double(forKey: SettingsKeys.batterySampleRateHz)
         if persisted > 0 {
             sampler.sampleRate = persisted
         }
         batterySampler = sampler
-        samplerLifecycle.attachBattery(sampler)
+        sampler.start()
+
+        // Push-driven IOPS observer. `deliverInitialSnapshot()` runs
+        // a synchronous read so the graph has a non-nil battery
+        // value before SwiftUI's first frame, even if no organic
+        // IOPS event has fired yet.
+        let observer = BatteryNotificationObserver { [weak self] info in
+            self?.portGraph.applyBattery(info)
+        }
+        observer.deliverInitialSnapshot()
+        batteryNotificationObserver = observer
     }
 
     /// One-shot probe + AppStorage gate. Per SPEC §20.6 + Q12:
@@ -813,19 +855,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `engine.handle(info)` on every change to `portGraph.battery`.
     /// Independent of the status-item observer so the engine fires
     /// regardless of whether the user has the secondary menubar
-    /// item visible.
+    /// item visible. Change-driven (see `startBadgeObserver`).
     private func startBatteryAlertEngineObserver(engine: BatteryAlertEngine) {
         batteryAlertEngineObservationTask?.cancel()
         batteryAlertEngineObservationTask = Task { @MainActor [weak self, weak engine] in
             while !Task.isCancelled {
                 guard let self, let engine else { return }
-                let info = withObservationTracking {
-                    self.portGraph.battery
-                } onChange: { }
-                if let info {
+                if let info = self.portGraph.battery {
                     engine.handle(info)
                 }
-                try? await Task.sleep(for: .milliseconds(50))
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = self.portGraph.battery
+                    } onChange: {
+                        cont.resume()
+                    }
+                }
             }
         }
     }
@@ -848,19 +893,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Pattern A observer per §13.5 — same shape as `startBadgeObserver`.
-    /// Re-reads `graph.battery` on every tick; on change, forwards to
-    /// `controller.setBattery(_:)`. The 50 ms cadence keeps menu-bar
-    /// updates timely without busy-spinning the main actor.
+    /// Change-driven: pushes `graph.battery` into `controller.setBattery`,
+    /// then suspends until the next mutation fires `onChange`.
     private func startBatteryObserver(controller: BatteryStatusItemController) {
         batteryObservationTask?.cancel()
         batteryObservationTask = Task { @MainActor [weak self, weak controller] in
             while !Task.isCancelled {
                 guard let self, let controller else { return }
-                let info = withObservationTracking {
-                    self.portGraph.battery
-                } onChange: { }
-                controller.setBattery(info)
-                try? await Task.sleep(for: .milliseconds(50))
+                controller.setBattery(self.portGraph.battery)
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = self.portGraph.battery
+                    } onChange: {
+                        cont.resume()
+                    }
+                }
             }
         }
     }

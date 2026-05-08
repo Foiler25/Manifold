@@ -1826,19 +1826,11 @@
     },
     "settings.menubar.sampleRate.title" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Sample rate" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Live data refresh" } } }
     },
     "settings.menubar.sampleRate.detail" : {
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "How often Manifold reads battery state from the system. Higher rates respond more quickly to plug / unplug events; lower rates use less power." } } }
-    },
-    "settings.menubar.backgroundSampleRate.title" : {
-      "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Background sample rate" } } }
-    },
-    "settings.menubar.backgroundSampleRate.detail" : {
-      "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Used when no Manifold window or popover is open — the menu-bar battery icon and alerts still update at this rate. Lower values save power; raise it if plug / unplug should show in the icon faster." } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Controls how often Manifold refreshes the secondary battery readouts (temperature, voltage, cycle count, current, power) shown in the Battery tab. Percent, charging state, and plug / unplug events are pushed instantly by macOS regardless of this rate. Lower values save power; the kernel rarely publishes new values faster than 1 Hz, so 1.0 Hz is a sensible default." } } }
     },
     "settings.menubar.alerts.section.master" : {
       "comment" : "Phase 19 Settings — battery alerts master section header.",

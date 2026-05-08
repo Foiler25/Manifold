@@ -18,15 +18,20 @@
 // SamplerLifecycle.swift
 //
 // Per SPEC.md §8: tracks active UI surfaces (popover open, window
-// visible, widget reload pending). Pauses the sampler when the count
-// hits zero. Satisfies SPEC §18 Phase 5 acceptance #3 ("SamplerLifecycle
-// pauses sampling when popover hidden AND window not visible").
+// visible, widget reload pending) and pauses the USB telemetry
+// sampler when the count hits zero. Satisfies SPEC §18 Phase 5
+// acceptance #3.
 //
 // Why a counter, not a set: a UI surface might fire its "did open"
 // callback twice (popover that auto-reopens after a transient close),
 // and we want the sampler to stay running across that race. The
 // counter approach is robust to bursts; only when the count
 // genuinely drops to zero do we stop.
+//
+// Battery sampling no longer goes through this gate — the fast path
+// (state changes) is push-driven by `BatteryNotificationObserver`
+// via IOPS, and the slow safety-net `BatterySampler` runs always-on
+// at a single rate.
 
 import Foundation
 
@@ -39,22 +44,15 @@ final class SamplerLifecycle {
     /// outlive the lifecycle (or vice versa) without a retain cycle.
     private weak var sampler: TelemetrySampler?
 
-    /// Phase 18 — parallel battery sampler. Held weakly for the same
-    /// reason as `sampler`. Both samplers respond to the same active-
-    /// surface count per D18 ("same lifecycle gate, independent
-    /// rates"); each tracks its own timer + sample rate independently.
-    private weak var batterySampler: BatterySampler?
-
     /// Active surface count. `private(set)` so tests can observe
     /// without exposing a setter.
     private(set) var activeSurfaceCount: Int = 0
 
     /// Pending widget-reload pulse tasks. Cancelled if `shutdown`
-    /// fires while a 5 s window is still active.
-    /// Pending widget-reload pulse tasks. Keyed by UUID so each task
-    /// can prune its own slot on completion (Task is a value type,
-    /// so ObjectIdentifier doesn't apply; UUID is the next-simplest
-    /// identifier). F15 closure (Phase 5 review).
+    /// fires while a 5 s window is still active. Keyed by UUID so
+    /// each task can prune its own slot on completion (Task is a
+    /// value type, so ObjectIdentifier doesn't apply; UUID is the
+    /// next-simplest identifier). F15 closure (Phase 5 review).
     private var pendingWidgetTasks: [UUID: Task<Void, Never>] = [:]
 
     /// Has the lifecycle been shut down? Subsequent calls are no-ops
@@ -73,14 +71,6 @@ final class SamplerLifecycle {
         self.sampler = sampler
         // If a surface is already active when we attach, kick the
         // sampler so it starts immediately.
-        applyState()
-    }
-
-    /// Phase 18 — mirror of `attach(sampler:)` for the battery sampler.
-    /// Both samplers respond to the same active-surface count gate per
-    /// D18; each maintains its own timer and sample rate.
-    func attachBattery(_ sampler: BatterySampler) {
-        self.batterySampler = sampler
         applyState()
     }
 
@@ -134,8 +124,6 @@ final class SamplerLifecycle {
         pendingWidgetTasks.removeAll()
         activeSurfaceCount = 0
         sampler?.stop()
-        // Phase 18: parallel teardown of the battery sampler.
-        batterySampler?.stop()
     }
 
     // MARK: - Internals
@@ -149,9 +137,7 @@ final class SamplerLifecycle {
     private func decrement() {
         guard !isShutDown else { return }
         // Floor at 0 in case of unbalanced did-open/did-close pairs —
-        // belt-and-braces against UI lifecycle quirks. Logged so a
-        // bug here surfaces in `log show` rather than silently
-        // pausing the sampler.
+        // belt-and-braces against UI lifecycle quirks.
         if activeSurfaceCount == 0 {
             return
         }
@@ -161,15 +147,11 @@ final class SamplerLifecycle {
 
     /// Translate `activeSurfaceCount` into a sampler start/stop call.
     /// Idempotent — `start()` and `stop()` are no-ops when already in
-    /// the requested state. Both samplers (USB telemetry + battery)
-    /// receive the same dispatch per D18.
+    /// the requested state.
     private func applyState() {
         let active = activeSurfaceCount > 0
         if let sampler {
             if active { sampler.start() } else { sampler.stop() }
-        }
-        if let batterySampler {
-            if active { batterySampler.start() } else { batterySampler.stop() }
         }
     }
 }

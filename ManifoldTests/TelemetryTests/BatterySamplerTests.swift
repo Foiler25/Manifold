@@ -152,62 +152,36 @@ final class BatterySamplerTests: XCTestCase {
 
     func test_setSampleRate_inRangePreserved() {
         let (sampler, _) = makeSampler()
-        sampler.sampleRate = 2.5
-        XCTAssertEqual(sampler.sampleRate, 2.5)
-    }
-
-    // MARK: - Lifecycle gate
-
-    func test_setActiveSurfaces_zero_stops() {
-        let (sampler, _) = makeSampler()
-        sampler.start()
-        sampler.setActiveSurfaces(0)
-        XCTAssertFalse(sampler.isRunning)
-    }
-
-    func test_setActiveSurfaces_positive_starts() {
-        let (sampler, _) = makeSampler()
-        sampler.setActiveSurfaces(1)
-        XCTAssertTrue(sampler.isRunning)
-        sampler.stop()
-    }
-
-    func test_setActiveSurfaces_zeroThenPositive_resumes() {
-        let (sampler, _) = makeSampler()
-        sampler.start()
-        sampler.setActiveSurfaces(0)
-        XCTAssertFalse(sampler.isRunning)
-        sampler.setActiveSurfaces(1)
-        XCTAssertTrue(sampler.isRunning)
-        sampler.stop()
+        sampler.sampleRate = 1.0
+        XCTAssertEqual(sampler.sampleRate, 1.0)
     }
 
     // MARK: - Timer firing — N samples in N seconds (within tolerance)
 
-    /// At 5 Hz (max rate) the timer should fire about 5 times per
-    /// second. We sample for ~600 ms at 5 Hz and assert at least 2
-    /// samples landed — looser than the textbook math (≈3 samples)
-    /// to absorb scheduling jitter on a busy CI runner.
+    /// At max rate the timer should fire about every 500 ms. We
+    /// sample for ~1 s and assert at least 1 sample landed — looser
+    /// than the textbook math to absorb scheduling jitter on a busy
+    /// CI runner.
     func test_timer_emitsSamplesAtConfiguredRate() async {
         let (sampler, counter) = makeSampler()
-        sampler.sampleRate = 5.0
+        sampler.sampleRate = BatterySamplerConstants.maxRate
         sampler.start()
-        await waitUntil { counter.count >= 2 }
+        await waitUntil { counter.count >= 1 }
         sampler.stop()
-        XCTAssertGreaterThanOrEqual(counter.count, 2,
-            "5 Hz sampler should produce ≥2 samples within the wait window")
+        XCTAssertGreaterThanOrEqual(counter.count, 1,
+            "Sampler at max rate should produce ≥1 sample within the wait window")
     }
 
     /// `stop()` halts further emissions: capture the count, sleep a
     /// little longer than one tick, capture again, expect equality.
     func test_stop_halts_furtherEmissions() async {
         let (sampler, counter) = makeSampler()
-        sampler.sampleRate = 5.0
+        sampler.sampleRate = BatterySamplerConstants.maxRate
         sampler.start()
-        await waitUntil { counter.count >= 2 }
+        await waitUntil { counter.count >= 1 }
         sampler.stop()
         let after = counter.count
-        try? await Task.sleep(for: .milliseconds(400))
+        try? await Task.sleep(for: .milliseconds(800))
         XCTAssertEqual(counter.count, after,
             "Sampler should emit no further samples after stop()")
     }
@@ -220,11 +194,11 @@ final class BatterySamplerTests: XCTestCase {
     /// + start() — both observable.
     func test_sampleRateChange_keepsRunning_andContinuesEmitting() async {
         let (sampler, counter) = makeSampler()
-        sampler.sampleRate = 1.0
+        sampler.sampleRate = BatterySamplerConstants.minRate
         sampler.start()
-        // Bump to a faster rate; expect sampler still running and
+        // Bump to the max rate; expect sampler still running and
         // counter to advance after the rearm.
-        sampler.sampleRate = 5.0
+        sampler.sampleRate = BatterySamplerConstants.maxRate
         XCTAssertTrue(sampler.isRunning)
         await waitUntil { counter.count >= 1 }
         sampler.stop()
@@ -243,7 +217,7 @@ final class BatterySamplerTests: XCTestCase {
                 received.set(info)
             }
         )
-        sampler.sampleRate = 5.0
+        sampler.sampleRate = BatterySamplerConstants.maxRate
         sampler.start()
         await waitUntil { received.value != nil }
         sampler.stop()
@@ -262,7 +236,7 @@ final class BatterySamplerTests: XCTestCase {
                 if info == nil { nilReceived.increment() }
             }
         )
-        sampler.sampleRate = 5.0
+        sampler.sampleRate = BatterySamplerConstants.maxRate
         sampler.start()
         await waitUntil { nilReceived.count >= 1 }
         sampler.stop()

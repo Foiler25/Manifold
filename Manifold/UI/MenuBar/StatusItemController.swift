@@ -83,6 +83,11 @@ final class StatusItemController {
     /// survives the level elevation.
     private var clickOutsideMonitor: Any?
 
+    /// Last device count applied via `setDeviceCount(_:)`. Skips the
+    /// `NSAttributedString` re-allocation when the value hasn't
+    /// changed.
+    private var lastAppliedDeviceCount: Int?
+
     init(
         graph: PortGraph,
         onOpenWindow: @escaping @MainActor () -> Void,
@@ -125,6 +130,8 @@ final class StatusItemController {
     /// image-left, attributedTitle-right.
     func setDeviceCount(_ count: Int) {
         guard let button = statusItem?.button else { return }
+        if count == lastAppliedDeviceCount { return }
+        lastAppliedDeviceCount = count
 
         if count == 0 {
             button.attributedTitle = NSAttributedString()

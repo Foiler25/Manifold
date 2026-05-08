@@ -17,19 +17,24 @@
 // ─────────────────────────────────────────────────────────────────────
 // BatterySampler.swift
 //
-// Phase 18 — sibling of `TelemetrySampler`. Same shape (timer-driven,
-// configurable 0.5–5 Hz, idempotent start/stop, `setActiveSurfaces(_:)`
-// lifecycle gate, sample-rate change re-arms the timer) but a separate
-// rate, separate AppStorage key, separate sampling target.
+// Slow safety-net poll for the AppleSmartBattery IORegistry-only
+// fields — temperature, voltage, cycle count, raw mAh, instantaneous
+// current / power. The fast path (percent, charging state, plug /
+// unplug, time-remaining) is push-driven by `BatteryNotificationObserver`
+// via `IOPSNotificationCreateRunLoopSource`, so this sampler exists
+// purely to refresh the secondary fields the notification API does
+// not publish.
 //
-// Per D18: independent rate from `TelemetrySampler` (battery state
-// changes slowly; users may want 0.5 Hz battery sampling alongside 5 Hz
-// USB telemetry, or vice versa). Same `SamplerLifecycle` gate so both
-// pause when no UI surface is visible.
+// Always-on at a single rate — no foreground / background split, no
+// `SamplerLifecycle` gate. The IOPS-driven path covers everything the
+// menu-bar icon and alert engine react to; this sampler's only job is
+// keeping the BatteryView's stat cells from going stale on a quiet
+// machine. 1 Hz default keeps the steady-state cost negligible while
+// matching the kernel's actual update cadence well enough that the
+// numbers track real hardware within a second.
 //
-// `@MainActor` per the parallel SPEC §8 / §20.4 contracts. The Timer
-// callback hops back to MainActor explicitly so the actor isolation is
-// preserved (Timer's closure is otherwise nonisolated).
+// `@MainActor` so the consumer callback fires on MainActor — the
+// Timer's closure is otherwise nonisolated, so we hop explicitly.
 
 import Foundation
 import ManifoldKit
@@ -46,20 +51,17 @@ final class BatterySampler {
     private let reader: @Sendable () -> BatteryInfo?
 
     /// Forwarded each sample to the consumer (production: AppDelegate
-    /// → `portGraph.applyBattery(_:)`). Runs on MainActor — the
-    /// MainActor isolation of this class plus the explicit
-    /// `@MainActor` annotation on the closure together guarantee
-    /// the consumer sees the sample on the main thread.
+    /// → `portGraph.applyBattery(_:)`). Runs on MainActor.
     private let onSample: @MainActor (BatteryInfo?) -> Void
 
     // MARK: - State
 
     private var timer: Timer?
 
-    /// Hertz. Defaults to 1.0 per D18; `didSet` clamps to
-    /// `[0.5, 5.0]` and re-arms the timer if the value actually
-    /// changed (the recursion is bounded — first call clamps,
-    /// second call sees clamped == sampleRate and falls through).
+    /// Hertz. `didSet` clamps to `[minRate, maxRate]` and re-arms the
+    /// timer when the value actually changes (the recursion is bounded
+    /// — first call clamps, second call sees clamped == sampleRate
+    /// and falls through).
     var sampleRate: Double = BatterySamplerConstants.defaultRate {
         didSet {
             let clamped = clamp(sampleRate)
@@ -74,8 +76,7 @@ final class BatterySampler {
     }
 
     /// True while the timer is scheduled. Read-only externally —
-    /// callers control via `start()` / `stop()` /
-    /// `setActiveSurfaces(_:)`.
+    /// callers control via `start()` / `stop()`.
     var isRunning: Bool { timer != nil }
 
     // MARK: - Init
@@ -91,7 +92,7 @@ final class BatterySampler {
     }
 
     /// DI-friendly init — tests inject a programmable reader closure
-    /// + assertion-friendly onSample callback. Per SPEC §20.4.
+    /// + assertion-friendly onSample callback.
     init(
         reader: @escaping @Sendable () -> BatteryInfo?,
         onSample: @escaping @MainActor (BatteryInfo?) -> Void
@@ -102,12 +103,12 @@ final class BatterySampler {
 
     // No deinit cleanup — Swift 6 strict concurrency forbids accessing
     // `Timer?` (not Sendable) from a nonisolated deinit. Callers
-    // (SamplerLifecycle.shutdown / AppDelegate.applicationWillTerminate)
-    // are responsible for calling `stop()`. The Timer's closure
-    // captures `[weak self]` so a missed `stop()` doesn't leak the
-    // sampler — the timer just becomes a no-op.
+    // (`AppDelegate.applicationWillTerminate`) are responsible for
+    // calling `stop()`. The Timer's closure captures `[weak self]` so
+    // a missed `stop()` doesn't leak the sampler — the timer just
+    // becomes a no-op.
 
-    // MARK: - Public API (SPEC §20.4)
+    // MARK: - Public API
 
     /// Start the periodic sampler. No-op if already running.
     func start() {
@@ -119,14 +120,6 @@ final class BatterySampler {
     func stop() {
         timer?.invalidate()
         timer = nil
-    }
-
-    /// Map an active-surface count to start/stop. SamplerLifecycle
-    /// calls this on every surface event in lockstep with the parallel
-    /// `TelemetrySampler.setActiveSurfaces` so both samplers pause
-    /// together (per D18 — same lifecycle gate, independent rates).
-    func setActiveSurfaces(_ count: Int) {
-        if count > 0 { start() } else { stop() }
     }
 
     // MARK: - Timer
@@ -171,17 +164,20 @@ final class BatterySampler {
 // MARK: - Constants
 
 enum BatterySamplerConstants {
-    /// Default 5 Hz — the high end of the user-facing slider range.
-    /// Bumped from 1 Hz on 2026-05-04 (originally per D18 / SPEC
-    /// §20.4) because `InstantAmperage` reads the firmware's live
-    /// current at the moment we sample, so the displayed power /
-    /// current row only feels live at high tick rates. The
-    /// `SamplerLifecycle` pauses the sampler whenever no UI is
-    /// visible, so the high default only burns CPU when the user is
-    /// actively looking — idle cost stays at zero.
-    static let defaultRate: Double = 5.0
+    /// Default 1 Hz. Push-driven `BatteryNotificationObserver` covers
+    /// the fast path (state changes — percent, charging, plug/unplug)
+    /// at near-zero latency, so this sampler exists only to keep the
+    /// secondary IORegistry-only fields (temperature, voltage, cycle
+    /// count, instantaneous current / power) refreshed on a quiet
+    /// machine. The kernel publishes those fields every several
+    /// seconds at most, so 1 Hz catches every real update with at
+    /// most ~1 s of latency while keeping the cost trivial.
+    static let defaultRate: Double = 1.0
 
-    /// D18 / SPEC §20.4: "Range enforced [0.5, 5.0]."
-    static let minRate: Double = 0.5
-    static let maxRate: Double = 5.0
+    /// User-facing slider range. Lower bound is "every 5 s" — slow
+    /// enough that idle cost is invisible. Upper bound is 2 Hz
+    /// because the kernel never publishes faster than that, and
+    /// allowing higher rates just polls the same numbers more often.
+    static let minRate: Double = 0.2
+    static let maxRate: Double = 2.0
 }

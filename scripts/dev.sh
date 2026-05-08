@@ -44,15 +44,23 @@ start_manifold() {
   xcodebuild -scheme Manifold -configuration Debug -destination 'platform=macOS' build \
       2>&1 | grep -E "error:|warning:|BUILD" || true
 
-  APP_PATH="$(
-    find "$HOME/Library/Developer/Xcode/DerivedData" \
-      -path '*Manifold-*/Build/Products/Debug/Manifold.app' \
-      -not -path '*Index*' \
-      2>/dev/null | head -1
+  # Ask xcodebuild where it just wrote the product. This is the
+  # authoritative path — the previous `find … | head -1` would
+  # silently pick a stale Manifold.app from an older DerivedData
+  # directory if Xcode's project-derived hash changed (which leaves
+  # multiple `Manifold-<hash>` directories side-by-side). The traversal
+  # order isn't sorted by mtime, so old binaries could win.
+  BUILT_PRODUCTS_DIR="$(
+    xcodebuild -showBuildSettings \
+        -project Manifold.xcodeproj \
+        -scheme Manifold \
+        -configuration Debug 2>/dev/null \
+      | awk -F' = ' '/^    BUILT_PRODUCTS_DIR = /{print $2; exit}'
   )"
+  APP_PATH="${BUILT_PRODUCTS_DIR%/}/Manifold.app"
 
-  if [[ -z "$APP_PATH" ]]; then
-    echo "error: couldn't find built Manifold.app under DerivedData" >&2
+  if [[ -z "$BUILT_PRODUCTS_DIR" || ! -d "$APP_PATH" ]]; then
+    echo "error: couldn't resolve built Manifold.app via -showBuildSettings (BUILT_PRODUCTS_DIR=$BUILT_PRODUCTS_DIR)" >&2
     exit 1
   fi
 
