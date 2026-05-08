@@ -22,15 +22,21 @@
 //
 // ─────────────────────────────────────────────────────────────────────
 public import Foundation
+import Combine
 
 /// macOS implementation of `CableSnapshotProvider`. Wraps the four IOKit
 /// watcher classes and assembles their state into a `CableSnapshot`.
 ///
-/// `snapshot()` starts the watchers once, refreshes the polling-driven ones
-/// (the others fire IOKit match notifications during start), and reads.
-/// `watch()` keeps them started and polls for changes on a 1s timer.
-/// Polling is sufficient because `CablePortWatcher` already requires it for
-/// property-change events; the others share the same loop for simplicity.
+/// `snapshot()` starts the watchers once, refreshes them, and reads.
+/// `watch()` keeps them started and yields a fresh snapshot whenever any
+/// watcher signals a state change via Combine `objectWillChange` — plus
+/// a 5-second backstop poll as a safety net for any property-change
+/// path the IOKit notifications might miss on unusual hardware. The
+/// previous implementation polled every 1 s; the watchers themselves
+/// are already event-driven (each registers `IOServiceAddMatching-
+/// Notification` and most also register `IOServiceAddInterest-
+/// Notification` for property changes), so the per-second wake was
+/// pure waste in steady state.
 public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendable {
     public init() {}
 
@@ -43,6 +49,18 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
         let tbWatcher = ThunderboltWatcher()
         var started = false
 
+        /// Active wakeup continuation for the `watch()` loop. Resumed
+        /// when any watcher signals a change OR when the backstop
+        /// timer fires. Single-shot — replaced on every iteration of
+        /// the loop. Nil while the loop is running its body (between
+        /// the previous wake and the next `waitForChange`).
+        private var pendingWake: CheckedContinuation<Void, Never>?
+
+        /// Combine subscriptions that sink each watcher's
+        /// `objectWillChange` into `wake()`. Held strongly so the
+        /// subscriptions live as long as the singleton state.
+        private var cancellables: Set<AnyCancellable> = []
+
         func ensureStarted() {
             guard !started else { return }
             portWatcher.start()
@@ -50,13 +68,45 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             pdWatcher.start()
             usbWatcher.start()
             tbWatcher.start()
+
+            // Subscribe each watcher's `objectWillChange` to `wake()`
+            // so any IOKit-driven mutation of a watcher's @Published
+            // property unblocks the watch() loop. `objectWillChange`
+            // fires synchronously on the main thread (the watchers
+            // are MainActor-isolated), so the sink closure runs on
+            // MainActor without an explicit hop.
+            //
+            // The sink fires BEFORE the @Published assignment lands,
+            // but the loop's subsequent `state.read()` re-walks the
+            // IORegistry independently — it doesn't depend on the
+            // already-assigned @Published value — so the ordering is
+            // benign.
+            portWatcher.objectWillChange
+                .sink { [weak self] in self?.wake() }
+                .store(in: &cancellables)
+            powerWatcher.objectWillChange
+                .sink { [weak self] in self?.wake() }
+                .store(in: &cancellables)
+            pdWatcher.objectWillChange
+                .sink { [weak self] in self?.wake() }
+                .store(in: &cancellables)
+            usbWatcher.objectWillChange
+                .sink { [weak self] in self?.wake() }
+                .store(in: &cancellables)
+            tbWatcher.objectWillChange
+                .sink { [weak self] in self?.wake() }
+                .store(in: &cancellables)
+
             started = true
         }
 
         func read() -> CableSnapshot {
-            // USBCPort property changes don't fire match notifications,
-            // so refresh on every read. The others are notification-driven
-            // but refresh is cheap and keeps reads consistent.
+            // USBCPort property changes are now caught via the per-
+            // port `IOServiceAddInterestNotification` registrations
+            // inside `CablePortWatcher`, but the explicit refresh on
+            // each read remains a cheap consistency guard. The other
+            // watchers' refresh() calls are likewise notification-
+            // driven but cheap to repeat.
             portWatcher.refresh()
             powerWatcher.refresh()
             pdWatcher.refresh()
@@ -69,6 +119,46 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
                 adapter: SystemPower.currentAdapter(),
                 thunderboltSwitches: tbWatcher.switches
             )
+        }
+
+        /// Suspend until a watcher signals a change OR `backstopSeconds`
+        /// elapses. The backstop covers the (theoretical) case where
+        /// some hardware quirk causes a watcher's IOKit notification
+        /// not to fire on a state change — a stale snapshot would
+        /// otherwise persist until the next user-initiated refresh.
+        func waitForChange(backstopSeconds: Double = 5.0) async {
+            let backstopTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(backstopSeconds))
+                // `try?` swallows `CancellationError`, so without this
+                // guard the cancelled task's `wake()` would still fire
+                // — racing back into the loop body and producing an
+                // infinite poll instead of an idle 5 s wait.
+                guard !Task.isCancelled else { return }
+                self?.wake()
+            }
+            defer { backstopTask.cancel() }
+
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    pendingWake = cont
+                }
+            } onCancel: {
+                // Outer task was cancelled (consumer dropped the
+                // stream). Resume the continuation so the awaiting
+                // task can finish promptly. The cancellation handler
+                // is nonisolated, so hop to MainActor.
+                Task { @MainActor [weak self] in self?.wake() }
+            }
+        }
+
+        /// Resume the pending continuation if any. No-op when the
+        /// loop body is mid-iteration (continuation is nil between
+        /// wakes). Bursts collapse to one wake per loop turn.
+        private func wake() {
+            if let cont = pendingWake {
+                pendingWake = nil
+                cont.resume()
+            }
         }
     }
 
@@ -92,7 +182,7 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
                         continuation.yield(snap)
                         last = snap
                     }
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    await Self.state.waitForChange()
                 }
                 continuation.finish()
             }
@@ -108,4 +198,3 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
 public func makeDefaultSnapshotProvider() -> any CableSnapshotProvider {
     CableDarwinProvider()
 }
-
