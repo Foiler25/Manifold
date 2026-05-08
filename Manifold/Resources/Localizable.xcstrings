@@ -1619,8 +1619,9 @@
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Current" } } }
     },
     "window.battery.field.power" : {
+      "comment" : "Field label inside the Battery tab's Power & Electrical card. \"Usage\" disambiguates from the section's other power-adjacent fields (voltage, current) and matches how a user thinks about it: how much the battery is consuming or absorbing right now.",
       "extractionState" : "manual",
-      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power" } } }
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Power Usage" } } }
     },
     "window.battery.field.remaining" : {
       "extractionState" : "manual",
@@ -1830,6 +1831,14 @@
     "settings.menubar.sampleRate.detail" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "How often Manifold reads battery state from the system. Higher rates respond more quickly to plug / unplug events; lower rates use less power." } } }
+    },
+    "settings.menubar.backgroundSampleRate.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Background sample rate" } } }
+    },
+    "settings.menubar.backgroundSampleRate.detail" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Used when no Manifold window or popover is open — the menu-bar battery icon and alerts still update at this rate. Lower values save power; raise it if plug / unplug should show in the icon faster." } } }
     },
     "settings.menubar.alerts.section.master" : {
       "comment" : "Phase 19 Settings — battery alerts master section header.",
