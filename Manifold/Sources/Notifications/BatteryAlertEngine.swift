@@ -156,8 +156,14 @@ final class BatteryAlertEngine {
         self.init(
             preferences: preferences,
             presenter: { [weak notchPanelController] content, duration in
-                if let liveBatteryGraph,
-                   content.kind == .pluggedIn || content.kind == .unplugged {
+                // Wrap every kind through the live wrapper when the
+                // graph is provided — plug/unplug update their
+                // time-remaining caption row, low/charged update
+                // their subtitle (which now carries the time figure).
+                // The wrapper only observes while the panel is on
+                // screen, so the cost is bounded to the alert
+                // lifespan.
+                if let liveBatteryGraph {
                     let liveView = LiveTimeUpdatingNotchContent(
                         graph: liveBatteryGraph,
                         base: content
@@ -302,23 +308,29 @@ final class BatteryAlertEngine {
     // MARK: - Fire paths
 
     private func fireLowBattery(percent: Int, row: BatteryAlertConfig) {
-        // Subtitle shows the *threshold* the user configured, not the
-        // current percent — when the sampler skips integer values
-        // (battery drops 26 → 23 between ticks because the laptop
-        // was idle / sleeping), the alert fires when we first observe
-        // the cross. The current percent in that moment can be
-        // several points below the threshold, which made users think
-        // their alert "fired at the wrong percent." Showing the
-        // threshold instead matches what they configured.
+        // Subtitle: live time-until-empty caption ("4h 5m until
+        // empty"). The threshold the alert fired against is already
+        // in the title context + the trailing percent badge, so a
+        // separate "Below 20%" line was redundant (and didn't add
+        // a useful prediction). The time figure does. Falls back to
+        // the threshold-display when no time estimate is available
+        // yet (rare on this path — the discharge instant calc is
+        // populated as soon as we observe the percent crossing).
+        let subtitle: LocalizedStringKey
+        if let caption = timeUntilEmptyCaption() {
+            subtitle = LocalizedStringKey(caption)
+        } else {
+            subtitle = LocalizedStringKey(
+                String(format: NSLocalizedString(
+                    "notch.battery.alert.low.subtitle.format",
+                    comment: "Phase 19 low-battery fallback subtitle when no time estimate is available. %1$lld = threshold percent."
+                ), row.percent)
+            )
+        }
         let content = BatteryNotchContent(
             kind: .lowBattery,
             title: "notch.battery.alert.low.title",
-            subtitle: LocalizedStringKey(
-                String(format: NSLocalizedString(
-                    "notch.battery.alert.low.subtitle.format",
-                    comment: "Phase 19 low-battery subtitle showing the configured threshold. %1$lld = threshold percent."
-                ), row.percent)
-            ),
+            subtitle: subtitle,
             percent: percent
         )
         presenter(content, BatteryAlertEngineConstants.thresholdAlertDuration)
@@ -328,6 +340,25 @@ final class BatteryAlertEngine {
     }
 
     private func fireCharged(percent: Int, row: BatteryAlertConfig) {
+        // Subtitle: live time-until-full caption ("1h 23m until
+        // full"). The previous "Now at 80%" line repeated the
+        // trailing percent badge — effectively saying the same thing
+        // twice. The time figure conveys what the user actually
+        // wants to know ("how long until I can unplug?"). Falls
+        // back to the original copy only when we don't yet have a
+        // time estimate (rare — instant calc is populated as soon
+        // as we observe the percent crossing).
+        let subtitle: LocalizedStringKey
+        if let caption = timeUntilFullCaption() {
+            subtitle = LocalizedStringKey(caption)
+        } else {
+            subtitle = LocalizedStringKey(
+                String(format: NSLocalizedString(
+                    "notch.battery.alert.charged.subtitle.format",
+                    comment: "Phase 19 charged-battery fallback subtitle when no time estimate is available. %1$lld = current percent."
+                ), percent)
+            )
+        }
         let content = BatteryNotchContent(
             kind: .charged,
             title: LocalizedStringKey(
@@ -336,12 +367,7 @@ final class BatteryAlertEngine {
                     comment: "Phase 19 charged-battery title. %1$lld = threshold percent."
                 ), row.percent)
             ),
-            subtitle: LocalizedStringKey(
-                String(format: NSLocalizedString(
-                    "notch.battery.alert.charged.subtitle.format",
-                    comment: "Phase 19 charged-battery subtitle. %1$lld = current percent."
-                ), percent)
-            ),
+            subtitle: subtitle,
             percent: percent
         )
         presenter(content, BatteryAlertEngineConstants.thresholdAlertDuration)

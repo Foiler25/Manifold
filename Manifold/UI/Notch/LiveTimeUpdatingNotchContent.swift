@@ -47,19 +47,42 @@ struct LiveTimeUpdatingNotchContent: View {
     let base: BatteryNotchContent
 
     var body: some View {
-        BatteryNotchContent(
-            kind: base.kind,
-            title: base.title,
-            subtitle: base.subtitle,
-            timeRemaining: liveTimeRemainingCaption() ?? base.timeRemaining,
-            percent: graph.battery?.chargePercent ?? base.percent
-        )
+        let liveCaption = liveTimeRemainingCaption()
+        let livePercent = graph.battery?.chargePercent ?? base.percent
+
+        // Different alert kinds carry the time figure on different
+        // rows:
+        //   • plug / unplug — adapter info (or "Running on battery")
+        //     reads naturally as the subtitle, so the time goes in
+        //     the dedicated `timeRemaining` caption row below it.
+        //   • lowBattery / charged — title already names the event
+        //     ("Charged to 80 %"), and the trailing percent badge
+        //     repeats the level. The previous "Now at 80 %" subtitle
+        //     was redundant; replacing it with the time figure
+        //     conveys what the user actually wants to know.
+        switch base.kind {
+        case .pluggedIn, .unplugged:
+            BatteryNotchContent(
+                kind: base.kind,
+                title: base.title,
+                subtitle: base.subtitle,
+                timeRemaining: liveCaption ?? base.timeRemaining,
+                percent: livePercent
+            )
+        case .lowBattery, .charged:
+            BatteryNotchContent(
+                kind: base.kind,
+                title: base.title,
+                subtitle: liveCaption.map { LocalizedStringKey($0) } ?? base.subtitle,
+                timeRemaining: nil,
+                percent: livePercent
+            )
+        }
     }
 
-    /// Re-formats the time-remaining caption against `graph.battery`,
-    /// using the same direction the static caption represents (plug
-    /// alerts → time-until-full, unplug alerts → time-until-empty).
-    /// Other alert kinds keep their static caption verbatim.
+    /// Re-formats the time-remaining caption against `graph.battery`.
+    /// Direction depends on the alert kind: plug-in / charged use
+    /// time-until-full, unplug / low-battery use time-until-empty.
     private func liveTimeRemainingCaption() -> String? {
         guard let battery = graph.battery else { return nil }
         let minutes: Int?
@@ -72,10 +95,11 @@ struct LiveTimeUpdatingNotchContent: View {
             minutes = battery.timeUntilFullMinutes
         case .unplugged:
             minutes = battery.timeUntilEmptyMinutes
-        case .lowBattery, .charged:
-            // Threshold alerts don't carry a live time caption — the
-            // event-tied data (the threshold itself) is the value.
-            return nil
+        case .lowBattery:
+            minutes = battery.timeUntilEmptyMinutes
+        case .charged:
+            if battery.isFullyCharged { return nil }
+            minutes = battery.timeUntilFullMinutes
         }
         guard let minutes, minutes > 0 else { return nil }
         guard let duration = Self.formatter.string(from: TimeInterval(minutes * 60)) else {
@@ -83,12 +107,10 @@ struct LiveTimeUpdatingNotchContent: View {
         }
         let formatKey: String
         switch base.kind {
-        case .pluggedIn:
+        case .pluggedIn, .charged:
             formatKey = "notch.battery.alert.timeRemaining.untilFull"
-        case .unplugged:
+        case .unplugged, .lowBattery:
             formatKey = "notch.battery.alert.timeRemaining.untilEmpty"
-        case .lowBattery, .charged:
-            return nil
         }
         return String.localizedStringWithFormat(
             NSLocalizedString(
