@@ -92,14 +92,14 @@ final class BatteryStatusItemController {
     /// fire even when the visible state is unchanged.
     private struct VisibleBatteryKey: Equatable {
         let chargePercent: Int
-        let charging: Bool
+        let isExternalConnected: Bool
         let chargeState: BatteryInfo.ChargeState
         let timeUntilFullMinutes: Int?
         let timeUntilEmptyMinutes: Int?
 
         init(_ info: BatteryInfo) {
             self.chargePercent = info.chargePercent
-            self.charging = info.chargeState == .charging
+            self.isExternalConnected = info.isExternalConnected
             self.chargeState = info.chargeState
             self.timeUntilFullMinutes = info.timeUntilFullMinutes
             self.timeUntilEmptyMinutes = info.timeUntilEmptyMinutes
@@ -218,12 +218,16 @@ final class BatteryStatusItemController {
 
         // One image, no separate text label. The percentage lives
         // inside the battery body so the slot stays a single compact
-        // icon at the menu bar scale. When charging, a small bolt
-        // glyph appears to the left of the percentage so the slot
-        // visually conveys "this is charging right now."
+        // icon at the menu bar scale. The bolt glyph appears to the
+        // left of the percentage whenever an external power source
+        // is connected — including the brief PD-negotiation window
+        // between plug-in and `IsCharging = Yes`, and Optimized
+        // Battery Charging hold periods. macOS itself takes the same
+        // approach: bolt = "power is flowing in", not "battery is
+        // gaining charge right this instant".
         button.image = makeBatteryIcon(
             percent: info.chargePercent,
-            charging: info.chargeState == .charging
+            charging: info.isExternalConnected
         )
         button.imagePosition = .imageOnly
         button.attributedTitle = NSAttributedString()

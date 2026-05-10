@@ -68,8 +68,9 @@ final class PortGraph {
 
     /// Phase 18 / D16: battery snapshot, host-level state. Nil on
     /// hardware with no `AppleSmartBattery` service (desktop Macs) and
-    /// before the first `BatterySampler` tick on portable Macs. Source
-    /// of truth for `BatteryView` and `BatteryStatusItemController`.
+    /// before the first push-observer delivery on portable Macs.
+    /// Source of truth for `BatteryView` and
+    /// `BatteryStatusItemController`.
     ///
     /// NOT routed through `PortEvent` / `apply(_:)` per D16 — battery
     /// is host-level, not port-keyed. Mutated only via `applyBattery(_:)`.
@@ -146,8 +147,10 @@ final class PortGraph {
     }
 
     /// Phase 18 / D16: direct setter for the battery snapshot. Called
-    /// by `BatterySampler`'s `onSample` callback once per tick.
-    /// Bypasses `PortEvent`/`apply(_:)` because battery state is
+    /// by `BatteryInterestObserver` and `BatteryNotificationObserver`
+    /// each time the kernel publishes a new value (kIOGeneralInterest
+    /// + IOPS push paths respectively). Bypasses `PortEvent`/`apply(_:)`
+    /// because battery state is
     /// host-level, not port-keyed; routing it through events would
     /// force every consumer (NotificationService, EventRepository,
     /// SnapshotCoordinator, IntentDonor) to handle a case they don't

@@ -51,6 +51,12 @@ struct ChargeBannerSection: View {
     /// state read as one unit.
     var inputAdapter: AdapterInfo? = nil
 
+    /// Toggled by the (i) info button in the top-right corner.
+    /// Drives a SwiftUI popover that explains how the time-remaining
+    /// estimate is computed — instant calculation while macOS is
+    /// calibrating, IOPS-smoothed value once it stabilizes.
+    @State private var infoShown: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Top row: percent on the left, "Until full / Until empty"
@@ -82,6 +88,11 @@ struct ChargeBannerSection: View {
             )
             .padding(.top, 4)
         }
+        // Info button overlays the top-right corner (above the time
+        // estimate) so the percent + time read as a single unit
+        // without an icon wedged between them. The button itself is
+        // small and the popover anchors off it.
+        .overlay(alignment: .topTrailing) { infoButton }
     }
 
     /// Right-aligned time-left readout. The time value is the hero —
@@ -97,22 +108,12 @@ struct ChargeBannerSection: View {
         VStack(alignment: .trailing, spacing: 0) {
             switch battery.chargeState {
             case .charging:
-                if let m = battery.timeUntilFullMinutes,
-                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
-                    Text(s)
-                        .font(.title.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(Color.manifoldText)
-                }
+                timeOrCalculating(minutes: battery.timeUntilFullMinutes)
                 Text("window.battery.untilFull.label")
                     .font(.caption.smallCaps())
                     .foregroundStyle(.secondary)
             case .discharging:
-                if let m = battery.timeUntilEmptyMinutes,
-                   let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
-                    Text(s)
-                        .font(.title.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(Color.manifoldText)
-                }
+                timeOrCalculating(minutes: battery.timeUntilEmptyMinutes)
                 Text("window.battery.untilEmpty.label")
                     .font(.caption.smallCaps())
                     .foregroundStyle(.secondary)
@@ -124,10 +125,67 @@ struct ChargeBannerSection: View {
                 Text("window.battery.toppedOff")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.manifoldAccent)
-            case .notCharging, .unknown:
+            case .notCharging:
+                // Plugged in but not actively gaining charge — PD
+                // negotiating, or Optimized Battery Charging holding
+                // the cell at the current level. The kernel
+                // eventually publishes a time-to-full (it knows when
+                // OBC will release the hold); until then the
+                // "Calculating…" placeholder tells the user we're
+                // aware and waiting on macOS.
+                timeOrCalculating(minutes: battery.timeUntilFullMinutes)
+                Text("window.battery.untilFull.label")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+            case .unknown:
                 EmptyView()
             }
             adapterCaption
+        }
+    }
+
+    /// `(i)` button overlaid in the top-right corner of the banner.
+    /// Opens a SwiftUI popover with `infoTitleKey` / `infoBodyKey`
+    /// describing how the time-remaining estimate is computed
+    /// (instant fallback while macOS is calibrating, IOPS-smoothed
+    /// value once it stabilizes).
+    private var infoButton: some View {
+        Button {
+            infoShown.toggle()
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $infoShown) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("window.battery.timeEstimate.info.title")
+                    .font(.headline)
+                Text("window.battery.timeEstimate.info.body")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: BatteryViewSectionsConstants.infoPopoverWidth)
+            .padding()
+        }
+    }
+
+    /// "1h 24m" when the parser produced a time estimate. The
+    /// `BatterySnapshotReader` falls back to an instant computation
+    /// (live `InstantAmperage` or the adapter's rated current) so
+    /// `minutes` is essentially always non-nil while plugged in or
+    /// discharging. The fallback path here renders nothing — keeping
+    /// the slot empty in the (now-rare) edge cases is preferable to
+    /// an explicit "Calculating…" label that the user shouldn't see
+    /// in normal use.
+    @ViewBuilder
+    private func timeOrCalculating(minutes: Int?) -> some View {
+        if let m = minutes,
+           let s = Self.shortFormatter.string(from: TimeInterval(m * 60)) {
+            Text(s)
+                .font(.title.monospacedDigit().weight(.semibold))
+                .foregroundStyle(Color.manifoldText)
         }
     }
 
@@ -234,8 +292,16 @@ struct CapacityBar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
+                // Unfilled track. Uses a subtle white-on-dark tone
+                // so the full-bar extent is visible against the
+                // card background — `manifoldCard` (0x161616) sat
+                // too close to `manifoldSurface` (0x0A0A0A) and
+                // disappeared. The tone matches the `.secondary`
+                // text colour weight, so the bar reads as a quiet
+                // capacity scale rather than competing with the
+                // tinted fill.
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
-                    .fill(Color.manifoldCard)
+                    .fill(Color.manifoldText.opacity(BatteryViewSectionsConstants.capacityBarTrackOpacity))
                 RoundedRectangle(cornerRadius: BatteryViewSectionsConstants.capacityBarCornerRadius)
                     .fill(tint)
                     .frame(
@@ -770,6 +836,12 @@ enum BatteryViewSectionsConstants {
     /// bar (background track + foreground fill). Tracks
     /// `capacityBarHeight / 2` so the bar reads as a clean pill.
     static let capacityBarCornerRadius: CGFloat = 3
+
+    /// Alpha applied to `manifoldText` (white) for the unfilled
+    /// portion of `CapacityBar`. 0.18 = ~`#2E2E2E`-equivalent —
+    /// distinguishable from the card background without competing
+    /// with the tinted fill.
+    static let capacityBarTrackOpacity: Double = 0.18
 
     /// 0...100 percent scale (Int) — used so the per-segment threshold
     /// math stays in integer arithmetic.

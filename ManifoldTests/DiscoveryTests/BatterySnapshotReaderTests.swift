@@ -108,11 +108,12 @@ final class BatterySnapshotReaderTests: XCTestCase {
         // Power = V × |mA| / 1000.
         XCTAssertEqual(info.powerWatts, 12.687 * 141 / 1000, accuracy: 0.001)
 
-        // AvgTimeToFull = 65535 → sentinel → nil.
+        // FullyCharged + ExternalConnected: chargeState is
+        // .fullyCharged, neither time-remaining branch fires.
+        // (Old behavior pulled `AvgTimeToEmpty` even when plugged
+        // in; the new instant-policy correctly suppresses it.)
         XCTAssertNil(info.timeUntilFullMinutes)
-
-        // AvgTimeToEmpty = 1385 → 1385 minutes.
-        XCTAssertEqual(info.timeUntilEmptyMinutes, 1385)
+        XCTAssertNil(info.timeUntilEmptyMinutes)
 
         // Capacity values verbatim.
         XCTAssertEqual(info.designCapacityMAh, 6075)
@@ -145,9 +146,12 @@ final class BatterySnapshotReaderTests: XCTestCase {
         XCTAssertFalse(info.isExternalConnected)
         XCTAssertFalse(info.isFullyCharged)
 
-        // AvgTimeToFull = 65535 → nil; AvgTimeToEmpty = 195.
+        // Discharging: `timeUntilFullMinutes` always nil; instant
+        // `timeUntilEmptyMinutes` = `currentCap ÷ |amps| × 60`. The
+        // aged fixture has `AppleRawCurrentCapacity = 1154` and
+        // `Amperage = -2150` → 1154 ÷ 2150 × 60 ≈ 32 min.
         XCTAssertNil(info.timeUntilFullMinutes)
-        XCTAssertEqual(info.timeUntilEmptyMinutes, 195)
+        XCTAssertEqual(info.timeUntilEmptyMinutes, 32)
 
         // Negative amperage = discharging.
         XCTAssertEqual(info.amperageMilliamps, -2150)
@@ -221,54 +225,348 @@ final class BatterySnapshotReaderTests: XCTestCase {
                        .notCharging)
     }
 
-    // MARK: - Time-remaining sentinels
-
-    /// AvgTimeToFull = 0 → nil ("not estimable yet" sentinel).
-    func test_timeUntilFull_zero_isNil() {
+    /// Unplugged at 100 %: kernel keeps `FullyCharged = Yes` but
+    /// `ExternalConnected = No`. `pmset` reports this as
+    /// `100%; discharging; X:XX remaining` — we must agree.
+    /// The dispatch table requires BOTH flags for `.fullyCharged`;
+    /// otherwise we fall through to `.discharging`.
+    func test_dispatch_fullyChargedButUnplugged_isDischarging() {
         let properties = makeBaseProperties(overrides: [
-            "AvgTimeToFull": NSNumber(value: 0)
+            "FullyCharged": NSNumber(value: 1),
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 0),
+            "Amperage": NSNumber(value: -500)
+        ])
+        XCTAssertEqual(BatterySnapshotReader.parse(properties: properties, at: Date())?.chargeState,
+                       .discharging)
+    }
+
+    // MARK: - Time-remaining instant fallback policy
+    //
+    // The parse path prefers `IOPSGetTimeRemainingEstimate()`'s
+    // smoothed value when one is available (passed in via the
+    // `smoothedTimeUntilXMinutes` parameters in production). When
+    // those are nil — the IOPS smoother is calibrating — the parser
+    // falls through to an instant calculation derived from the
+    // battery's current draw. These tests exercise the fallback
+    // path; the smoothed-override path is straight assignment and
+    // doesn't need its own test.
+
+    /// Charging at a reasonable rate → curve-adjusted instant
+    /// estimate appears (no IOPS override here).
+    func test_timeUntilFull_chargingFallsBackToInstantEstimate() {
+        let properties = makeBaseProperties(overrides: [
+            "IsCharging": NSNumber(value: 1),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 1000),
+            "AppleRawCurrentCapacity": NSNumber(value: 4500),
+            "AppleRawMaxCapacity": NSNumber(value: 5400)
+        ])
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        XCTAssertNotNil(info?.timeUntilFullMinutes)
+        XCTAssertGreaterThan(info?.timeUntilFullMinutes ?? 0, 0)
+    }
+
+    /// Externally connected but `IsCharging = No` AND no current
+    /// flow (e.g. Optimized Battery Charging holding) → no instant
+    /// time-until-full. Without a current rate there's nothing to
+    /// project from.
+    func test_timeUntilFull_notChargingZeroCurrent_isNil() {
+        let properties = makeBaseProperties(overrides: [
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 0)
         ])
         XCTAssertNil(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilFullMinutes)
     }
 
-    /// AvgTimeToFull < 0 → nil (defensive against signed firmware).
-    func test_timeUntilFull_negative_isNil() {
+    /// Externally connected, `IsCharging = No` (PD still negotiating)
+    /// but current is already flowing in → instant estimate fires.
+    /// Covers the gap between `ExternalConnected` flipping (immediate
+    /// on plug-in) and `IsCharging` flipping (after PD negotiation).
+    func test_timeUntilFull_notChargingButCurrentFlowing_appears() {
         let properties = makeBaseProperties(overrides: [
-            "AvgTimeToFull": NSNumber(value: -1)
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 1000)
+        ])
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        XCTAssertNotNil(info?.timeUntilFullMinutes)
+        XCTAssertGreaterThan(info?.timeUntilFullMinutes ?? 0, 0)
+    }
+
+    /// Plugged in, `InstantAmperage = 0` (Optimized Battery Charging
+    /// is holding the cell), but `AdapterDetails.Current` is
+    /// populated. The parser uses the adapter's rated current as a
+    /// fallback so the user sees a real estimate immediately rather
+    /// than waiting on macOS's smoother.
+    func test_timeUntilFull_zeroAmperageWithAdapterCurrent_usesFallback() {
+        var properties = makeBaseProperties(overrides: [
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 0)
+        ])
+        properties["AdapterDetails"] = [
+            "Current": 3000,  // 65 W MagSafe rated at ~3.0 A
+            "Watts": 65,
+            "AdapterVoltage": 20000
+        ] as [String: Any]
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        XCTAssertNotNil(info?.timeUntilFullMinutes,
+                        "Adapter rated current should fill in for zero InstantAmperage")
+        XCTAssertGreaterThan(info?.timeUntilFullMinutes ?? 0, 0)
+    }
+
+    /// Same as above but `AdapterDetails.Current` is missing — the
+    /// parser computes `Watts × 1000 / AdapterVoltage` from the
+    /// other two fields and falls back on that.
+    func test_timeUntilFull_zeroAmperageWithAdapterWattsOnly_usesFallback() {
+        var properties = makeBaseProperties(overrides: [
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 0)
+        ])
+        // Watts × 1_000_000 ÷ AdapterVoltage_mV = 65 × 1_000_000 ÷ 20000
+        // ≈ 3250 mA implied current.
+        properties["AdapterDetails"] = [
+            "Watts": 65,
+            "AdapterVoltage": 20000
+        ] as [String: Any]
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        XCTAssertNotNil(info?.timeUntilFullMinutes)
+        XCTAssertGreaterThan(info?.timeUntilFullMinutes ?? 0, 0)
+    }
+
+    /// Plugged in, `InstantAmperage = 0`, AND no `AdapterDetails` →
+    /// no estimate possible. Defensive path covering hardware
+    /// (third-party non-PD bricks) where the adapter publishes
+    /// nothing.
+    func test_timeUntilFull_zeroAmperageNoAdapterDetails_isNil() {
+        let properties = makeBaseProperties(overrides: [
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: 0)
         ])
         XCTAssertNil(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilFullMinutes)
     }
 
-    /// AvgTimeToFull = 65535 → nil ("uninitialized" sentinel).
-    func test_timeUntilFull_sentinelValue_isNil() {
+    /// On battery (`ExternalConnected = 0`) → no time-until-full.
+    func test_timeUntilFull_externalDisconnected_isNil() {
         let properties = makeBaseProperties(overrides: [
-            "AvgTimeToFull": NSNumber(value: 65535)
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 0),
+            "Amperage": NSNumber(value: -800)
         ])
         XCTAssertNil(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilFullMinutes)
     }
 
-    /// AvgTimeToFull > 65535 → still nil (anything ≥ sentinel).
-    func test_timeUntilFull_aboveSentinel_isNil() {
+    /// Discharging (negative current, no AC) → instant time-until-
+    /// empty appears.
+    func test_timeUntilEmpty_dischargingFallsBackToInstantEstimate() {
         let properties = makeBaseProperties(overrides: [
-            "AvgTimeToFull": NSNumber(value: 99999)
+            "IsCharging": NSNumber(value: 0),
+            "ExternalConnected": NSNumber(value: 0),
+            "Amperage": NSNumber(value: -2150),
+            "AppleRawCurrentCapacity": NSNumber(value: 1154),
+            "AppleRawMaxCapacity": NSNumber(value: 3037)
         ])
-        XCTAssertNil(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilFullMinutes)
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        // 1154 mAh ÷ 2150 mA × 60 ≈ 32 min.
+        XCTAssertEqual(info?.timeUntilEmptyMinutes, 32)
     }
 
-    /// Real value preserved.
-    func test_timeUntilFull_realValue_preserved() {
+    /// Plugged in → no time-until-empty even with negative current
+    /// (occasional trickle while topped off).
+    func test_timeUntilEmpty_externalConnected_isNil() {
         let properties = makeBaseProperties(overrides: [
-            "AvgTimeToFull": NSNumber(value: 24)
-        ])
-        XCTAssertEqual(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilFullMinutes, 24)
-    }
-
-    /// Same sentinel rules apply to AvgTimeToEmpty.
-    func test_timeUntilEmpty_sentinelValue_isNil() {
-        let properties = makeBaseProperties(overrides: [
-            "AvgTimeToEmpty": NSNumber(value: 65535)
+            "ExternalConnected": NSNumber(value: 1),
+            "Amperage": NSNumber(value: -100)
         ])
         XCTAssertNil(BatterySnapshotReader.parse(properties: properties, at: Date())?.timeUntilEmptyMinutes)
+    }
+
+    /// On battery with `InstantAmperage` reported as positive — some
+    /// Apple-silicon Macs publish a positive magnitude while on
+    /// battery. The parser treats any non-zero magnitude as drain
+    /// when external power is disconnected, so a real estimate
+    /// appears immediately rather than waiting on macOS's smoother.
+    func test_timeUntilEmpty_positiveAmperageOnBattery_usesMagnitude() {
+        let properties = makeBaseProperties(overrides: [
+            "ExternalConnected": NSNumber(value: 0),
+            "IsCharging": NSNumber(value: 0),
+            "Amperage": NSNumber(value: 449),
+            "AppleRawCurrentCapacity": NSNumber(value: 4374),
+            "AppleRawMaxCapacity": NSNumber(value: 5016)
+        ])
+        let info = BatterySnapshotReader.parse(properties: properties, at: Date())
+        XCTAssertNotNil(info?.timeUntilEmptyMinutes)
+        // 4374 mAh ÷ |449 mA| × 60 ≈ 585 min (low drain on a quiet
+        // machine). Allow ±5 min of rounding noise.
+        XCTAssertEqual(info?.timeUntilEmptyMinutes ?? -1, 585, accuracy: 5)
+    }
+
+    // MARK: - Instant time-until-full helper (CC + CV curve)
+
+    /// Below 80 % the model is purely linear: `mAh_remaining / mA × 60`.
+    /// At 50 % charge with FCC = 6000 mAh and 2000 mA: half the CC
+    /// region remains (50→80, 30 % of FCC = 1800 mAh), the entire
+    /// CV region (20 %, 1200 mAh) carries the average CV multiplier
+    /// (1.75× — see the spec). Result: 1800 + 1200 × 1.75 = 3900
+    /// mAh-equivalent ÷ 2000 mA × 60 ≈ 117 min.
+    func test_instantTimeUntilFull_belowCV_appliesCurveAhead() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 2000
+        )
+        XCTAssertNotNil(result)
+        // Allow ±2 min wiggle for rounding within the model.
+        XCTAssertEqual(result ?? -1, 117, accuracy: 2)
+    }
+
+    /// At the CV start (80 %), the remaining 20 % all sits in CV
+    /// with average multiplier 1.75×: 6000 × 0.20 × 1.75 = 2100
+    /// mAh-equivalent ÷ 2000 mA × 60 ≈ 63 min.
+    func test_instantTimeUntilFull_atCVStart_appliesAverageMultiplier() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 80,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 2000
+        )
+        XCTAssertEqual(result ?? -1, 63, accuracy: 2)
+    }
+
+    /// 90 % matches the Apple-silicon real-world data point that
+    /// motivated the curve: 6075 mAh FCC at 2100 mA charge current,
+    /// kernel reports ~37 min. The curve-adjusted instant estimate
+    /// should land within a few minutes of that.
+    func test_instantTimeUntilFull_90pct_matchesKernelEstimate() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 90,
+            fullChargeCapacityMAh: 6075,
+            instantAmperageMilliamps: 2100
+        )
+        // Kernel publishes 37 min in production. Within ±5 min is
+        // close enough for a curve-fit instant fallback.
+        XCTAssertEqual(result ?? -1, 37, accuracy: 5)
+    }
+
+    /// At 100 % the model returns 0 (already full).
+    func test_instantTimeUntilFull_atFull_returnsZero() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 100,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 100
+        )
+        XCTAssertEqual(result, 0)
+    }
+
+    /// Zero current → nil (prevents divide-by-zero; semantically
+    /// "we're not actually charging right now").
+    func test_instantTimeUntilFull_zeroCurrent_isNil() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 0
+        )
+        XCTAssertNil(result)
+    }
+
+    /// Negative current → nil (we're discharging, not charging).
+    func test_instantTimeUntilFull_negativeCurrent_isNil() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: -1000
+        )
+        XCTAssertNil(result)
+    }
+
+    /// Zero `InstantAmperage` + positive `fallbackChargingCurrentMA`
+    /// → uses the fallback to compute. Mirrors the OBC-hold case.
+    func test_instantTimeUntilFull_zeroCurrentWithFallback_usesFallback() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 0,
+            fallbackChargingCurrentMA: 2000
+        )
+        XCTAssertNotNil(result)
+        // 50 % at 2000 mA with the curve: ~117 min, same as the
+        // direct-current 50 % case above.
+        XCTAssertEqual(result ?? -1, 117, accuracy: 2)
+    }
+
+    /// Live current > 0 takes precedence over any fallback —
+    /// fallback only fills in for zero/negative current.
+    func test_instantTimeUntilFull_liveCurrentBeatsFallback() {
+        let withFallback = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 4000,
+            fallbackChargingCurrentMA: 1000  // would give a much longer estimate
+        )
+        let withoutFallback = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 6000,
+            instantAmperageMilliamps: 4000
+        )
+        XCTAssertEqual(withFallback, withoutFallback,
+                       "Fallback must not influence the result when live current is available")
+    }
+
+    /// Zero FCC → nil (defensive; firmware glitch case).
+    func test_instantTimeUntilFull_zeroFCC_isNil() {
+        let result = BatterySnapshotReader.instantTimeUntilFullMinutes(
+            chargePercent: 50,
+            fullChargeCapacityMAh: 0,
+            instantAmperageMilliamps: 1000
+        )
+        XCTAssertNil(result)
+    }
+
+    // MARK: - Instant time-until-empty helper (linear)
+
+    /// Linear: 3000 mAh ÷ 1500 mA × 60 = 120 min.
+    func test_instantTimeUntilEmpty_linear() {
+        let result = BatterySnapshotReader.instantTimeUntilEmptyMinutes(
+            currentCapacityMAh: 3000,
+            instantAmperageMilliamps: -1500
+        )
+        XCTAssertEqual(result, 120)
+    }
+
+    /// Sign-agnostic: positive `InstantAmperage` is treated as
+    /// drain magnitude (some Apple-silicon Macs publish a positive
+    /// value while on battery). Caller handles the
+    /// `!isExternalConnected` precondition; the helper itself is
+    /// just doing the math.
+    func test_instantTimeUntilEmpty_positiveCurrent_treatedAsMagnitude() {
+        // 3000 mAh ÷ |+500 mA| × 60 = 360 min. Identical to the
+        // negative-amperage path above.
+        let result = BatterySnapshotReader.instantTimeUntilEmptyMinutes(
+            currentCapacityMAh: 3000,
+            instantAmperageMilliamps: 500
+        )
+        XCTAssertEqual(result, 360)
+    }
+
+    /// Zero current → nil (no rate to compute from).
+    func test_instantTimeUntilEmpty_zeroCurrent_isNil() {
+        let result = BatterySnapshotReader.instantTimeUntilEmptyMinutes(
+            currentCapacityMAh: 3000,
+            instantAmperageMilliamps: 0
+        )
+        XCTAssertNil(result)
+    }
+
+    /// Zero capacity → nil (battery is empty already; no estimate).
+    func test_instantTimeUntilEmpty_zeroCapacity_isNil() {
+        let result = BatterySnapshotReader.instantTimeUntilEmptyMinutes(
+            currentCapacityMAh: 0,
+            instantAmperageMilliamps: -1500
+        )
+        XCTAssertNil(result)
     }
 
     // MARK: - Required-field guards

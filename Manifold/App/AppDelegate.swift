@@ -71,16 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         telemetrySampler?.sampleRate = hz
     }
 
-    /// Phase 18: knob for the battery safety-poll rate — invoked by
-    /// `SettingsScene`'s MenuBarPane "Live data refresh" slider.
-    /// Forwards to `BatterySampler.sampleRate` whose `didSet` clamps
-    /// and re-arms the timer. The fast path (state changes — percent,
-    /// charging, plug/unplug) is push-driven by
-    /// `BatteryNotificationObserver` and not affected by this rate.
-    func applyBatterySampleRate(_ hz: Double) {
-        batterySampler?.sampleRate = hz
-    }
-
     private var statusItemController: StatusItemController?
     private var telemetrySampler: TelemetrySampler?
     private let samplerLifecycle = SamplerLifecycle()
@@ -104,21 +94,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Phase 18 Battery
 
-    /// Battery safety-net sampler — owns its own timer + rate.
-    /// Always-on, single rate; covers the IORegistry-only fields
-    /// (temperature, voltage, cycle count, raw mAh, instantaneous
-    /// current/power) that the IOPS notification observer doesn't
-    /// publish. The fast path (percent, charging, plug/unplug) flows
-    /// through `batteryNotificationObserver` instead.
-    private var batterySampler: BatterySampler?
+    /// Push-driven observer for the AppleSmartBattery
+    /// `kIOGeneralInterest` callback. Forwards every property update
+    /// (percent, charging state, plug state, temperature, voltage,
+    /// instantaneous current/power, cycle count, raw mAh) into
+    /// `portGraph.applyBattery(_:)`. Empty-diff callbacks are
+    /// filtered inside the observer. This is the primary battery
+    /// data path on portable Macs.
+    private var batteryInterestObserver: BatteryInterestObserver?
 
-    /// Push-driven observer for power-source state changes.
-    /// Subscribes to `IOPSNotificationCreateRunLoopSource`; macOS
-    /// fires the callback the moment the kernel publishes a fresh
-    /// percent / charging / plug-state value. Forwards each event
-    /// into `portGraph.applyBattery(_:)`, same sink the safety-net
-    /// sampler uses.
+    /// Belt-and-suspenders observer subscribed to
+    /// `IOPSNotificationCreateRunLoopSource`. The IOPS public API
+    /// covers the same percent / charging / plug-state events the
+    /// `kIOGeneralInterest` path covers, kept registered so a future
+    /// macOS revision that changes how AppleSmartBattery exposes
+    /// interest notifications doesn't strand the menu-bar icon and
+    /// alert engine. Both observers feed the same sink
+    /// (`portGraph.applyBattery(_:)`); duplicate forwards on shared
+    /// events are absorbed by `applyBattery`'s overwrite semantics.
     private var batteryNotificationObserver: BatteryNotificationObserver?
+
+    /// Last `BatteryInfo.isExternalConnected` value forwarded from
+    /// either battery observer. Used by `handleBatterySnapshot(_:)`
+    /// to detect plug / unplug edges and request a full graph
+    /// rebuild — `host.inputAdapter` is only refreshed inside
+    /// `DiscoveryService.walk()`, which today only runs on
+    /// `.fullRefresh` events. MagSafe (and other non-USB power
+    /// sources) don't fire USB IOKit events on plug/unplug, so
+    /// without this nudge `inputAdapter` would freeze at the value
+    /// the last walk saw.
+    private var lastObservedExternalConnected: Bool?
 
     /// Secondary `NSStatusItem` controller. nil on desktop Macs
     /// (probe returns nil) AND when the user has disabled the
@@ -411,13 +416,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the notch panel so a half-open panel doesn't linger as the
         // app exits (per SPEC §21.11).
         batteryAlertEngineObservationTask?.cancel()
-        // Phase 21.6 IOPS observer + safety-net sampler. Both are
-        // independent of `samplerLifecycle` (battery data path is no
-        // longer surface-gated), so they need explicit teardown here.
+        // Phase 21.7 push-driven battery observers. Both are
+        // independent of `samplerLifecycle` (battery data path is
+        // not surface-gated), so they need explicit teardown.
+        batteryInterestObserver?.stop()
+        batteryInterestObserver = nil
         batteryNotificationObserver?.stop()
         batteryNotificationObserver = nil
-        batterySampler?.stop()
-        batterySampler = nil
         // Phase 20: tear down the DA volume-mount subscription before
         // the AppDelegate strong reference drops.
         volumeMountObserver?.stop()
@@ -751,41 +756,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Phase 18 Battery wiring
 
-    /// Stand up the battery data path. Two pieces:
+    /// Stand up the battery data path. Two push observers, no
+    /// polling:
     ///
-    ///   1. `BatteryNotificationObserver` — push-driven via IOPS;
-    ///      drives the fast path (percent, charging, plug/unplug,
-    ///      time-remaining) at near-zero latency.
-    ///   2. `BatterySampler` — slow always-on safety poll; drives
-    ///      the IORegistry-only fields (temperature, voltage, cycle
-    ///      count, raw mAh, instantaneous current/power) that IOPS
-    ///      doesn't publish.
+    ///   1. `BatteryInterestObserver` — primary. Subscribes to
+    ///      `kIOGeneralInterest` on AppleSmartBattery; the kernel
+    ///      fires for every property update (percent, charging,
+    ///      plug state, temperature, voltage, current/power, cycle
+    ///      count, raw mAh, time-remaining). Validated empirically
+    ///      (Phase 21.7 PoC) to cover every field the BatteryView
+    ///      surfaces.
+    ///   2. `BatteryNotificationObserver` — belt-and-suspenders.
+    ///      Subscribes to `IOPSNotificationCreateRunLoopSource`,
+    ///      Apple's documented public API. Overlaps the interest
+    ///      observer on percent / charging / plug-state events; kept
+    ///      for resilience against a future macOS change to
+    ///      AppleSmartBattery's interest behavior.
     ///
-    /// Both feed the same sink (`portGraph.applyBattery(_:)`), so
-    /// `@Observable` consumers don't care which path produced the
-    /// snapshot.
+    /// Both feed the same sink (`portGraph.applyBattery(_:)`).
+    /// `applyBattery` is idempotent — re-assigning the same value is
+    /// harmless — so duplicate forwards on shared events don't cause
+    /// behavioral issues.
     private func installBatterySampler() {
-        // Slow safety-net poll. Always-on at a single user-tunable
-        // rate (`SettingsKeys.batterySampleRateHz`, default 1 Hz).
-        let sampler = BatterySampler { [weak self] info in
-            self?.portGraph.applyBattery(info)
+        // Primary push path. `deliverInitialSnapshot()` runs a
+        // synchronous read so the graph has a non-nil battery value
+        // before SwiftUI's first frame, even if no organic interest
+        // event has fired yet.
+        let interest = BatteryInterestObserver { [weak self] info in
+            self?.handleBatterySnapshot(info)
         }
-        let persisted = UserDefaults.standard.double(forKey: SettingsKeys.batterySampleRateHz)
-        if persisted > 0 {
-            sampler.sampleRate = persisted
-        }
-        batterySampler = sampler
-        sampler.start()
+        interest.deliverInitialSnapshot()
+        batteryInterestObserver = interest
 
-        // Push-driven IOPS observer. `deliverInitialSnapshot()` runs
-        // a synchronous read so the graph has a non-nil battery
-        // value before SwiftUI's first frame, even if no organic
-        // IOPS event has fired yet.
-        let observer = BatteryNotificationObserver { [weak self] info in
-            self?.portGraph.applyBattery(info)
+        // Belt-and-suspenders IOPS observer. Same sink, same shape.
+        let notification = BatteryNotificationObserver { [weak self] info in
+            self?.handleBatterySnapshot(info)
         }
-        observer.deliverInitialSnapshot()
-        batteryNotificationObserver = observer
+        notification.deliverInitialSnapshot()
+        batteryNotificationObserver = notification
+    }
+
+    /// Common sink for both battery push observers
+    /// (`BatteryInterestObserver` and `BatteryNotificationObserver`).
+    /// Forwards the snapshot into `portGraph.applyBattery(_:)` and,
+    /// on a real edge in `isExternalConnected`, asks `EventService`
+    /// for a `.fullRefresh` so `host.inputAdapter` is re-walked.
+    /// MagSafe / non-USB power sources don't fire USB IOKit events
+    /// on plug/unplug, so without this nudge the host's adapter
+    /// info would stay stale at the previous walk's value.
+    private func handleBatterySnapshot(_ info: BatteryInfo?) {
+        portGraph.applyBattery(info)
+        let currentExternal = info?.isExternalConnected
+        let isFlip = lastObservedExternalConnected != nil
+            && lastObservedExternalConnected != currentExternal
+        lastObservedExternalConnected = currentExternal
+        if isFlip {
+            eventService?.requestRefresh()
+        }
     }
 
     /// One-shot probe + AppStorage gate. Per SPEC §20.6 + Q12:
@@ -843,7 +870,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             notchPanelController: panelController,
             adapterDescription: { [weak self] in
                 self?.portGraph.hosts.first?.inputAdapter?.description
-            }
+            },
+            // Pass the graph so plug/unplug alerts can re-render their
+            // time-remaining caption live during the 3 s panel lifespan
+            // (matches whatever the popover would show at the same
+            // instant). Observation is scoped to the SwiftUI view
+            // tree — torn down on auto-dismiss, no cost while no
+            // alert is on screen.
+            liveBatteryGraph: portGraph
         )
         self.batteryAlertPreferences = preferences
         self.notchPanelController = panelController

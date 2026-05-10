@@ -34,12 +34,6 @@ import SwiftUI
 
 struct MenuBarPane: View {
 
-    /// Optional callback so AppDelegate can apply the battery
-    /// safety-net poll rate the moment the slider changes. Mirrors
-    /// the `onSampleRateChange` plumbing GeneralPane uses for the USB
-    /// telemetry rate. nil-tolerant for Previews / tests.
-    let onBatterySampleRateChange: ((Double) -> Void)?
-
     /// Live `PortGraph`. Used to gate the battery-alert sections —
     /// `graph.battery == nil` means desktop Mac (or pre-first-tick),
     /// in which case the entire alert configuration UI is hidden.
@@ -51,9 +45,6 @@ struct MenuBarPane: View {
 
     @AppStorage(SettingsKeys.menubarBatteryItemVisible)
     private var batteryItemVisible: Bool = SettingsDefaults.menubarBatteryItemVisible
-
-    @AppStorage(SettingsKeys.batterySampleRateHz)
-    private var batterySampleRate: Double = SettingsDefaults.batterySampleRateHz
 
     @AppStorage(SettingsKeys.batteryAlertsEnabled)
     private var batteryAlertsEnabled: Bool = SettingsDefaults.batteryAlertsEnabled
@@ -79,36 +70,11 @@ struct MenuBarPane: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Section 2 — Battery live data refresh. Single slider
-            // controls the safety-net poll for the IORegistry-only
-            // fields (temperature, voltage, cycle count, raw mAh,
-            // current, power). Percent / charging / plug state are
-            // push-driven by IOPS notifications and not affected by
-            // this rate.
-            Section("settings.menubar.section.sampling") {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("settings.menubar.sampleRate.title")
-                        Spacer()
-                        Text(String(format: "%.1f Hz", batterySampleRate))
-                            .font(.body.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(
-                        value: $batterySampleRate,
-                        in: MenuBarPaneConstants.sampleRateRange,
-                        step: MenuBarPaneConstants.sampleRateStep
-                    )
-                    Text("settings.menubar.sampleRate.detail")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .onChange(of: batterySampleRate) { _, new in
-                    onBatterySampleRateChange?(new)
-                }
-            }
-
-            // Phase 19 sections (3–7) — gated on battery hardware.
+            // Phase 19 sections — gated on battery hardware. Phase
+            // 21.7 dropped the previous "Battery sampling" section:
+            // both `BatteryInterestObserver` (kIOGeneralInterest) and
+            // `BatteryNotificationObserver` (IOPS) are push-driven, so
+            // there is no rate the user could meaningfully control.
             if batteryHardwarePresent, let prefs = batteryAlertPreferences {
                 batteryAlertsMasterSection
                 soundsMasterSection(prefs: prefs)
@@ -355,20 +321,6 @@ private struct BatteryAlertRowView: View {
 // MARK: - Constants
 
 enum MenuBarPaneConstants {
-    /// Live-data-refresh slider range — matches the
-    /// `BatterySamplerConstants.minRate ... maxRate` clamp so the
-    /// UI never lets the user pick a value the sampler will then
-    /// silently snap. 0.2 Hz floor (every 5 s) is slow enough that
-    /// idle cost is invisible; 2.0 Hz ceiling because the kernel
-    /// never publishes the underlying battery values faster than
-    /// that, so allowing higher rates just polls the same numbers
-    /// repeatedly.
-    static let sampleRateRange: ClosedRange<Double> = 0.2 ... 2.0
-
-    /// Slider step. 0.2 Hz keeps the slider stops sane (0.2, 0.4,
-    /// …, 2.0) and aligns with the lower bound.
-    static let sampleRateStep: Double = 0.2
-
     /// Default percent the "Add low alert" inline editor seeds with.
     /// 20% picks a reasonable middle of the valid range — the user
     /// can still change before saving.
@@ -395,7 +347,6 @@ enum MenuBarPaneConstants {
 
 #Preview("MenuBarPane") {
     MenuBarPane(
-        onBatterySampleRateChange: nil,
         graph: PortGraph(),
         batteryAlertPreferences: nil
     )

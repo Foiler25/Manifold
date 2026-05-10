@@ -17,21 +17,20 @@
 // ─────────────────────────────────────────────────────────────────────
 // BatteryNotificationObserver.swift
 //
-// Push-driven replacement for the previous BatterySampler timer for
-// power-source state changes. Subscribes to
-// `IOPSNotificationCreateRunLoopSource` — macOS publishes a
-// notification the moment the kernel observes a change to any power-
-// source attribute exposed via IOPS (percent, charging state,
-// time-remaining, external-power flip). The callback fires on the
-// main run loop; we hop to MainActor and forward a fresh
-// `BatterySnapshotReader.currentSnapshot()` to the consumer.
+// Belt-and-suspenders observer alongside `BatteryInterestObserver`.
+// Subscribes to `IOPSNotificationCreateRunLoopSource` — Apple's
+// documented public API for power-source state changes (percent,
+// charging state, time-remaining, external-power flip). The
+// `BatteryInterestObserver` (kIOGeneralInterest on AppleSmartBattery)
+// covers the same events plus the IORegistry-only fields, but is
+// kept here as a redundant signal in case a future macOS revision
+// changes how AppleSmartBattery exposes interest notifications.
+// Both observers feed the same sink (`portGraph.applyBattery(_:)`),
+// which is idempotent on duplicate values.
 //
 // IOPS does NOT publish updates for AppleSmartBattery-only fields
 // (temperature, voltage, cycle count, instantaneous current /
-// power). Those continue to flow through the slow `BatterySampler`
-// safety poll. This observer covers the fast-path: anything that
-// drives the menu-bar icon, the alert engine, or popover state
-// transitions.
+// power); those flow through `BatteryInterestObserver`.
 
 import Foundation
 import IOKit

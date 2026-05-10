@@ -36,11 +36,6 @@ struct SettingsScene: Scene {
     /// closure with a weak reference to TelemetrySampler.
     let onSampleRateChange: ((Double) -> Void)?
 
-    /// Phase 18 — pushed into the Menu Bar pane: invoked whenever
-    /// the battery sample-rate slider changes. AppDelegate forwards
-    /// to `BatterySampler.sampleRate` (clamps + restarts timer).
-    let onBatterySampleRateChange: ((Double) -> Void)?
-
     /// Login-item facade — production wires `LiveLoginItemController`;
     /// the placeholder fallback is nil (preview builds + tests).
     let loginItemController: (any LoginItemController)?
@@ -97,7 +92,6 @@ struct SettingsScene: Scene {
                 .tag(SettingsTabID.history.rawValue)
 
                 MenuBarPane(
-                    onBatterySampleRateChange: onBatterySampleRateChange,
                     graph: graph,
                     batteryAlertPreferences: batteryAlertPreferences
                 )

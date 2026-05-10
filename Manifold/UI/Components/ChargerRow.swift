@@ -80,8 +80,14 @@ struct ChargerRow: View {
     /// Composed subtitle: source label, then the chassis port number
     /// when known. Both pieces come from the localisation catalog so
     /// translators get a single source of truth.
+    ///
+    /// When the source classifier returns `.unknown`, fall back to
+    /// whatever string fields the kernel populated (`description`
+    /// → `model` → `manufacturer`) before showing the literal
+    /// "Unknown" label — those fields often carry a useful hint
+    /// even when our classifier couldn't make a confident call.
     private var subtitle: String {
-        let source = NSLocalizedString(adapter.source.labelKey, comment: "")
+        let source = sourceLabel
         if let position = portPosition {
             return String(
                 format: NSLocalizedString(
@@ -92,6 +98,21 @@ struct ChargerRow: View {
             )
         }
         return source
+    }
+
+    private var sourceLabel: String {
+        if adapter.source != .unknown {
+            return NSLocalizedString(adapter.source.labelKey, comment: "")
+        }
+        // Classifier didn't recognise the firmware shape. Use the
+        // best free-form field the kernel provided so the row reads
+        // as a real charger instead of a generic "Unknown".
+        for candidate in [adapter.description, adapter.model, adapter.manufacturer] {
+            if let text = candidate?.trimmingCharacters(in: .whitespaces), !text.isEmpty {
+                return text
+            }
+        }
+        return NSLocalizedString(adapter.source.labelKey, comment: "")
     }
 
     private var accessibilityLabel: String {

@@ -137,15 +137,35 @@ final class BatteryAlertEngine {
     /// the engine with the live preferences + the live notch panel
     /// controller, the live `BatteryAlertSound` statics, the live
     /// AppStorage read, and a live adapter-description lookup.
+    ///
+    /// The optional `liveBatteryGraph` parameter enables the
+    /// time-remaining caption to update during the panel's 3 s
+    /// lifespan for plug/unplug alerts — the wrapper observes
+    /// `graph.battery` and re-renders as new IOPS / interest samples
+    /// land, so the notification's figure tracks the popover instead
+    /// of staying frozen at fire time. When nil, the engine behaves
+    /// as before (static caption captured at fire time). The
+    /// observation is scoped to the SwiftUI view's lifetime — torn
+    /// down on auto-dismiss, never observed while no panel is shown.
     convenience init(
         preferences: BatteryAlertPreferences,
         notchPanelController: NotchPanelController,
-        adapterDescription: @MainActor @escaping () -> String?
+        adapterDescription: @MainActor @escaping () -> String?,
+        liveBatteryGraph: PortGraph? = nil
     ) {
         self.init(
             preferences: preferences,
             presenter: { [weak notchPanelController] content, duration in
-                notchPanelController?.show(content: content, for: duration)
+                if let liveBatteryGraph,
+                   content.kind == .pluggedIn || content.kind == .unplugged {
+                    let liveView = LiveTimeUpdatingNotchContent(
+                        graph: liveBatteryGraph,
+                        base: content
+                    )
+                    notchPanelController?.show(content: liveView, for: duration)
+                } else {
+                    notchPanelController?.show(content: content, for: duration)
+                }
             },
             player: { kind in
                 switch kind {

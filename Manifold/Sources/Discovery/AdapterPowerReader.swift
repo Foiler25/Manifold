@@ -39,6 +39,7 @@
 import Foundation
 import IOKit
 import ManifoldKit
+import os
 
 enum AdapterPowerReader {
 
@@ -127,7 +128,14 @@ enum AdapterPowerReader {
 
     /// Classify the adapter into MagSafe / USB-C / Wireless / Unknown.
     /// Tries the IsWireless flag first, then the FamilyCode, then a
-    /// case-insensitive substring match on the Description string.
+    /// case-insensitive substring match across the string fields the
+    /// kernel commonly populates (`Description`, `Name`, `HwVersion`,
+    /// `Manufacturer`). Different macOS / hardware combinations carry
+    /// the source signal in different fields — M1 Pro/Max often
+    /// leaves `Description` blank or generic ("pd charger") and puts
+    /// the recognisable string in `Name` ("MagSafe 3 Charge Cable").
+    /// Logs the full property dump when classification falls through
+    /// so unrecognised firmware shapes can be examined later.
     private static func classify(details: [String: Any]) -> AdapterInfo.Source {
         if let wireless = details["IsWireless"] as? Bool, wireless {
             return .wireless
@@ -135,13 +143,28 @@ enum AdapterPowerReader {
 
         // FamilyCode is Apple's adapter taxonomy. Observed values:
         //   0xe000_4001 — original MagSafe (Intel-era)
-        //   0xe000_4007 — Apple Silicon MagSafe 3
         //   0xe000_4006 — USB-C PD
+        //   0xe000_4007 — Apple Silicon MagSafe 3 (early M1)
+        //   0xe000_400A — Apple Silicon MagSafe 3 (MacBookPro18,x and
+        //                 newer trim — observed in May 2026 from a
+        //                 user's MagSafe-3-charged M1 Pro/Max). The
+        //                 kernel additionally publishes UsbHvc* fields
+        //                 and `Description="pd charger"` for this
+        //                 variant because MagSafe 3's electrical layer
+        //                 is USB-C PD; the FamilyCode is what
+        //                 distinguishes the physical connector.
+        //
+        // The kernel publishes FamilyCode as a 32-bit value. Swift
+        // bridges via CFNumber and sign-extends when the high bit is
+        // set, so 0xE000_400A arrives as Int = -536854518 — a literal
+        // `case 0xe000_400A` would never match. Compare against the
+        // unsigned bit pattern to dodge sign-extension entirely.
         // A non-Apple PD brick may not set FamilyCode at all; fall
-        // through to the Description heuristic in that case.
+        // through to the string heuristic in that case.
         if let family = details["FamilyCode"] as? Int {
-            switch family {
-            case 0xe000_4001, 0xe000_4007:
+            let bits = UInt32(bitPattern: Int32(truncatingIfNeeded: family))
+            switch bits {
+            case 0xe000_4001, 0xe000_4007, 0xe000_400A:
                 return .magsafe
             case 0xe000_4006:
                 return .usbC
@@ -150,15 +173,43 @@ enum AdapterPowerReader {
             }
         }
 
-        let description = (details["Description"] as? String ?? "").lowercased()
-        if description.contains("magsafe") {
+        let haystacks: [String] = [
+            "Description", "Name", "HwVersion", "Model",
+        ].compactMap { (details[$0] as? String)?.lowercased() }
+        for h in haystacks where h.contains("magsafe") {
             return .magsafe
         }
-        if description.contains("usb-c") || description.contains("usbc")
-            || description.contains("type-c") || description.contains("usb")
-        {
-            return .usbC
+        for h in haystacks {
+            if h.contains("usb-c") || h.contains("usbc")
+                || h.contains("type-c") || h.contains("type c") || h.contains("usb")
+            {
+                return .usbC
+            }
         }
+
+        // Unrecognised charger. Dump the full property dictionary
+        // once per session so the next iteration of this classifier
+        // can be informed by real data — much cheaper than asking
+        // users to run `ioreg` by hand.
+        Self.logUnrecognisedAdapter(details)
+
         return .unknown
+    }
+
+    /// Emit a one-time os_log of the full `AdapterDetails` dictionary
+    /// when `classify(...)` fell through to `.unknown`. Idempotent
+    /// per process so a chatty kernel doesn't fill the log with the
+    /// same failed classification once per IOPS callback.
+    private static let unrecognisedAdapterDumpFlag = OSAllocatedUnfairLock<Bool>(initialState: false)
+    private static func logUnrecognisedAdapter(_ details: [String: Any]) {
+        let alreadyLogged = unrecognisedAdapterDumpFlag.withLock { logged in
+            defer { logged = true }
+            return logged
+        }
+        guard !alreadyLogged else { return }
+        let pairs = details.sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " | ")
+        Log.discovery.info("[AdapterDetails:unknown] \(pairs, privacy: .public)")
     }
 }

@@ -28,10 +28,11 @@
 // counter approach is robust to bursts; only when the count
 // genuinely drops to zero do we stop.
 //
-// Battery sampling no longer goes through this gate — the fast path
-// (state changes) is push-driven by `BatteryNotificationObserver`
-// via IOPS, and the slow safety-net `BatterySampler` runs always-on
-// at a single rate.
+// Battery sampling does not go through this gate — both push paths
+// (`BatteryInterestObserver` for kIOGeneralInterest on
+// AppleSmartBattery and `BatteryNotificationObserver` for IOPS) run
+// always-on, and `applyBattery(_:)` is idempotent on duplicate
+// values.
 
 import Foundation
 
