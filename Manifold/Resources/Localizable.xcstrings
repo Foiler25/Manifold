@@ -1166,6 +1166,28 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB Power Draw" } } }
     },
+    "window.power.section.draw.info.title" : {
+      "comment" : "Headline of the info popover attached to the USB Power Draw section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "USB Power Draw" } } }
+    },
+    "window.power.section.draw.info.body" : {
+      "comment" : "Body of the info popover attached to the USB Power Draw section header. Describes the live total + the per-device list. The earlier draft mentioned an over-budget red signal — dropped because the cue requires `host.inputAdapter` to be populated, which is sometimes nil-when-plugged-in, so the red appearance is unreliable in practice.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total power your Mac is delivering across USB ports right now, summed live from each connected device's IOKit-reported draw. Devices that don't publish a power figure (some HID accessories) aren't included in the total."
+          }
+        }
+      }
+    },
+    "window.power.section.draw.info.accessibility" : {
+      "comment" : "VoiceOver label for the info button on the USB Power Draw section header.",
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "About USB power draw" } } }
+    },
     "window.power.section.details" : {
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Adapter Details" } } }

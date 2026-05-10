@@ -31,9 +31,22 @@ struct USBPowerDrawSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("window.power.section.draw")
-                .font(.caption.smallCaps())
-                .foregroundStyle(.secondary)
+            // Section header — small-caps title on the left, click-
+            // to-open info popover on the right. Mirrors the
+            // `BatterySectionHeader` shape used by the battery cards
+            // so the affordance reads as familiar across the tab.
+            HStack(spacing: 6) {
+                Text("window.power.section.draw")
+                    .font(.caption.smallCaps())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                InfoPopoverButton(
+                    titleKey: "window.power.section.draw.info.title",
+                    bodyKey: "window.power.section.draw.info.body",
+                    accessibilityKey: "window.power.section.draw.info.accessibility",
+                    iconFont: .caption
+                )
+            }
 
             HStack(alignment: .firstTextBaseline) {
                 Text("window.power.field.totalDraw")
