@@ -348,12 +348,18 @@ final class BatteryStatusItemController {
     /// Discharging / fully-charged states omit the bolt and center
     /// just the percentage.
     ///
-    /// At `percent >= 100` the body fills with an `∞` glyph instead
-    /// of the digits-plus-bolt unit. "100" + a bolt is the most
-    /// cramped state the icon ever gets into (three digits leave
-    /// almost no room for the bolt), and "fully charged" reads
+    /// At `percent >= 100 && charging` (plugged in at full charge)
+    /// the body fills with an `∞` glyph instead of the
+    /// digits-plus-bolt unit. "100" + a bolt is the most cramped
+    /// state the icon ever gets into (three digits leave almost no
+    /// room for the bolt), and "fully charged AND plugged in" reads
     /// naturally as "infinite battery left" — single tall glyph,
     /// instantly recognisable at menu-bar scale.
+    ///
+    /// On battery at 100% (just unplugged, percent hasn't dropped
+    /// yet) the icon reverts to the literal "100" so the user can
+    /// watch the digits tick down — `∞` would lie about a draining
+    /// cell.
     private func makeBatteryIcon(percent: Int, charging: Bool) -> NSImage {
         let width = BatteryStatusItemControllerConstants.iconWidth
         let height = BatteryStatusItemControllerConstants.iconHeight
@@ -367,10 +373,13 @@ final class BatteryStatusItemController {
         let infinityFontSize = BatteryStatusItemControllerConstants.iconInfinityFontSize
         let boltGap = BatteryStatusItemControllerConstants.iconChargingBoltGap
 
-        // At full charge the body shows just an `∞` — no digits, no
-        // bolt. Captured up-front so the drawing block below can
-        // branch on a single boolean.
-        let isFull = percent >= 100
+        // At full charge AND plugged in, the body shows just an `∞`
+        // — no digits, no bolt. On battery at 100% the icon reverts
+        // to the literal "100" so the user sees the percent tick
+        // down as the cell discharges; `∞` is reserved for "topped
+        // off with power flowing in." Captured up-front so the
+        // drawing block below can branch on a single boolean.
+        let isFull = percent >= 100 && charging
 
         // Pre-render the bolt symbol outside the drawing block so we
         // can measure its size for the centered layout below. Skipped
