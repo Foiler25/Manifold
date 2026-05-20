@@ -109,6 +109,11 @@ enum CablesViewConstants {
     static let cardCornerRadius: CGFloat = 12
 }
 
+#if DEBUG
+// Bodies reference `PreviewCableProvider` (DEBUG-only in
+// `CablesPreviewData.swift`). The `#Preview` macro doesn't gate its
+// own expansion on DEBUG, so we have to gate manually or the Release
+// build fails on the unresolved symbol.
 #Preview("CablesView — loading (no snapshot yet)") {
     let engine = CableEngine(provider: PreviewCableProvider(snapshots: []))
     return CablesView(engine: engine, graph: PortGraph())
@@ -123,3 +128,4 @@ enum CablesViewConstants {
         .frame(width: 540, height: 400)
         .background(Color.manifoldSurface)
 }
+#endif

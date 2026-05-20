@@ -280,6 +280,12 @@ struct MainWindow: View {
     }
 }
 
+#if DEBUG
+// The `#Preview` macro emits closures whose bodies are compiled
+// unconditionally — including in Release. `PreviewCableProvider` and
+// `CableSnapshot.empty` live behind `#if DEBUG` in
+// `CablesPreviewData.swift`, so the preview bodies have to be gated
+// the same way or the Release build fails on the unresolved symbol.
 #Preview("MainWindow — populated") {
     let graph = PortGraph()
     graph.replace(hosts: [PreviewData.macBook])
@@ -305,6 +311,7 @@ struct MainWindow: View {
     )
     .frame(width: 920, height: 600)
 }
+#endif
 
 // MARK: - Phase 11 menu signal
 

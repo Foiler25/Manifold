@@ -344,6 +344,10 @@ struct CablePortCard: View {
     }
 }
 
+#if DEBUG
+// Body references `CableSnapshot.previewEmptyPort`, defined behind
+// `#if DEBUG` in `CablesPreviewData.swift`. Manual gate so Release
+// doesn't try to resolve the seed.
 #Preview("CablePortCard — empty port") {
     let snap = CableSnapshot.previewEmptyPort
     return CablePortCard(port: snap.ports[0], snapshot: snap, graph: PortGraph())
@@ -351,3 +355,4 @@ struct CablePortCard: View {
         .frame(width: 520)
         .background(Color.manifoldSurface)
 }
+#endif
