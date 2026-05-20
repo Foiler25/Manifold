@@ -214,13 +214,14 @@ Swift 6 strict concurrency throughout. The shape:
 
 | Trigger | What runs | Where |
 |---|---|---|
-| Push / PR | `.github/workflows/ci.yml` — Debug + Release builds, ManifoldKit SPM tests, ManifoldTests, LeakBenchTests as a separate step | `macos-15` GitHub-hosted runner with Xcode 26 |
-| `git tag v*` | Local `./build-dmg.sh && ./release-github.sh --publish` (no CI) | Maintainer's Mac |
+| Local pre-PR | `xcodebuild test -only-testing:ManifoldTests` + `swift test --package-path ManifoldKit` + (when IOKit changes) `LeakBenchTests` | Maintainer's Mac |
+| `git tag v*` | `./build-dmg.sh && ./release-github.sh --publish` | Maintainer's Mac |
 
 The release pipeline runs locally because the Sparkle EdDSA private
-key (`keyfile.txt`) lives only on the maintainer's machine. The CI
-workflow handles the per-PR build + test signal; tags trigger the
-local DMG + GitHub-release flow.
+key (`keyfile.txt`) lives only on the maintainer's machine, and the
+project's `MACOSX_DEPLOYMENT_TARGET` (macOS 26) outpaces the
+GitHub-hosted runner labels' Xcode bundling — running the build
+gate locally avoids tracking the runner-image promotion schedule.
 
 ## Where to look next
 

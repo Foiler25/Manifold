@@ -1,6 +1,5 @@
 # Manifold
 
-[![CI](https://github.com/Foiler25/Manifold/actions/workflows/ci.yml/badge.svg)](https://github.com/Foiler25/Manifold/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![platform](https://img.shields.io/badge/macOS-26.0%2B-lightgrey)
 ![swift](https://img.shields.io/badge/Swift-6-orange)

@@ -61,8 +61,7 @@ Manifold/
 ├── scripts/icons/             Icon generator (Swift script + masters)
 ├── build-dmg.sh               Local DMG packaging + Sparkle EdDSA sign
 ├── release-github.sh          Local GitHub release pipeline
-├── appcast.xml                Sparkle update feed (initial empty seed)
-└── .github/workflows/ci.yml   Build + test on every PR
+└── appcast.xml                Sparkle update feed (initial empty seed)
 ```
 
 The internal Architect/Builder/Reviewer agent docs (`SPEC.md`,
@@ -125,9 +124,13 @@ xcodebuild -scheme Manifold -destination 'platform=macOS' \
     -only-testing:ManifoldUITests test
 ```
 
-Every PR runs the full Xcode + SPM test matrix on
-`macos-15` via `.github/workflows/ci.yml`. `LeakBenchTests` runs
-as a separate step so a leaks-only regression shows red on its own.
+Manifold doesn't currently have a hosted CI workflow — the
+release pipeline (`build-dmg.sh` + `release-github.sh`) is the
+build gate. Run the test commands above locally before opening
+a PR. `LeakBenchTests` is the per-PR replacement for the
+Reviewer-deferred §18.0 LEAK-100x procedure; run it explicitly
+with `-only-testing:ManifoldTests/LeakBenchTests` whenever a
+change touches IOKit.
 
 ## PR checklist
 
