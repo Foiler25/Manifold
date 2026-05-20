@@ -11,8 +11,6 @@ Thunderbolt connections in real time, with per-port power draw and
 link-speed telemetry. Menu bar utility and standalone window app
 in one — no telemetry, no network, no sandbox compromises.
 
-![Manifold popover screenshot](docs/screenshots/popover.png)
-
 ---
 
 ## Features
@@ -86,22 +84,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full developer setup.
 Short version: clone the repo, open `Manifold.xcodeproj` in Xcode 26+,
 let it resolve the SPM packages (GRDB + Sparkle), `Cmd-R` to build
 and run.
-
----
-
-## Screenshots
-
-| Surface | Screenshot |
-|---|---|
-| Menu bar popover | ![popover](docs/screenshots/popover.png) |
-| Main window — Topology tab | ![window-topology](docs/screenshots/window-topology.png) |
-| Main window — History tab | ![window-history](docs/screenshots/window-history.png) |
-| Desktop medium widget | ![widget-medium](docs/screenshots/widget-medium.png) |
-
-_Captures are pending Brandon's first public release. The placeholder
-references above point at the canonical filenames the app's `#Preview`
-blocks render — see `docs/screenshots/README.md` for the capture
-procedure._
 
 ---
 
