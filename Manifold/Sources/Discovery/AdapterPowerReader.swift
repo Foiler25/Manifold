@@ -24,17 +24,36 @@
 // no public API that enumerates the inactive sources, so we surface
 // what we can: the active adapter and its source.
 //
-// Source classification heuristics:
-//   - `IsWireless == true` → `.wireless`
-//   - `Description` containing "MagSafe" → `.magsafe`
-//   - `Description` containing "USB" / "USB-C" / "Type-C" → `.usbC`
-//   - `FamilyCode` 0xe000_4006 (Apple's USB-C PD family) → `.usbC`
-//   - `FamilyCode` 0xe000_4001 / 0xe000_4007 (MagSafe family) → `.magsafe`
-//   - otherwise → `.unknown`
+// Source classification, in order:
+//   1. `IsWireless == true` → `.wireless`
+//   2. Hardware probe of the MagSafe port controller
+//      (`AppleTCControllerType11` / `AppleHPMInterfaceType11`):
+//      - any MagSafe port reports `ConnectionActive = true` → `.magsafe`
+//      - MagSafe port hardware exists but every entry is disconnected
+//        → `.usbC`  (forces the override below — see why)
+//   3. Otherwise fall through to firmware string / `FamilyCode`:
+//      - `Description` / `Name` / `HwVersion` / `Model` mentions
+//        "MagSafe" → `.magsafe`
+//      - same strings mention "USB" / "USB-C" / "Type-C" → `.usbC`
+//      - `FamilyCode` 0xe000_4006 → `.usbC`
+//      - `FamilyCode` 0xe000_4001 / 0xe000_4007 / 0xe000_400A → `.magsafe`
+//      - otherwise → `.unknown`
+//
+// Why the hardware probe wins over `FamilyCode`: on MBP18,x (M1 Pro/Max)
+// the kernel publishes `FamilyCode = 0xE000_400A` with `Description =
+// "pd charger"` regardless of whether the charger is plugged into the
+// MagSafe port or a USB-C port via a PD-capable cable / dock. The
+// MagSafe-3 connector's electrical layer **is** USB-C PD, so the
+// family taxonomy collapses both into one code. The only authoritative
+// signal for "is current actually flowing through the MagSafe port" is
+// the MagSafe port controller's own `ConnectionActive` bit.
 //
 // The FamilyCode constants are observed values, not Apple-published; if
 // a future macOS revision changes them, the Description-string fallback
-// above still classifies most chargers correctly.
+// above still classifies most chargers correctly. Macs without a
+// MagSafe port (M-series Air, M1/M2 Mac mini, desktop iMacs) have no
+// Type11 entries at all — the hardware probe returns `.absent` and the
+// FamilyCode / string heuristic runs unchanged.
 
 import Foundation
 import IOKit
@@ -127,18 +146,52 @@ enum AdapterPowerReader {
     }
 
     /// Classify the adapter into MagSafe / USB-C / Wireless / Unknown.
-    /// Tries the IsWireless flag first, then the FamilyCode, then a
-    /// case-insensitive substring match across the string fields the
-    /// kernel commonly populates (`Description`, `Name`, `HwVersion`,
-    /// `Manufacturer`). Different macOS / hardware combinations carry
-    /// the source signal in different fields — M1 Pro/Max often
-    /// leaves `Description` blank or generic ("pd charger") and puts
-    /// the recognisable string in `Name` ("MagSafe 3 Charge Cable").
+    ///
+    /// Order of evidence, most authoritative first:
+    ///   1. `IsWireless` flag
+    ///   2. **Hardware probe** of the MagSafe port controller. If the
+    ///      MagSafe port has `ConnectionActive = true`, it's MagSafe.
+    ///      If the MagSafe port exists but is disconnected, the charger
+    ///      must be flowing through USB-C — even when `FamilyCode`
+    ///      claims `.magsafe`. This pre-empts the FamilyCode trap on
+    ///      MBP18,x where 0xE000_400A appears for both MagSafe-3 and
+    ///      USB-C PD chargers on the same chassis.
+    ///   3. FamilyCode taxonomy (Apple-internal, observed values)
+    ///   4. Substring search across `Description`, `Name`, `HwVersion`,
+    ///      `Model` — different macOS / hardware combinations carry
+    ///      the source signal in different fields. M1 Pro/Max often
+    ///      leaves `Description = "pd charger"` and puts the
+    ///      recognisable string in `Name` ("MagSafe 3 Charge Cable"),
+    ///      so we have to look at multiple fields.
+    ///
     /// Logs the full property dump when classification falls through
     /// so unrecognised firmware shapes can be examined later.
     private static func classify(details: [String: Any]) -> AdapterInfo.Source {
         if let wireless = details["IsWireless"] as? Bool, wireless {
             return .wireless
+        }
+
+        // Hardware probe (see file header). Trust this above any
+        // firmware string / FamilyCode because the MagSafe port
+        // controller's `ConnectionActive` is the only authoritative
+        // signal for "is current actually flowing through the MagSafe
+        // receptacle right now."
+        switch magSafePortState() {
+        case .connected:
+            return .magsafe
+        case .disconnected:
+            // MagSafe port exists, but nothing is plugged into it —
+            // the active adapter must be on a USB-C receptacle even
+            // if FamilyCode says MagSafe. Skip the FamilyCode branch
+            // entirely and fall through to the string heuristic so a
+            // genuinely off-taxonomy charger can still be matched on
+            // its description.
+            if let kind = sourceFromStrings(details: details) {
+                return kind
+            }
+            return .usbC
+        case .absent:
+            break  // No MagSafe hardware → FamilyCode + strings, as before.
         }
 
         // FamilyCode is Apple's adapter taxonomy. Observed values:
@@ -151,8 +204,10 @@ enum AdapterPowerReader {
         //                 kernel additionally publishes UsbHvc* fields
         //                 and `Description="pd charger"` for this
         //                 variant because MagSafe 3's electrical layer
-        //                 is USB-C PD; the FamilyCode is what
-        //                 distinguishes the physical connector.
+        //                 is USB-C PD. We only land here when the
+        //                 MagSafe hardware probe returned `.absent`,
+        //                 so the override that disambiguates
+        //                 MagSafe-3 vs USB-C-via-dock is not needed.
         //
         // The kernel publishes FamilyCode as a 32-bit value. Swift
         // bridges via CFNumber and sign-extends when the high bit is
@@ -173,6 +228,24 @@ enum AdapterPowerReader {
             }
         }
 
+        if let kind = sourceFromStrings(details: details) {
+            return kind
+        }
+
+        // Unrecognised charger. Dump the full property dictionary
+        // once per session so the next iteration of this classifier
+        // can be informed by real data — much cheaper than asking
+        // users to run `ioreg` by hand.
+        Self.logUnrecognisedAdapter(details)
+
+        return .unknown
+    }
+
+    /// Substring scan across the kernel-published string fields. Hoisted
+    /// into its own helper so the hardware-probe branch and the
+    /// FamilyCode-fallthrough branch can both use it without
+    /// duplicating the haystack list.
+    private static func sourceFromStrings(details: [String: Any]) -> AdapterInfo.Source? {
         let haystacks: [String] = [
             "Description", "Name", "HwVersion", "Model",
         ].compactMap { (details[$0] as? String)?.lowercased() }
@@ -186,14 +259,73 @@ enum AdapterPowerReader {
                 return .usbC
             }
         }
+        return nil
+    }
 
-        // Unrecognised charger. Dump the full property dictionary
-        // once per session so the next iteration of this classifier
-        // can be informed by real data — much cheaper than asking
-        // users to run `ioreg` by hand.
-        Self.logUnrecognisedAdapter(details)
+    /// Tristate result of probing the MagSafe port controller in IOKit.
+    /// `.absent` means this Mac has no MagSafe port hardware at all
+    /// (older Air, mini, iMac); `.disconnected` means the port exists
+    /// but nothing is plugged into it; `.connected` means a cable is
+    /// engaged with the MagSafe receptacle right now.
+    private enum MagSafePortState {
+        case absent
+        case disconnected
+        case connected
+    }
 
-        return .unknown
+    /// Walks the IOKit classes Apple uses for the MagSafe port
+    /// controller across M1 / M2 / M3+ chip generations and reports
+    /// whether the MagSafe receptacle has an active connection.
+    ///
+    /// Two classes to cover:
+    ///   - `AppleTCControllerType11` — M1 / M2 era
+    ///   - `AppleHPMInterfaceType11` — M3+ era
+    ///
+    /// Both expose `ConnectionActive` (Bool) and a
+    /// `PortTypeDescription` starting with "MagSafe". We bias the
+    /// match on `PortTypeDescription` rather than trusting the class
+    /// suffix alone because the same Type11 class on some chassis
+    /// also matches a different power-input role — the string is what
+    /// makes it unambiguous.
+    ///
+    /// `nonisolated static` to match the surrounding reader; called
+    /// from the IOKitQueue actor via `currentInputPower()`. The probe
+    /// is cheap (1-2 IOKit entries on real hardware) and runs once
+    /// per power-event tick, not in a hot loop. Uses
+    /// `withMatchingServices` / `forEachEntry` so all IOKit handle
+    /// management goes through the project's ~Copyable `IOObject`
+    /// wrapper (DECISIONS.md D8 — no raw `IOObjectRelease` here).
+    private static func magSafePortState() -> MagSafePortState {
+        let classes = ["AppleTCControllerType11", "AppleHPMInterfaceType11"]
+        var sawAnyMagSafePort = false
+        var anyActive = false
+
+        for cls in classes {
+            guard let matching = IOServiceMatching(cls) else { continue }
+            withMatchingServices(matching) { iter in
+                forEachEntry(in: iter) { entry in
+                    // Only treat this entry as a MagSafe port if its
+                    // `PortTypeDescription` says so. Some Type11
+                    // entries on non-MagSafe chassis represent a
+                    // different role and would falsely register as a
+                    // MagSafe receptacle.
+                    guard let typeDesc = stringProperty("PortTypeDescription", of: entry),
+                          typeDesc.lowercased().contains("magsafe") else { return }
+                    sawAnyMagSafePort = true
+                    if boolProperty("ConnectionActive", of: entry) == true {
+                        anyActive = true
+                    }
+                }
+            }
+            // Early-exit the outer loop once any class found a
+            // connected MagSafe port — both classes never co-exist on
+            // the same Mac, but the short-circuit keeps the probe
+            // cheap on the M3+ path too.
+            if anyActive { break }
+        }
+
+        if anyActive { return .connected }
+        return sawAnyMagSafePort ? .disconnected : .absent
     }
 
     /// Emit a one-time os_log of the full `AdapterDetails` dictionary
