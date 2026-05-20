@@ -27,5 +27,134 @@
     <language>en</language>
     <!-- No <item> entries yet — this is the Phase 16 initial seed.
          release-github.sh prepends new <item> nodes above this comment. -->
+      <item>
+      <title>Manifold 0.1.0</title>
+      <pubDate>Wed, 20 May 2026 22:47:44 +0000</pubDate>
+      <sparkle:version>0.1.0</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+# Manifold 0.1.0 — first release
+
+**Every port, mapped.**
+
+Manifold is a free, open-source macOS menu-bar + window app that
+visualizes the physical USB and Thunderbolt topology of your Mac in
+real time, with per-device power draw, link-speed telemetry, and a
+live battery / charger view. No network, no telemetry, no
+sandbox compromises — everything is read from IOKit and displayed
+locally.
+
+This is the first public release. Everything in the list below
+is new.
+
+## Highlights
+
+### Live topology
+- **Device tree per host.** USB controllers → physical ports (P1,
+  P2, …) → connected devices → daisy-chained children. Per-port
+  labels stay stable across reconnects so a flapping device doesn't
+  reshuffle the list.
+- **Hot-plug detection.** IOKit-driven; the popover updates within
+  ~100 ms of a connect or disconnect.
+- **Daisy-chain awareness.** Thunderbolt devices behind hubs / docks
+  nest under their parent in the tree.
+- **Display info.** Each connected display shows resolution, refresh
+  rate, panel type, and whether it's the main / built-in display.
+
+### Per-device telemetry
+- Real-time **power draw** in watts.
+- **Negotiated link speed** (USB 2 / 3 / 4 / Thunderbolt).
+- 60-sample **sparkline history** per device.
+
+### Battery & charger
+- Charge percentage, time-to-full / time-to-empty, charge state
+  (charging, plugged in, discharging, fully charged).
+- Dedicated **menu-bar battery icon** with the percent rendered
+  inside the body and a charging bolt when external power is
+  connected.
+- An **∞** glyph at full charge while plugged in — and the literal
+  "100" the moment you unplug, so you can watch the cell tick down.
+- Notch-pop notifications for plug, unplug, low battery, full
+  charge, and threshold crossings.
+- **USB Power Draw** card showing the total draw across all
+  connected devices vs. the active charger's input budget, with a
+  per-device breakdown sorted by biggest consumer first.
+- **Cable / port** identification of where the charger is connected
+  — MagSafe vs USB-C — including correct handling on MacBook Pro
+  M1 Pro/Max where charging through a USB-C dock previously read
+  as MagSafe.
+
+### Cable diagnostics (Apple Silicon)
+- Per-port USB-C / Thunderbolt card with PD power profile, active
+  transport, e-marker fingerprint, and trust signals — adapted
+  from the open-source WhatCable utility (MIT, relicensed
+  GPL-3.0 with attribution).
+
+### Diagnostics engine
+Five rules ship in the initial set:
+- **Running @ USB 2.0** — USB 3.x device negotiated down to a USB 2
+  link.
+- **Power deficit** — device requesting more than the port supplies.
+- **Cable bottleneck** — TB4 device on a TB3 link.
+- **Daisy-chain depth** — chain length past Apple's 6-device TB limit.
+- **Hub overcommit** — sum of downstream draw exceeds the hub's
+  power budget.
+
+### SD card slot
+Card-reader–equipped MacBook Pros now expose the SD slot as a port
+chip and a row in the topology, with the card's product name and
+capacity (SDHC / SDXC) when one is inserted. Detects hot-insert and
+hot-eject without waiting on an unrelated USB event.
+
+### Persistent history
+- SQLite-backed event log + downsampled telemetry.
+- 24 h raw / 30 d 1-min / 1 y 1-hour by default; tunable from
+  Settings.
+
+### Export
+- Event log + sample CSV (opens cleanly in Excel and Numbers).
+- Full topology as schema-versioned JSON.
+- **File ▸ Export…** (⌘E).
+
+### Apple Shortcuts (App Intents)
+Five intents you can drop into a Shortcut or call from Spotlight:
+- `Get Connected Devices`
+- `Get Power Draw`
+- `Get Active Diagnostics`
+- `Watch For Device Connect`
+- `Export Topology Snapshot`
+
+### Widgets
+- Desktop **small** — device count + total power.
+- Desktop **medium** — top 4 devices with sparklines.
+- **Control Center** — tap to open the popover.
+
+### Settings
+Sample rate, theme, notification toggles, retention sliders,
+launch-at-login, and Sparkle update channel — all live-applied.
+
+### Updates & privacy
+- **Sparkle** auto-updates with EdDSA-signed appcast.
+- 100 % local. No network calls except the Sparkle update check.
+- No Wi-Fi, Bluetooth, AirPlay, Continuity, VPN, SMB, NFS surfaces —
+  Manifold is a physical-port visualizer on purpose.
+
+## Requirements
+- macOS 26.0 or later.
+- Apple Silicon recommended (cable diagnostics + USB-C port
+  occupancy are Apple-Silicon-only; everything else works on
+  Intel).
+
+## Install & update
+- **Already installed?** Manifold auto-updates — pick *Check for
+  Updates…* in Settings → Updates to grab it now, or wait for the
+  next scheduled check.
+- **First time?** Download `Manifold-0.1.0.dmg`, open it, drag
+  Manifold to Applications. First launch: right-click → Open, then
+  System Settings → Privacy & Security → Open Anyway.
+      ]]></description>
+      <enclosure url="https://github.com/Foiler25/Manifold/releases/download/v0.1.0/Manifold-0.1.0.dmg" sparkle:edSignature="DzaFEqO1ATcRTxHHm7iFCNfsRJP3cXcjtQaLdGvDbQXByLgv+99lgdUMFzmNzwtmsmkGEU8cf66Q4ioxfaBSBA==" length="6187199" type="application/octet-stream" />
+    </item>
   </channel>
 </rss>
