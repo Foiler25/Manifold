@@ -1,3 +1,10 @@
+# ── Claude Code agent state ────────────────────────────────────────────
+# Transient worktrees + agent bookkeeping created by Claude Code while
+# it runs in the repo. Never useful in commits; gitignored at the
+# directory level so a stray gitlink to a temporary worktree branch
+# can't sneak back into history.
+.claude/
+
 # ── Internal planning / agent docs ─────────────────────────────────────
 # These are working documents for the Architect/Builder/Reviewer agent
 # pipeline. They guide development but are not part of the public app
