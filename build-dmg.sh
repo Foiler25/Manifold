@@ -2,8 +2,15 @@
 set -euo pipefail
 
 # build-dmg.sh — build Manifold.app (Release, ad-hoc signed) and package as a .dmg
-# Usage: ./build-dmg.sh [version]
-#   version: optional; defaults to MARKETING_VERSION from the Xcode project.
+# Usage: ./build-dmg.sh [version] [--local-build]
+#   version:       optional; defaults to MARKETING_VERSION from the Xcode project.
+#   --local-build: put derived data in a local-disk temp dir instead of the
+#                  in-repo `build/` directory. Use when the repo lives on a
+#                  network/USB volume (e.g. the SMB share this repo sits on) —
+#                  building derived data in-repo pushes every intermediate
+#                  object across the mount and a clean Release build takes
+#                  hours instead of minutes. Either way the build dir is
+#                  removed by the cleanup trap on exit.
 
 PROJECT="Manifold.xcodeproj"
 SCHEME="Manifold"
@@ -19,9 +26,24 @@ if ! command -v create-dmg >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "${1-}" != "" ]]; then
-  VERSION="$1"
-else
+VERSION=""
+LOCAL_BUILD=false
+for arg in "$@"; do
+  case "$arg" in
+    --local-build)
+      LOCAL_BUILD=true
+      ;;
+    -*)
+      echo "usage: $0 [version] [--local-build]" >&2
+      exit 1
+      ;;
+    *)
+      VERSION="$arg"
+      ;;
+  esac
+done
+
+if [[ -z "$VERSION" ]]; then
   VERSION="$(awk -F'= ' '/MARKETING_VERSION/ {gsub(/[; ]/, "", $2); print $2; exit}' "$PROJECT/project.pbxproj")"
 fi
 
@@ -31,7 +53,14 @@ if [[ -z "$VERSION" ]]; then
 fi
 
 DMG_NAME="Manifold-${VERSION}.dmg"
-BUILD_DIR="build"
+if [[ "$LOCAL_BUILD" == true ]]; then
+  # Local-disk derived data; removed by the cleanup trap like the
+  # in-repo default.
+  BUILD_DIR="$(mktemp -d -t manifold-derived-data)"
+  echo "==> Local build dir: $BUILD_DIR"
+else
+  BUILD_DIR="build"
+fi
 APP_PATH="$BUILD_DIR/Build/Products/Release/$APP_NAME"
 STAGE_DIR="$(mktemp -d -t manifold-dmg-stage)"
 
