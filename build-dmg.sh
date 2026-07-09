@@ -58,9 +58,16 @@ if [[ "$LOCAL_BUILD" == true ]]; then
   # in-repo default.
   BUILD_DIR="$(mktemp -d -t manifold-derived-data)"
   echo "==> Local build dir: $BUILD_DIR"
+  # hdiutil can't reliably create disk images directly on network
+  # mounts (create-dmg dies with `hdiutil: create failed - error
+  # -5344` on this repo's SMB share), so build the DMG in a local
+  # temp dir and move the finished file to the repo root afterwards.
+  DMG_OUT_DIR="$(mktemp -d -t manifold-dmg-out)"
 else
   BUILD_DIR="build"
+  DMG_OUT_DIR="$REPO_ROOT"
 fi
+DMG_OUT="$DMG_OUT_DIR/$DMG_NAME"
 APP_PATH="$BUILD_DIR/Build/Products/Release/$APP_NAME"
 STAGE_DIR="$(mktemp -d -t manifold-dmg-stage)"
 
@@ -75,6 +82,11 @@ STAGE_DIR="$(mktemp -d -t manifold-dmg-stage)"
 #      exists on disk are unregistered.
 cleanup() {
   rm -rf "$STAGE_DIR" || true
+  # Local DMG output dir (only when --local-build; empty on success
+  # because the DMG has been moved to the repo root by then).
+  if [[ -n "${DMG_OUT_DIR-}" && "$DMG_OUT_DIR" != "$REPO_ROOT" && -d "$DMG_OUT_DIR" ]]; then
+    rm -rf "$DMG_OUT_DIR" || true
+  fi
   if [[ -n "${APP_PATH-}" && -d "$APP_PATH" ]]; then
     "$LSREG" -u "$APP_PATH" >/dev/null 2>&1 || true
   fi
@@ -171,8 +183,13 @@ create-dmg \
   --icon "$APP_NAME" 125 120 \
   --app-drop-link 375 120 \
   --hide-extension "$APP_NAME" \
-  "$DMG_NAME" \
+  "$DMG_OUT" \
   "$STAGE_DIR/"
+
+if [[ "$DMG_OUT" != "$REPO_ROOT/$DMG_NAME" ]]; then
+  echo "==> Moving DMG to repo root"
+  mv "$DMG_OUT" "$REPO_ROOT/$DMG_NAME"
+fi
 
 SHA="$(shasum -a 256 "$DMG_NAME" | awk '{print $1}')"
 
