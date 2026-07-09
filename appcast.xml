@@ -161,5 +161,35 @@ launch-at-login, and Sparkle update channel — all live-applied.
       ]]></description>
       <enclosure url="https://github.com/Foiler25/Manifold/releases/download/v0.1.0/Manifold-0.1.0.dmg" sparkle:edSignature="DzaFEqO1ATcRTxHHm7iFCNfsRJP3cXcjtQaLdGvDbQXByLgv+99lgdUMFzmNzwtmsmkGEU8cf66Q4ioxfaBSBA==" length="6187199" type="application/octet-stream" />
     </item>
+      <item>
+      <title>Manifold 0.2.0</title>
+      <pubDate>Thu, 09 Jul 2026 15:26:34 +0000</pubDate>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<h3>Manifold 0.2.0</h3>
+<p>A small, focused release: it repairs the auto-update mechanism and makes CSV exports complete and safer to open in spreadsheet apps.</p>
+<h4>Fixed</h4>
+<ul>
+<li><strong>Auto-update works now.</strong> Version 0.1.0 published update metadata that macOS's updater compared incorrectly, so no release — including this one — would ever have been offered automatically. The versioning scheme has been corrected, and safeguards in the release pipeline prevent it from regressing.</li>
+<li><strong>Telemetry CSV exports include your full history.</strong> Exports previously only covered ports that were plugged in at the moment you exported; history recorded for disconnected hubs, drives, and devices was silently left out. "All time" exports now include every device Manifold has ever sampled.</li>
+<li><strong>CSV exports are hardened against formula injection.</strong> A USB device that reports a name starting with <code>=</code>, <code>@</code>, <code>+</code>, or <code>-</code> can no longer smuggle a live formula into an exported spreadsheet — such names are now neutralized to plain text. Numeric telemetry values (including negative ones) are unaffected.</li>
+<li><strong>Fixed a slow resource leak in cable monitoring.</strong> Repeatedly plugging and unplugging USB-C or Thunderbolt devices left a small amount of kernel bookkeeping behind each cycle. Long-running sessions now stay perfectly flat.</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li>Update release notes now render properly formatted in the update window (0.1.0's showed raw Markdown syntax).</li>
+</ul>
+<h4>Install &amp; update</h4>
+<blockquote>
+<ul>
+<li><strong>Already installed?</strong> Manifold auto-updates — pick <em>Check for Updates…</em> in Settings → Updates to grab it now, or wait for the next scheduled check.</li>
+<li><strong>First time?</strong> Download <code>Manifold-0.2.0.dmg</code>, open it, drag Manifold to Applications. First launch: right-click → Open, then System Settings → Privacy &amp; Security → Open Anyway.</li>
+</ul>
+</blockquote>
+      ]]></description>
+      <enclosure url="https://github.com/Foiler25/Manifold/releases/download/v0.2.0/Manifold-0.2.0.dmg" sparkle:edSignature="BY6IsQv1p5uUdhTr48lPNMtlpHwSWXVVO6nfpUecnzbreQWxgW5hD0yKpH+GTtDK8enf2a1YZ1shD/pGHg3MDw==" length="6212246" type="application/octet-stream" />
+    </item>
   </channel>
 </rss>
