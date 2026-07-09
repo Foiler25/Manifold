@@ -30,7 +30,12 @@
       <item>
       <title>Manifold 0.1.0</title>
       <pubDate>Wed, 20 May 2026 22:47:44 +0000</pubDate>
-      <sparkle:version>0.1.0</sparkle:version>
+      <!-- sparkle:version is the build number (CFBundleVersion), which is
+           what Sparkle compares against the installed app. The 0.1.0 DMG
+           shipped with CFBundleVersion=1; this entry originally said
+           "0.1.0", which compares LOWER than the installed "1" and
+           silently disabled updates for every 0.1.0 user. -->
+      <sparkle:version>1</sparkle:version>
       <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
       <description><![CDATA[

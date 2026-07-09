@@ -36,6 +36,7 @@ fi
 source "$METADATA_FILE"
 
 : "${VERSION:?missing VERSION in $METADATA_FILE}"
+: "${BUILD_NUMBER:?missing BUILD_NUMBER in $METADATA_FILE — rebuild with the current build-dmg.sh}"
 : "${DMG:?missing DMG in $METADATA_FILE}"
 : "${SHA256:?missing SHA256 in $METADATA_FILE}"
 : "${COMMIT:?missing COMMIT in $METADATA_FILE}"
@@ -197,18 +198,92 @@ PUB_DATE="$(date -u +"%a, %d %b %Y %H:%M:%S +0000")"
 ASSET_URL="https://github.com/Foiler25/Manifold/releases/download/${TAG}/${DMG}"
 RELEASE_NOTES_BODY="$(cat "$NOTES_FILE")"
 
-export APPCAST VERSION PUB_DATE ASSET_URL SPARKLE_SIGNATURE_LINE RELEASE_NOTES_BODY
+export APPCAST VERSION BUILD_NUMBER PUB_DATE ASSET_URL SPARKLE_SIGNATURE_LINE RELEASE_NOTES_BODY
 python3 - <<'PY'
-import os, pathlib, fcntl, tempfile
+import html, os, pathlib, fcntl, re, tempfile
 path = pathlib.Path(os.environ["APPCAST"])
+
+# ── Markdown → HTML for the Sparkle description ──────────────────────
+# Sparkle renders <description> as HTML, so raw Markdown shows its
+# literal `#`/`**` syntax in the update dialog (v0.1.0 shipped that
+# way). RELEASE_NOTES.md stays Markdown for the GitHub release; this
+# converts the subset the notes writer uses — headings, bold, italic,
+# inline code, links, bullet lists, blockquotes, horizontal rules —
+# with everything HTML-escaped first. No external deps (the `markdown`
+# module isn't in the macOS system Python).
+def md_inline(text):
+    text = html.escape(text, quote=False)
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])", r"<em>\1</em>", text)
+    text = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', text)
+    return text
+
+def md_to_html(md):
+    out, para, ul, quote = [], [], False, False
+    def close_para():
+        nonlocal para
+        if para:
+            out.append("<p>" + " ".join(para) + "</p>")
+            para = []
+    def close_ul():
+        nonlocal ul
+        if ul:
+            out.append("</ul>")
+            ul = False
+    def close_quote():
+        nonlocal quote
+        if quote:
+            close_para(); close_ul()
+            out.append("</blockquote>")
+            quote = False
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        if quote and line.startswith(">"):
+            line = line[1:].lstrip()
+        elif quote and not line.startswith(">"):
+            close_quote()
+        if line.startswith(">"):
+            close_para(); close_ul()
+            out.append("<blockquote>")
+            quote = True
+            line = line[1:].lstrip()
+        if not line:
+            close_para(); close_ul()
+            continue
+        m = re.match(r"(#{1,4})\s+(.*)", line)
+        if m:
+            close_para(); close_ul()
+            level = min(len(m.group(1)) + 2, 6)  # h1 → h3 so titles fit the dialog
+            out.append(f"<h{level}>{md_inline(m.group(2))}</h{level}>")
+            continue
+        if re.match(r"(-{3,}|\*{3,})$", line):
+            close_para(); close_ul()
+            out.append("<hr>")
+            continue
+        m = re.match(r"[-*]\s+(.*)", line)
+        if m:
+            close_para()
+            if not ul:
+                out.append("<ul>")
+                ul = True
+            out.append("<li>" + md_inline(m.group(1)) + "</li>")
+            continue
+        close_ul()
+        para.append(md_inline(line))
+    close_para(); close_ul(); close_quote()
+    return "\n".join(out)
+
+notes_html = md_to_html(os.environ["RELEASE_NOTES_BODY"])
+
 item = f"""    <item>
       <title>Manifold {os.environ['VERSION']}</title>
       <pubDate>{os.environ['PUB_DATE']}</pubDate>
-      <sparkle:version>{os.environ['VERSION']}</sparkle:version>
+      <sparkle:version>{os.environ['BUILD_NUMBER']}</sparkle:version>
       <sparkle:shortVersionString>{os.environ['VERSION']}</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
       <description><![CDATA[
-{os.environ['RELEASE_NOTES_BODY']}
+{notes_html}
       ]]></description>
       <enclosure url="{os.environ['ASSET_URL']}" {os.environ['SPARKLE_SIGNATURE_LINE']} type="application/octet-stream" />
     </item>
@@ -222,6 +297,16 @@ item = f"""    <item>
 with open(path, "r+") as f:
     fcntl.flock(f, fcntl.LOCK_EX)
     text = f.read()
+    # Monotonicity guard: Sparkle only offers an update when the new
+    # item's sparkle:version (CFBundleVersion) exceeds what users
+    # already run. Refuse to publish a build number that doesn't beat
+    # every previously published one.
+    published = [int(v) for v in re.findall(r"<sparkle:version>(\d+)</sparkle:version>", text)]
+    build = int(os.environ["BUILD_NUMBER"])
+    if published and build <= max(published):
+        raise SystemExit(
+            f"error: BUILD_NUMBER {build} must exceed the highest published "
+            f"sparkle:version {max(published)}; bump CURRENT_PROJECT_VERSION and rebuild")
     new_text = text.replace("</channel>", item + "  </channel>", 1)
     if new_text == text:
         raise SystemExit(

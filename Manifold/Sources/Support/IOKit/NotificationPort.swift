@@ -31,7 +31,22 @@
 // `IOServiceAddMatchingNotification`, `IORegistryEntryCreateCFProperty`,
 // `IONotificationPortCreate`, `IONotificationPortDestroy`,
 // `IONotificationPortGetRunLoopSource` outside this directory — must
-// return ZERO hits. Reviewer enforces.
+// return ZERO hits, EXCEPT in the sanctioned files below. Reviewer
+// enforces.
+//
+// Sanctioned exceptions (grandfathered raw IOKit notification code;
+// each is a process-lifetime singleton whose owner never deallocates
+// it, which is the only reason their `Unmanaged.passUnretained(self)`
+// refcon pattern is safe — do NOT copy that pattern into new code,
+// use these wrappers):
+//   - Manifold/Sources/Cables/Watchers/*  (five watchers absorbed
+//     from WhatCable in Phase 21; owned by CableDarwinProvider's
+//     static State)
+//   - Manifold/Sources/Discovery/BatteryInterestObserver.swift
+//     (Phase 18; owned by AppDelegate, stop() in
+//     applicationWillTerminate)
+//   - Manifold/Sources/Discovery/SDCardSlotInterestObserver.swift
+//     (Phase 20; same ownership + teardown as the battery observer)
 
 import Foundation
 import IOKit

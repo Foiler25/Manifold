@@ -102,6 +102,20 @@ actor SampleRepository {
         }
     }
 
+    /// Every distinct `port_id` present in the samples table. The
+    /// export path iterates this instead of the live graph so an
+    /// "All time" telemetry export includes history for hardware
+    /// that isn't currently plugged in (the live graph only knows
+    /// about connected ports).
+    func allPortIDs() async throws -> [PortID] {
+        try await dbPool.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT DISTINCT port_id FROM samples ORDER BY port_id"
+            ).map { PortID($0) }
+        }
+    }
+
     // MARK: - Downsampling
 
     /// Promote raw → 1-min for samples older than `olderThan`.

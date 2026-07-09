@@ -123,6 +123,18 @@ public final class CablePortWatcher: ObservableObject {
             if lhsActive != rhsActive { return lhsActive }
             return lhs.serviceName < rhs.serviceName
         }
+        // Prune interest registrations whose registry entry no longer
+        // exists. Without this, every unplug/replug cycle that mints a
+        // new entry ID left the old `io_object_t` handle registered
+        // forever (the watcher is a process-lifetime singleton, so
+        // `stop()` never ran) — a slow kernel-handle leak. refresh()
+        // runs on every snapshot read, so pruning here keeps the
+        // handle count flat.
+        let liveIDs = Set(rebuilt.map(\.id))
+        for (entryID, notification) in interestNotifications where !liveIDs.contains(entryID) {
+            IOObjectRelease(notification)
+            interestNotifications.removeValue(forKey: entryID)
+        }
         if rebuilt != ports { ports = rebuilt }
     }
 

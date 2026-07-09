@@ -138,7 +138,13 @@ struct ExportSheet: View {
                     await MainActor.run { status = .idle }
                     return
                 }
-                try data.write(to: url, options: [.atomic])
+                // Detached so the disk write doesn't run on the
+                // MainActor (this Task inherits the view's actor) —
+                // an "all time" CSV can be large and `.atomic`
+                // writes are synchronous.
+                try await Task.detached {
+                    try data.write(to: url, options: [.atomic])
+                }.value
                 await MainActor.run {
                     dismiss()
                 }
@@ -171,9 +177,11 @@ struct ExportSheet: View {
             let cutoff = timeRange.cutoff(now: .now)
             // Across every port, every aggregation. For "all time"
             // the cutoff is `.distantPast` so the repository returns
-            // every row.
+            // every row. Ports come from the samples table — not the
+            // live graph — so history recorded for hardware that
+            // isn't currently plugged in exports too.
             var samples: [StoredSample] = []
-            for port in allPortIDs() {
+            for port in try await repo.allPortIDs() {
                 for aggregation in SampleAggregation.allCases {
                     samples.append(contentsOf: try await repo.samples(forPort: port, since: cutoff, aggregation: aggregation))
                 }
@@ -196,21 +204,6 @@ struct ExportSheet: View {
         case .host(let id):      return .host(id)
         case .device(let id):    return .device(id)
         }
-    }
-
-    /// Every port id in the graph (recursive) so the sample export
-    /// covers every history. Sample queries are per-port so we have
-    /// to enumerate.
-    private func allPortIDs() -> [PortID] {
-        var out: [PortID] = []
-        func walk(_ ports: [ManifoldKit.Port]) {
-            for port in ports {
-                out.append(port.id)
-                walk(port.children)
-            }
-        }
-        for host in graph.hosts { walk(host.ports) }
-        return out
     }
 
     /// Every (DeviceID, name) pair for the scope picker.

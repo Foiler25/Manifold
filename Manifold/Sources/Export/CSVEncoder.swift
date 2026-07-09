@@ -77,10 +77,33 @@ enum CSVEncoder {
 
     /// RFC 4180 quoting: wrap in `"..."` if the field contains a
     /// reserved character, and escape any literal `"` by doubling it.
+    /// Formula-leading fields are neutralized first — see
+    /// `neutralizeFormulaPrefix`.
     static func quote(_ field: String) -> String {
-        if field.contains(where: { $0 == "\"" || $0 == "," || $0 == "\r" || $0 == "\n" }) {
-            return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let sanitized = neutralizeFormulaPrefix(field)
+        if sanitized.contains(where: { $0 == "\"" || $0 == "," || $0 == "\r" || $0 == "\n" }) {
+            return "\"\(sanitized.replacingOccurrences(of: "\"", with: "\"\""))\""
         }
-        return field
+        return sanitized
+    }
+
+    /// Spreadsheet formula-injection guard (OWASP "CSV injection").
+    /// Excel and Numbers evaluate cells starting with `=`, `@`, `+`,
+    /// or `-` as formulas. Device names come straight from USB device
+    /// descriptors — attacker-controllable hardware input — so a
+    /// device calling itself `=HYPERLINK(...)` must not become a live
+    /// formula in an exported sheet. Prefixing a `'` makes the cell
+    /// literal text in both Excel and Numbers.
+    ///
+    /// Numeric fields are exempt: telemetry columns legitimately
+    /// start with `-` (e.g. negative battery current) and `+`, and a
+    /// value that parses as a number can't carry a formula payload.
+    static func neutralizeFormulaPrefix(_ field: String) -> String {
+        guard let first = field.first,
+              first == "=" || first == "@" || first == "+" || first == "-",
+              Double(field) == nil else {
+            return field
+        }
+        return "'\(field)"
     }
 }

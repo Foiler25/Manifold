@@ -54,6 +54,36 @@ final class CSVEncoderTests: XCTestCase {
         XCTAssertEqual(CSVEncoder.quote(""), "")
     }
 
+    // MARK: - Formula-injection neutralization
+
+    /// A device descriptor string opening with `=` must not survive
+    /// as a live spreadsheet formula — Excel evaluates it on open.
+    /// The guard prefixes `'`, which both Excel and Numbers render
+    /// as literal text.
+    func test_quote_formulaField_isNeutralized() {
+        XCTAssertEqual(
+            CSVEncoder.quote("=HYPERLINK(\"http://evil\",\"x\")"),
+            "\"'=HYPERLINK(\"\"http://evil\"\",\"\"x\"\")\""
+        )
+    }
+
+    /// Each of the four formula-trigger prefixes gets neutralized
+    /// when the field is not numeric.
+    func test_quote_allFormulaPrefixes_areNeutralized() {
+        XCTAssertEqual(CSVEncoder.quote("@SUM(A1)"), "'@SUM(A1)")
+        XCTAssertEqual(CSVEncoder.quote("+cmd"), "'+cmd")
+        XCTAssertEqual(CSVEncoder.quote("-cmd"), "'-cmd")
+        XCTAssertEqual(CSVEncoder.quote("=1+1"), "'=1+1")
+    }
+
+    /// Numeric fields keep their sign verbatim — telemetry columns
+    /// legitimately carry negative values (e.g. battery current),
+    /// and a parseable number can't be a formula payload.
+    func test_quote_signedNumbers_stayVerbatim() {
+        XCTAssertEqual(CSVEncoder.quote("-5.2"), "-5.2")
+        XCTAssertEqual(CSVEncoder.quote("+12"), "+12")
+    }
+
     // MARK: - encodeRow()
 
     /// Mixed fields — some quote, some not.

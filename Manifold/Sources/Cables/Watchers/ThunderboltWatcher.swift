@@ -189,6 +189,7 @@ public final class ThunderboltWatcher: ObservableObject {
 
         var rebuilt: [ThunderboltSwitch] = []
         rebuilt.reserveCapacity(raw.count)
+        var liveEntryIDs = Set<UInt64>()
 
         for entry in raw {
             let ports = parsePorts(of: entry.service)
@@ -204,7 +205,18 @@ public final class ThunderboltWatcher: ObservableObject {
             ) {
                 rebuilt.append(model)
                 registerInterest(for: entry.service, entryID: entry.entryID)
+                liveEntryIDs.insert(entry.entryID)
             }
+        }
+
+        // Prune interest registrations for switches that left the
+        // registry (unplugged docks / chained devices). Same shape as
+        // `CablePortWatcher.refresh()` — the watcher is a process-
+        // lifetime singleton, so without this every unplug leaked the
+        // registered `io_object_t` handle for good.
+        for (entryID, notification) in interestNotifications where !liveEntryIDs.contains(entryID) {
+            IOObjectRelease(notification)
+            interestNotifications.removeValue(forKey: entryID)
         }
 
         // Stable order: host roots first (Depth=0), then by Route String, then UID.

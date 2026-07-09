@@ -107,6 +107,20 @@ SPARKLE_PUBLIC_EDKEY="xHtrtfBbFRxLC+T4BXzw64fpQw1EvpeoKiTRpT48CFk="
 /usr/libexec/PlistBuddy -c "Delete :SUEnableDownloaderService" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :SUEnableDownloaderService bool false" "$PLIST"
 
+# Capture the build number (CFBundleVersion) for the appcast. Sparkle
+# compares the appcast's sparkle:version against the installed app's
+# CFBundleVersion — NOT the marketing version — so release-github.sh
+# must publish this value. v0.1.0 shipped with CFBundleVersion=1 while
+# its appcast item said sparkle:version=0.1.0, which compares LOWER
+# than 1: updates never fired. Every release must bump
+# CURRENT_PROJECT_VERSION (2, 3, …) in project.pbxproj + the two
+# Info.plists, monotonically, forever.
+BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")"
+if ! [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || [[ "$BUILD_NUMBER" -lt 2 ]]; then
+  echo "error: CFBundleVersion ('$BUILD_NUMBER') must be an integer >= 2 (v0.1.0 shipped as build 1; every later build must compare higher). Bump CURRENT_PROJECT_VERSION." >&2
+  exit 1
+fi
+
 # PlistBuddy can leave AppleDouble (._*) sidecars on non-APFS volumes; strip them
 # again before codesigning so `codesign --deep` doesn't trip over them.
 dot_clean -m "$APP_PATH" || true
@@ -160,6 +174,7 @@ PREVIOUS_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
 cat >"$METADATA_FILE" <<EOF
 # Written by build-dmg.sh — consumed by release-github.sh. Do not edit by hand.
 VERSION=$VERSION
+BUILD_NUMBER=$BUILD_NUMBER
 DMG=$DMG_NAME
 SHA256=$SHA
 COMMIT=$COMMIT_FULL
@@ -172,7 +187,7 @@ SPARKLE_SIGNATURE_LINE='$SPARKLE_SIGNATURE_LINE'
 EOF
 
 echo ""
-echo "Built: $REPO_ROOT/$DMG_NAME"
+echo "Built: $REPO_ROOT/$DMG_NAME (version $VERSION, build $BUILD_NUMBER)"
 echo "SHA-256: $SHA"
 echo "Commit: $COMMIT_SHORT ($BRANCH)"
 echo "Metadata: $REPO_ROOT/$METADATA_FILE"
