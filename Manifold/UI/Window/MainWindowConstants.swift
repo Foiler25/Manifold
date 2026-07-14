@@ -129,6 +129,7 @@ enum WindowTab: String, CaseIterable, Identifiable {
     /// `CableEngine` adapter on top of the absorbed cable-diagnostics
     /// engine — see `Manifold/Sources/Cables/`.
     case cables
+    case power = "powerMonitorV2"
     case negotiation
     case display
 
@@ -138,7 +139,8 @@ enum WindowTab: String, CaseIterable, Identifiable {
     /// keyed by tab.<case>.label so a translator can give them
     /// distinct names without touching code.
     var labelKey: String {
-        "window.tab.\(rawValue).label"
+        if self == .power { return "window.tab.power.label" }
+        return "window.tab.\(rawValue).label"
     }
 
     /// SF Symbol used in the tab control.
@@ -149,6 +151,7 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .diagnostics: return "exclamationmark.triangle"
         case .battery:     return "bolt.batteryblock"
         case .cables:      return "cable.connector"
+        case .power:       return "bolt.horizontal.circle"
         case .negotiation: return "arrow.left.arrow.right"
         case .display:     return "display"
         }

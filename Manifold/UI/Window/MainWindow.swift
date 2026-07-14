@@ -55,9 +55,12 @@ struct MainWindow: View {
     /// Owned by AppDelegate; passed in here so the engine instance
     /// survives across window close/reopen cycles.
     @Bindable var cableEngine: CableEngine
+    @Bindable var powerTelemetryEngine: PowerTelemetryEngine
 
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void
+    let onPowerAppear: () -> Void
+    let onPowerDisappear: () -> Void
 
     /// Phase 11: drives the File menu's "Export…" sheet. Toggled by
     /// the menu command and by the Cmd-E shortcut.
@@ -253,6 +256,13 @@ struct MainWindow: View {
             BatteryView(graph: graph, host: host)
         case .cables:
             CablesView(engine: cableEngine, graph: graph)
+        case .power:
+            PowerMonitorView(
+                engine: powerTelemetryEngine,
+                cableEngine: cableEngine,
+                onAppear: onPowerAppear,
+                onDisappear: onPowerDisappear
+            )
         case .negotiation:
             NegotiationDiagnosticsView(engine: cableEngine)
         case .display:
@@ -298,8 +308,11 @@ struct MainWindow: View {
         eventRepository: nil,
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [.empty])),
+        powerTelemetryEngine: PowerTelemetryEngine(),
         onWindowAppear: {},
-        onWindowDisappear: {}
+        onWindowDisappear: {},
+        onPowerAppear: {},
+        onPowerDisappear: {}
     )
     .frame(width: 920, height: 600)
 }
@@ -310,8 +323,11 @@ struct MainWindow: View {
         eventRepository: nil,
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [])),
+        powerTelemetryEngine: PowerTelemetryEngine(),
         onWindowAppear: {},
-        onWindowDisappear: {}
+        onWindowDisappear: {},
+        onPowerAppear: {},
+        onPowerDisappear: {}
     )
     .frame(width: 920, height: 600)
 }

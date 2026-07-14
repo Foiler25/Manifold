@@ -52,8 +52,11 @@ struct ManifoldApp: App {
                 eventRepository: appDelegate.publishedEventRepository,
                 sampleRepository: appDelegate.publishedSampleRepository,
                 cableEngine: appDelegate.publishedCableEngine,
+                powerTelemetryEngine: appDelegate.publishedPowerTelemetryEngine,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
-                onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() }
+                onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() },
+                onPowerAppear: { appDelegate.notifyPowerSurfaceDidAppear("main-window") },
+                onPowerDisappear: { appDelegate.notifyPowerSurfaceDidDisappear("main-window") }
             )
             .preferredColorScheme(currentColorScheme)
         }
@@ -122,6 +125,15 @@ struct ManifoldApp: App {
                     )
                 }
                 .keyboardShortcut("5", modifiers: [.command])
+
+                Button("window.tab.power.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.power.rawValue]
+                    )
+                }
+                .keyboardShortcut("7", modifiers: [.command])
 
                 Button("window.tab.negotiation.menu") {
                     NotificationCenter.default.post(

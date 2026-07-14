@@ -86,11 +86,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// idle CPU stays at zero when the window is closed.
     private let cableEngine = CableEngine()
     private let cableEngineLifecycle = CableEngineLifecycle()
+    private let powerTelemetryEngine = PowerTelemetryEngine()
+    private let powerTelemetryLifecycle = PowerTelemetryLifecycle()
+    private var cablePowerObservationTask: Task<Void, Never>?
 
     /// Public accessor used by `ManifoldApp.body` — same
     /// "private model, exposed via published accessor" pattern as
     /// `publishedPortGraph`.
     var publishedCableEngine: CableEngine { cableEngine }
+    var publishedPowerTelemetryEngine: PowerTelemetryEngine { powerTelemetryEngine }
 
     // MARK: - Phase 18 Battery
 
@@ -346,6 +350,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // single instance is shared between MainWindow and any
         // future surfaces (Settings tab, etc.).
         cableEngineLifecycle.attach(cableEngine)
+        powerTelemetryLifecycle.attach(powerTelemetryEngine)
+        startCablePowerObserver()
 
         // Phase 18: battery sampler on a parallel timer, lifecycle-
         // paused alongside the USB telemetry sampler. The closure
@@ -463,6 +469,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Phase 21: tear down the cable engine alongside the rest of
         // the lifecycle-managed surfaces. Idempotent.
         cableEngineLifecycle.shutdown()
+        cablePowerObservationTask?.cancel()
+        cablePowerObservationTask = nil
+        powerTelemetryLifecycle.shutdown()
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()
@@ -1156,6 +1165,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             if NSApp.activationPolicy() != .accessory {
                 NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    func notifyPowerSurfaceDidAppear(_ id: String) {
+        powerTelemetryLifecycle.surfaceDidAppear(id)
+    }
+
+    func notifyPowerSurfaceDidDisappear(_ id: String) {
+        powerTelemetryLifecycle.surfaceDidDisappear(id)
+    }
+
+    private func startCablePowerObserver() {
+        cablePowerObservationTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.powerTelemetryEngine.updatePorts(self.cableEngine.snapshot?.ports ?? [])
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = self.cableEngine.snapshot
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
             }
         }
     }
