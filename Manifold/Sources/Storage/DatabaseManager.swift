@@ -119,6 +119,7 @@ final class DatabaseManager {
         // devices, samples ↔ devices) are part of the schema we want
         // enforced from the start.
         V1Initial.register(in: &migrator)
+        V2CableHistory.register(in: &migrator)
         return migrator
     }()
 

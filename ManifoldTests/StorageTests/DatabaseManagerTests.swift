@@ -43,10 +43,13 @@ final class DatabaseManagerTests: XCTestCase {
 
     /// Fresh install: init creates the directory + the .sqlite file
     /// + every V1 table. Pins SPEC §18 Phase 10 #1.
-    func test_freshInstall_createsAllV1Tables() async throws {
+    func test_freshInstall_createsAllTablesThroughV2() async throws {
         let manager = try DatabaseManager(directory: tmpDir)
         try await manager.dbPool.read { db in
-            for table in ["devices", "events", "samples", "schema_metadata"] {
+            for table in [
+                "devices", "events", "samples", "schema_metadata",
+                "saved_cables", "cable_sessions"
+            ] {
                 let exists = try Self.tableExists(table, in: db)
                 XCTAssertTrue(exists, "Expected V1 table '\(table)' to exist")
             }
@@ -74,6 +77,35 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertEqual(value, "present", "Re-open must not wipe pre-existing rows.")
     }
 
+    func test_v1DatabaseUpgradesToV2WithoutLosingRows() async throws {
+        try FileManager.default.createDirectory(
+            at: tmpDir,
+            withIntermediateDirectories: true
+        )
+        do {
+            let pool = try DatabasePool(path: tmpDir.appendingPathComponent("manifold.sqlite").path)
+            var v1Migrator = DatabaseMigrator()
+            V1Initial.register(in: &v1Migrator)
+            try v1Migrator.migrate(pool)
+            try await pool.write { db in
+                try db.execute(
+                    sql: "INSERT INTO schema_metadata (key, value) VALUES ('v1-sentinel', 'kept')"
+                )
+            }
+        }
+
+        let manager = try DatabaseManager(directory: tmpDir)
+        try await manager.dbPool.read { db in
+            XCTAssertTrue(try Self.tableExists("saved_cables", in: db))
+            XCTAssertTrue(try Self.tableExists("cable_sessions", in: db))
+            let sentinel: String? = try String.fetchOne(
+                db,
+                sql: "SELECT value FROM schema_metadata WHERE key = 'v1-sentinel'"
+            )
+            XCTAssertEqual(sentinel, "kept")
+        }
+    }
+
     /// `compact()` round-trips without throwing on an empty database.
     /// VACUUM on an empty DB is a no-op for size but must succeed.
     func test_compact_succeedsOnEmptyDatabase() async throws {
@@ -93,13 +125,13 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertGreaterThan(manager.onDiskSize(), 0)
     }
 
-    /// `schema_metadata` carries the SPEC §10.1 row at version 1.
-    func test_schemaMetadata_recordsVersion1() async throws {
+    /// `schema_metadata` advances with the append-only V2 migration.
+    func test_schemaMetadata_recordsVersion2() async throws {
         let manager = try DatabaseManager(directory: tmpDir)
         let version: String? = try await manager.dbPool.read { db in
             try String.fetchOne(db, sql: "SELECT value FROM schema_metadata WHERE key = 'schema_version'")
         }
-        XCTAssertEqual(version, "1")
+        XCTAssertEqual(version, "2")
     }
 
     // MARK: - Helpers

@@ -89,12 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let powerTelemetryEngine = PowerTelemetryEngine()
     private let powerTelemetryLifecycle = PowerTelemetryLifecycle()
     private var cablePowerObservationTask: Task<Void, Never>?
+    private let cableHistoryRecorder = CableHistoryRecorder(repository: nil)
 
     /// Public accessor used by `ManifoldApp.body` — same
     /// "private model, exposed via published accessor" pattern as
     /// `publishedPortGraph`.
     var publishedCableEngine: CableEngine { cableEngine }
     var publishedPowerTelemetryEngine: PowerTelemetryEngine { powerTelemetryEngine }
+    var publishedCableHistoryRecorder: CableHistoryRecorder { cableHistoryRecorder }
+    var publishedCableHistoryRepository: CableHistoryRepository? { cableHistoryRepository }
 
     // MARK: - Phase 18 Battery
 
@@ -230,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var deviceRepository: DeviceRepository?
     private var eventRepository: EventRepository?
     private var sampleRepository: SampleRepository?
+    private var cableHistoryRepository: CableHistoryRepository?
     private var downsamplingJob: DownsamplingJob?
 
     // MARK: - Phase 13 Widget snapshot
@@ -319,6 +323,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let samples = SampleRepository(dbPool: manager.dbPool)
             eventRepository = events
             sampleRepository = samples
+            let cableHistory = CableHistoryRepository(dbPool: manager.dbPool)
+            cableHistoryRepository = cableHistory
+            cableHistoryRecorder.attachRepository(cableHistory)
             let job = DownsamplingJob(sampleRepository: samples, eventRepository: events)
             job.start()
             downsamplingJob = job
@@ -352,6 +359,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cableEngineLifecycle.attach(cableEngine)
         powerTelemetryLifecycle.attach(powerTelemetryEngine)
         startCablePowerObserver()
+        cableHistoryRecorder.start(
+            cableEngine: cableEngine,
+            powerEngine: powerTelemetryEngine
+        )
 
         // Phase 18: battery sampler on a parallel timer, lifecycle-
         // paused alongside the USB telemetry sampler. The closure
@@ -472,6 +483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cablePowerObservationTask?.cancel()
         cablePowerObservationTask = nil
         powerTelemetryLifecycle.shutdown()
+        cableHistoryRecorder.stop()
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()

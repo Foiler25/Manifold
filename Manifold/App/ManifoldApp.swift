@@ -53,6 +53,8 @@ struct ManifoldApp: App {
                 sampleRepository: appDelegate.publishedSampleRepository,
                 cableEngine: appDelegate.publishedCableEngine,
                 powerTelemetryEngine: appDelegate.publishedPowerTelemetryEngine,
+                cableHistoryRepository: appDelegate.publishedCableHistoryRepository,
+                cableHistoryRecorder: appDelegate.publishedCableHistoryRecorder,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() },
                 onPowerAppear: { appDelegate.notifyPowerSurfaceDidAppear("main-window") },
@@ -125,6 +127,15 @@ struct ManifoldApp: App {
                     )
                 }
                 .keyboardShortcut("5", modifiers: [.command])
+
+                Button("window.tab.savedCables.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.savedCables.rawValue]
+                    )
+                }
+                .keyboardShortcut("6", modifiers: [.command])
 
                 Button("window.tab.power.menu") {
                     NotificationCenter.default.post(

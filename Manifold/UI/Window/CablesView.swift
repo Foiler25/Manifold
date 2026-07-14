@@ -42,6 +42,7 @@ struct CablesView: View {
     /// any charger is currently connected). The cables snapshot
     /// alone doesn't carry either fact.
     @Bindable var graph: PortGraph
+    @Bindable var historyRecorder: CableHistoryRecorder
 
     var body: some View {
         ScrollView {
@@ -54,7 +55,8 @@ struct CablesView: View {
                             CablePortCard(
                                 port: port,
                                 snapshot: snapshot,
-                                graph: graph
+                                graph: graph,
+                                historyRecorder: historyRecorder
                             )
                         }
                         if snapshot.ports.allSatisfy({ $0.connectionActive != true }) {
@@ -116,7 +118,11 @@ enum CablesViewConstants {
 // build fails on the unresolved symbol.
 #Preview("CablesView — loading (no snapshot yet)") {
     let engine = CableEngine(provider: PreviewCableProvider(snapshots: []))
-    return CablesView(engine: engine, graph: PortGraph())
+    return CablesView(
+        engine: engine,
+        graph: PortGraph(),
+        historyRecorder: CableHistoryRecorder(repository: nil)
+    )
         .frame(width: 540, height: 400)
         .background(Color.manifoldSurface)
 }
@@ -124,7 +130,11 @@ enum CablesViewConstants {
 #Preview("CablesView — empty (Intel-Mac unsupported host)") {
     let engine = CableEngine(provider: PreviewCableProvider(snapshots: [.empty]))
     engine.start()
-    return CablesView(engine: engine, graph: PortGraph())
+    return CablesView(
+        engine: engine,
+        graph: PortGraph(),
+        historyRecorder: CableHistoryRecorder(repository: nil)
+    )
         .frame(width: 540, height: 400)
         .background(Color.manifoldSurface)
 }

@@ -56,6 +56,8 @@ struct MainWindow: View {
     /// survives across window close/reopen cycles.
     @Bindable var cableEngine: CableEngine
     @Bindable var powerTelemetryEngine: PowerTelemetryEngine
+    let cableHistoryRepository: CableHistoryRepository?
+    @Bindable var cableHistoryRecorder: CableHistoryRecorder
 
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void
@@ -255,7 +257,16 @@ struct MainWindow: View {
         case .battery:
             BatteryView(graph: graph, host: host)
         case .cables:
-            CablesView(engine: cableEngine, graph: graph)
+            CablesView(
+                engine: cableEngine,
+                graph: graph,
+                historyRecorder: cableHistoryRecorder
+            )
+        case .savedCables:
+            SavedCablesView(
+                repository: cableHistoryRepository,
+                engine: cableEngine
+            )
         case .power:
             PowerMonitorView(
                 engine: powerTelemetryEngine,
@@ -309,6 +320,8 @@ struct MainWindow: View {
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [.empty])),
         powerTelemetryEngine: PowerTelemetryEngine(),
+        cableHistoryRepository: nil,
+        cableHistoryRecorder: CableHistoryRecorder(repository: nil),
         onWindowAppear: {},
         onWindowDisappear: {},
         onPowerAppear: {},
@@ -324,6 +337,8 @@ struct MainWindow: View {
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [])),
         powerTelemetryEngine: PowerTelemetryEngine(),
+        cableHistoryRepository: nil,
+        cableHistoryRecorder: CableHistoryRecorder(repository: nil),
         onWindowAppear: {},
         onWindowDisappear: {},
         onPowerAppear: {},

@@ -46,6 +46,9 @@ struct CablePortCard: View {
     ///      there. `Host.inputAdapter` is system-wide and survives
     ///      that gap.
     let graph: PortGraph
+    @Bindable var historyRecorder: CableHistoryRecorder
+    @State private var isNamingCable = false
+    @State private var cableName = ""
 
     /// Per-port slice of the snapshot. Computed once and reused by the
     /// PortSummary builder + the device-name bullet builder so we
@@ -295,6 +298,11 @@ struct CablePortCard: View {
         return snapshot.liquidDetection[key]
     }
 
+    private var historyState: CableHistoryLiveState? {
+        guard let key = port.portKey else { return nil }
+        return historyRecorder.portStates[key]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
@@ -313,6 +321,9 @@ struct CablePortCard: View {
                         .foregroundStyle(Color.manifoldText)
                 }
                 Spacer()
+                if let historyState {
+                    trustChip(historyState)
+                }
             }
             .accessibilityElement(children: .combine)
 
@@ -320,6 +331,33 @@ struct CablePortCard: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let diagnostic = historyState?.connectionDiagnostic {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(diagnostic.summary).fontWeight(.semibold)
+                        Text(diagnostic.detail).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(diagnostic.severity == .warning ? .red : .orange)
+                .padding(10)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            if let historyState {
+                Button(historyState.savedCable?.nickname == nil ? "Save cable…" : "Rename cable…") {
+                    cableName = historyState.savedCable?.nickname ?? ""
+                    isNamingCable = true
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            } else if port.connectionActive == true {
+                Text("This cable's e-marker identity wasn't read, so it can't be saved yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             if !allBullets.isEmpty {
                 Divider()
@@ -364,6 +402,30 @@ struct CablePortCard: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("cables.port.card")
+        .alert("Name this cable", isPresented: $isNamingCable) {
+            TextField("Cable name", text: $cableName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                guard let key = port.portKey else { return }
+                Task { try? await historyRecorder.saveCable(portKey: key, nickname: cableName) }
+            }
+        } message: {
+            Text("Manifold will recognize this e-marker when you reconnect it.")
+        }
+    }
+
+    private func trustChip(_ state: CableHistoryLiveState) -> some View {
+        let color: Color = switch state.trust.tier {
+        case .green: .green
+        case .amber: .orange
+        case .red: .red
+        }
+        return Text(state.savedCable?.nickname ?? state.verdict.rawValue.replacingOccurrences(of: "notPerforming", with: "Needs attention").capitalized)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.14), in: Capsule())
     }
 
     // MARK: - Icon mapping
@@ -399,7 +461,12 @@ struct CablePortCard: View {
 // doesn't try to resolve the seed.
 #Preview("CablePortCard — empty port") {
     let snap = CableSnapshot.previewEmptyPort
-    return CablePortCard(port: snap.ports[0], snapshot: snap, graph: PortGraph())
+    return CablePortCard(
+        port: snap.ports[0],
+        snapshot: snap,
+        graph: PortGraph(),
+        historyRecorder: CableHistoryRecorder(repository: nil)
+    )
         .padding()
         .frame(width: 520)
         .background(Color.manifoldSurface)
