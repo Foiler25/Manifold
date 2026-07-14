@@ -67,7 +67,10 @@ final class CableHistoryRecorder {
     private var repository: CableHistoryRepository?
     private var sessions: [String: ActiveSession] = [:]
     private var cadenceTask: Task<Void, Never>?
+    private var cadenceToken: UUID?
     private var closeTask: Task<Void, Never>?
+    private var isProcessing = false
+    private var processRequested = false
     private weak var cableEngine: CableEngine?
     private weak var powerEngine: PowerTelemetryEngine?
     private var visibleSurfaces: Set<String> = []
@@ -106,11 +109,14 @@ final class CableHistoryRecorder {
         if visibleSurfaces.isEmpty {
             cadenceTask?.cancel()
             cadenceTask = nil
+            cadenceToken = nil
             closeTask = Task { @MainActor [weak self] in
                 // Coalesce a close/reopen in the same UI transition. The
                 // visibility recheck is load-bearing for detached windows.
                 await Task.yield()
-                guard let self, self.visibleSurfaces.isEmpty else { return }
+                guard let self, !Task.isCancelled else { return }
+                await self.waitForProcessingToFinish()
+                guard !Task.isCancelled, self.visibleSurfaces.isEmpty else { return }
                 await self.closeAll(at: .now, whileHidden: true)
             }
         }
@@ -119,10 +125,14 @@ final class CableHistoryRecorder {
     func stop() {
         cadenceTask?.cancel()
         cadenceTask = nil
+        cadenceToken = nil
         closeTask?.cancel()
         visibleSurfaces.removeAll()
         closeTask = Task { @MainActor [weak self] in
-            await self?.closeAll(at: .now, whileHidden: false)
+            guard let self else { return }
+            await self.waitForProcessingToFinish()
+            guard !Task.isCancelled else { return }
+            await self.closeAll(at: .now, whileHidden: false)
         }
     }
 
@@ -131,6 +141,7 @@ final class CableHistoryRecorder {
     func stopForTermination(at endedAt: Date = .now) {
         cadenceTask?.cancel()
         cadenceTask = nil
+        cadenceToken = nil
         closeTask?.cancel()
         closeTask = nil
         visibleSurfaces.removeAll()
@@ -177,21 +188,51 @@ final class CableHistoryRecorder {
               !visibleSurfaces.isEmpty,
               let cableEngine,
               let powerEngine else { return }
+        let token = UUID()
+        cadenceToken = token
         cadenceTask = Task { @MainActor [weak self, weak cableEngine, weak powerEngine] in
             while !Task.isCancelled {
                 guard let self, let cableEngine, let powerEngine,
                       !self.visibleSurfaces.isEmpty else { break }
-                await self.process(
-                    snapshot: cableEngine.snapshot,
-                    powerSnapshot: powerEngine.snapshot
-                )
+                await self.processLatest(cableEngine: cableEngine, powerEngine: powerEngine)
                 do {
                     try await Task.sleep(for: self.observationInterval)
                 } catch {
                     break
                 }
             }
-            self?.cadenceTask = nil
+            guard let self, self.cadenceToken == token else { return }
+            self.cadenceTask = nil
+            self.cadenceToken = nil
+        }
+    }
+
+    /// MainActor tasks are reentrant at repository awaits. Serialize cadence
+    /// observations explicitly so a rapid close/reopen cannot run two
+    /// openSession decisions against the same missing dictionary entry.
+    private func processLatest(
+        cableEngine: CableEngine,
+        powerEngine: PowerTelemetryEngine
+    ) async {
+        guard !isProcessing else {
+            processRequested = true
+            return
+        }
+        isProcessing = true
+        repeat {
+            processRequested = false
+            await process(
+                snapshot: cableEngine.snapshot,
+                powerSnapshot: powerEngine.snapshot
+            )
+        } while processRequested && !visibleSurfaces.isEmpty
+        isProcessing = false
+    }
+
+    private func waitForProcessingToFinish() async {
+        while isProcessing, !Task.isCancelled {
+            do { try await Task.sleep(for: .milliseconds(10)) }
+            catch { return }
         }
     }
 

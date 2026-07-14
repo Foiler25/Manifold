@@ -99,6 +99,38 @@ final class CableHistoryRecorderTests: XCTestCase {
         cableEngine.stop()
     }
 
+    func testImmediateCloseReopenKeepsOneLiveSession() async throws {
+        let storage = try StorageFixture()
+        defer { storage.remove() }
+        let cableEngine = CableEngine(provider: StubCableProvider(
+            snapshots: [Self.snapshot(identity: Self.identity())], trailingError: nil
+        ))
+        let power = Self.powerEngine()
+        let recorder = CableHistoryRecorder(
+            repository: storage.repository,
+            observationInterval: .milliseconds(10)
+        )
+
+        cableEngine.start()
+        try await waitUntil { cableEngine.snapshot != nil }
+        recorder.start(cableEngine: cableEngine, powerEngine: power.engine)
+        recorder.surfaceDidAppear("main")
+        try await waitUntil { recorder.activeSessionCount == 1 }
+
+        recorder.surfaceDidDisappear("main")
+        recorder.surfaceDidAppear("detached")
+        try await Task.sleep(for: .milliseconds(80))
+
+        let fingerprint = try XCTUnwrap(recorder.portStates["2/1"]?.fingerprint)
+        let sessions = try await storage.repository.sessions(cableID: fingerprint)
+        XCTAssertEqual(recorder.activeSessionCount, 1)
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertNil(sessions.first?.endedAt)
+
+        recorder.stopForTermination()
+        cableEngine.stop()
+    }
+
     func testCloseFailureKeepsSessionForRetryAndSurfacesError() async throws {
         let storage = try StorageFixture()
         defer { storage.remove() }
