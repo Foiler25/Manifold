@@ -84,6 +84,10 @@ final class WindowUITests: XCTestCase {
         XCTAssertTrue(tabButton(.diagnostics).exists)
         XCTAssertTrue(tabButton(.battery).exists)
         XCTAssertTrue(tabButton(.cables).exists)
+        XCTAssertTrue(tabButton(.savedCables).exists)
+        XCTAssertTrue(tabButton(.power).exists)
+        XCTAssertTrue(tabButton(.negotiation).exists)
+        XCTAssertTrue(tabButton(.display).exists)
     }
 
     /// Default tab is Topology — verify the topology header is
@@ -138,6 +142,29 @@ final class WindowUITests: XCTestCase {
         )
     }
 
+    func test_proTabsRenderAndPowerDetaches() {
+        let screens: [(TabKind, String)] = [
+            (.savedCables, "window.tab.savedCables.root"),
+            (.power, "window.tab.power.root"),
+            (.negotiation, "window.tab.negotiation.root"),
+            (.display, "window.tab.display.root")
+        ]
+        for (tab, identifier) in screens {
+            XCTAssertTrue(tabButton(tab).waitForExistence(timeout: 5))
+            tabButton(tab).click()
+            XCTAssertTrue(element(identifier: identifier).waitForExistence(timeout: 5))
+        }
+
+        tabButton(.power).click()
+        let detach = element(identifier: "proScreen.detach.power")
+        XCTAssertTrue(detach.waitForExistence(timeout: 5))
+        detach.click()
+        XCTAssertTrue(
+            element(identifier: "proScreen.window.power").waitForExistence(timeout: 5),
+            "Detached Power Monitor window should render the shared power screen."
+        )
+    }
+
     /// Round-trip: switch to History, then back to Topology, header
     /// re-appears. Pins the bidirectional switch path.
     func test_tabSwitch_topologyAfterHistory_restoresHeader() {
@@ -180,5 +207,9 @@ final class WindowUITests: XCTestCase {
         case diagnostics
         case battery
         case cables
+        case savedCables
+        case power = "powerMonitorV2"
+        case negotiation
+        case display
     }
 }

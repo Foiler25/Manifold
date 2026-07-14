@@ -22,7 +22,9 @@ import XCTest
 
 final class NegotiationDiagnosticsModelTests: XCTestCase {
     func testEmptySnapshotReportsUnsupportedHost() {
-        let model = NegotiationDiagnosticsModel(snapshot: CableSnapshot())
+        let model = NegotiationDiagnosticsModel(snapshot: CableSnapshot(
+            ports: [], powerSources: [], identities: [], usbDevices: [], adapter: nil
+        ))
 
         XCTAssertFalse(model.hostSupported)
         XCTAssertTrue(model.entries.isEmpty)

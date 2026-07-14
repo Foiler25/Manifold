@@ -22,7 +22,10 @@ import XCTest
 
 final class DisplayDiagnosticsModelTests: XCTestCase {
     func testActiveDisplayWithoutModeDataProducesHonestUnknownEntry() {
-        let snapshot = CableSnapshot(displayPorts: [makeTransport(active: true)])
+        let snapshot = CableSnapshot(
+            ports: [], powerSources: [], identities: [], usbDevices: [], adapter: nil,
+            displayPorts: [makeTransport(active: true)]
+        )
 
         let model = DisplayDiagnosticsModel(snapshot: snapshot)
 
@@ -33,7 +36,10 @@ final class DisplayDiagnosticsModelTests: XCTestCase {
     }
 
     func testInactiveDisplayLinksAreNotPresented() {
-        let snapshot = CableSnapshot(displayPorts: [makeTransport(active: false)])
+        let snapshot = CableSnapshot(
+            ports: [], powerSources: [], identities: [], usbDevices: [], adapter: nil,
+            displayPorts: [makeTransport(active: false)]
+        )
 
         let model = DisplayDiagnosticsModel(snapshot: snapshot)
 

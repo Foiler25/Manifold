@@ -50,6 +50,18 @@ struct CablePortCard: View {
     @State private var isNamingCable = false
     @State private var cableName = ""
 
+    init(
+        port: AppleHPMInterface,
+        snapshot: CableSnapshot,
+        graph: PortGraph,
+        historyRecorder: CableHistoryRecorder = CableHistoryRecorder(repository: nil)
+    ) {
+        self.port = port
+        self.snapshot = snapshot
+        self.graph = graph
+        self.historyRecorder = historyRecorder
+    }
+
     /// Per-port slice of the snapshot. Computed once and reused by the
     /// PortSummary builder + the device-name bullet builder so we
     /// don't re-filter in two places.
