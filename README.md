@@ -30,9 +30,25 @@ in one — no telemetry, no network, no sandbox compromises.
   - `Cable bottleneck` — TB4 device on a TB3 link.
   - `Daisy-chain depth` — chain past Apple's 6-device TB limit.
   - `Hub overcommit` — sum of downstream draw exceeds the hub budget.
-- **Cable diagnostics** (Phase 21). Per-port USB-C card showing PD
-  power profile, transport (USB 2 / 3 / 4 / Thunderbolt), e-marker
-  fingerprint, and trust signals. Apple Silicon only.
+- **Cable diagnostics.** Per-port USB-C card showing PD power
+  profile, transport (USB 2 / 3 / 4 / Thunderbolt), e-marker
+  fingerprint, trust signals, live pin diagram, plug orientation,
+  and liquid-detection state. Engine tracks upstream WhatCable
+  v1.1.9. Apple Silicon only.
+- **Saved cables.** Cable history keyed on e-marker fingerprint —
+  recognizes a cable across reconnects and builds a per-session
+  timeline of what was plugged where.
+- **Power monitor.** Live system power-input graph with USB-C PD
+  contract inspection (advertised PDOs vs the requested RDO).
+- **Negotiation diagnostics.** Mac port vs cable vs device
+  capabilities vs what was actually negotiated, weak link
+  highlighted, with an e-marker / Thunderbolt-controller
+  cross-check.
+- **Display diagnostics.** Live display mode vs DisplayPort link
+  state, DSC status, and adapter naming.
+- **Detachable windows.** Cable, Power, Negotiation, and Display
+  screens each tear off into a standalone window; frames persist
+  across launches.
 - **Display info.** Connected displays show resolution, refresh rate,
   panel type, main-display flag, built-in flag.
 - **Persistent history.** SQLite-backed event log + downsampled

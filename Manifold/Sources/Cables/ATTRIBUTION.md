@@ -36,8 +36,9 @@ in-source paragraph in its header pointing back to this attribution:
 - `ManifoldTests/Cables/Fixtures/known-cables.md`
 
 The remaining files in `Manifold/Sources/Cables/Engine/` (`CableEngine.swift`,
-`CableEngineLifecycle.swift`, `CablesConstants.swift`) are original Manifold
-work and carry only the GPL-3.0 header.
+`CableEngineLifecycle.swift`, `CablesConstants.swift`,
+`PowerTelemetryEngine.swift`, `PowerTelemetryLifecycle.swift`) are original
+Manifold work and carry only the GPL-3.0 header.
 
 ## Renames applied during import
 
