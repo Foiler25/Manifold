@@ -50,7 +50,7 @@ final class CablePortCardFilteringTests: XCTestCase {
         let port2 = Self.makePort(portNumber: 2)
 
         // SOP partner identity bound to port 1's portKey.
-        let port1Partner = PDIdentity(
+        let port1Partner = USBPDSOP(
             id: 1001,
             endpoint: .sop,
             parentPortType: 0x2,
@@ -231,8 +231,8 @@ final class CablePortCardFilteringTests: XCTestCase {
         connected: Bool = false,
         transportsActive: [String] = [],
         superSpeedActive: Bool? = nil
-    ) -> USBCPort {
-        USBCPort(
+    ) -> AppleHPMInterface {
+        AppleHPMInterface(
             id: UInt64(portNumber),
             serviceName: "Port-USB-C@\(portNumber)",
             className: "AppleHPMInterfaceType10",
@@ -271,35 +271,40 @@ final class CablePortCardFilteringTests: XCTestCase {
 
 extension CablePortCard {
     var testHook_filteredIdentityCount: Int {
-        let portKey = port.portKey
-        guard let key = portKey else { return 0 }
-        return snapshot.identities.filter { $0.portKey == key }.count
+        snapshot.identities.filter { $0.canonicallyMatches(port: port) }.count
     }
 
     var testHook_filteredPowerSourceCount: Int {
-        let portKey = port.portKey
-        guard let key = portKey else { return 0 }
-        return snapshot.powerSources.filter { $0.portKey == key }.count
+        snapshot.powerSources.filter { $0.canonicallyMatches(port: port) }.count
     }
 
     /// Reproduces `CablePortCard.allBullets` for assertion purposes.
     /// Keep in sync with the production builder; if `allBullets`
     /// changes shape the test will surface the drift.
     var testHook_allBullets: [String] {
-        let portKey = port.portKey
-        let identities: [PDIdentity] = portKey.map { key in
-            snapshot.identities.filter { $0.portKey == key }
-        } ?? []
-        let sources: [PowerSource] = portKey.map { key in
-            snapshot.powerSources.filter { $0.portKey == key }
-        } ?? []
+        let identities = snapshot.identities.filter { $0.canonicallyMatches(port: port) }
+        let sources = snapshot.powerSources.filter { $0.canonicallyMatches(port: port) }
         let devices = port.matchingDevices(from: snapshot.usbDevices)
+        let usb3 = snapshot.usb3Transports.filter { $0.canonicallyMatches(port: port) }
+        let cio = snapshot.cioCapabilities.first { $0.canonicallyMatches(port: port) }
+        let chargerWattage = ChargerWattageSource.resolve(
+            portSources: sources,
+            activePortCount: snapshot.ports.count { $0.connectionActive == true },
+            adapter: snapshot.adapter
+        )
         let summary = PortSummary(
             port: port,
             sources: sources,
             identities: identities,
             devices: devices,
-            thunderboltSwitches: snapshot.thunderboltSwitches
+            thunderboltSwitches: snapshot.thunderboltSwitches,
+            federatedIdentities: snapshot.federatedIdentities,
+            usb3Transports: usb3,
+            cioCapability: cio,
+            chargerWattageSource: chargerWattage,
+            batteryFullyCharged: snapshot.batteryFullyCharged,
+            batteryIsCharging: snapshot.batteryIsCharging,
+            adapter: snapshot.adapter
         )
         let deviceBullets: [String] = devices.compactMap { device in
             let p = device.productName?.trimmingCharacters(in: .whitespaces) ?? ""

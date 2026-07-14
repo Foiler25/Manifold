@@ -42,7 +42,7 @@ enum CableSummaryFixtures {
     /// `Equatable` doesn't trivially equate it with `empty`.
     static let oneEmptyPort = CableSnapshot(
         ports: [
-            USBCPort(
+            AppleHPMInterface(
                 id: 1,
                 serviceName: "Port-USB-C@1",
                 className: "AppleHPMInterfaceType10",

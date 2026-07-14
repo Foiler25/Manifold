@@ -47,6 +47,12 @@ final class CableAttributionTests: XCTestCase {
             contents.contains("Permission is hereby granted"),
             "ATTRIBUTION.md must include the MIT permission notice verbatim"
         )
+        XCTAssertTrue(
+            contents.contains("80114e7a482e53980c12b76839e1159f8548e9ee"),
+            "ATTRIBUTION.md must pin the current imported upstream revision"
+        )
+        XCTAssertTrue(contents.contains("CableAdapterInfo"))
+        XCTAssertTrue(contents.contains("CableLinkSpeed"))
     }
 
     /// ATTRIBUTION.md lives in the source tree, not the test bundle.

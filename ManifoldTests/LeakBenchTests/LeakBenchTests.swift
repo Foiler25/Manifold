@@ -39,8 +39,11 @@ final class LeakBenchTests: XCTestCase {
     /// the signal.
     static let walkCycles = 100
 
-    /// Run `walkCycles` discovery walks then assert `leaks(1)`
-    /// reports zero leaked bytes against this test process. Skips
+    /// Warm up discovery, record the test host's existing leak baseline, run
+    /// `walkCycles` more walks, then assert discovery added no leaks. XCTest
+    /// and loaded macOS frameworks can have a non-zero process baseline, so
+    /// comparing the before/after snapshots isolates the code under test.
+    /// Skips
     /// when `MANIFOLD_SKIP_LEAK_BENCH` is set in the environment
     /// (lets a developer iterating on unrelated tests trim a few
     /// seconds off `xcodebuild test`).
@@ -50,32 +53,32 @@ final class LeakBenchTests: XCTestCase {
         }
 
         let service = DiscoveryService()
+        _ = try? await service.walk()
+
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let baselineResult = try runLeaks(pid: pid)
+        guard let baseline = leakCounts(from: baselineResult.stdout) else {
+            return XCTFail("Initial leaks(1) output did not contain a summary line:\n\(baselineResult.stdout)")
+        }
+
         for _ in 0..<Self.walkCycles {
             _ = try? await service.walk()
         }
 
-        // Run leaks(1) against the test process pid. The output
-        // we care about is one line: "Process N: X leaks for Y
-        // total leaked bytes".
-        let pid = ProcessInfo.processInfo.processIdentifier
-        let result = try runLeaks(pid: pid)
-
-        // Parse the trailing summary line. `leaks` writes a few
-        // header lines + the malloc count + the leak summary;
-        // `endsWith` against a regex would be brittle so grep the
-        // line containing "leaks for".
-        guard let summaryLine = result.stdout
-            .components(separatedBy: "\n")
-            .first(where: { $0.contains("leaks for") }) else {
-            XCTFail("leaks(1) output did not contain a summary line:\n\(result.stdout)")
-            return
+        let finalResult = try runLeaks(pid: pid)
+        guard let final = leakCounts(from: finalResult.stdout) else {
+            return XCTFail("Final leaks(1) output did not contain a summary line:\n\(finalResult.stdout)")
         }
 
-        // "Process 12345: 0 leaks for 0 total leaked bytes." → match
-        // " 0 leaks for 0 total leaked bytes".
-        XCTAssertTrue(
-            summaryLine.contains("0 leaks for 0 total leaked bytes"),
-            "Expected zero-leak summary; got: \(summaryLine)"
+        XCTAssertLessThanOrEqual(
+            final.leaks,
+            baseline.leaks,
+            "Discovery added leaks: baseline \(baseline.leaks), final \(final.leaks)"
+        )
+        XCTAssertLessThanOrEqual(
+            final.bytes,
+            baseline.bytes,
+            "Discovery added leaked bytes: baseline \(baseline.bytes), final \(final.bytes)"
         )
     }
 
@@ -85,6 +88,20 @@ final class LeakBenchTests: XCTestCase {
         let exitCode: Int32
         let stdout: String
         let stderr: String
+    }
+
+    /// Parse `Process 123: 4 leaks for 200 total leaked bytes.`.
+    private func leakCounts(from output: String) -> (leaks: Int, bytes: Int)? {
+        guard let line = output
+            .components(separatedBy: "\n")
+            .first(where: { $0.contains("leaks for") })
+        else { return nil }
+        let fields = line.split(separator: " ")
+        guard fields.count >= 6,
+              let leaks = Int(fields[2]),
+              let bytes = Int(fields[5])
+        else { return nil }
+        return (leaks, bytes)
     }
 
     /// Spawn `/usr/bin/leaks` against `pid` synchronously and
@@ -98,16 +115,34 @@ final class LeakBenchTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/leaks")
         process.arguments = ["\(pid)"]
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        // `leaks` can emit more data than a pipe buffer holds. Waiting for the
+        // process before draining its pipes deadlocks once that buffer fills,
+        // so capture both streams in files that cannot exert back-pressure.
+        let outputDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ManifoldLeakBench-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: outputDirectory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: outputDirectory) }
+
+        let stdoutURL = outputDirectory.appendingPathComponent("stdout")
+        let stderrURL = outputDirectory.appendingPathComponent("stderr")
+        FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+
+        let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+        let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+        process.standardOutput = stdoutHandle
+        process.standardError = stderrHandle
 
         try process.run()
         process.waitUntilExit()
+        try stdoutHandle.close()
+        try stderrHandle.close()
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        let stdoutData = try Data(contentsOf: stdoutURL)
+        let stderrData = try Data(contentsOf: stderrURL)
         return ProcessResult(
             exitCode: process.terminationStatus,
             stdout: String(data: stdoutData, encoding: .utf8) ?? "",

@@ -129,6 +129,18 @@ final class BatteryAlertEngineTests: XCTestCase {
         )
     }
 
+    /// Power-source alerts are scheduled onto the main actor so production can
+    /// wait for firmware time-remaining data. Give that task a deterministic
+    /// chance to run before asserting on its recorder side effects.
+    private func waitForPowerSourceAlert(
+        _ condition: @MainActor () -> Bool
+    ) async {
+        for _ in 0..<100 {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     // MARK: - Low-battery alert
 
     func test_lowAlert_firesOnDescendingCrossing() async {
@@ -226,6 +238,7 @@ final class BatteryAlertEngineTests: XCTestCase {
         XCTAssertTrue(presenter.calls.isEmpty)
         // Flip to plugged in.
         engine.handle(info(percent: 50, external: true, chargeState: .charging))
+        await waitForPowerSourceAlert { !presenter.calls.isEmpty }
         XCTAssertEqual(presenter.calls.count, 1)
         XCTAssertEqual(presenter.calls.first?.kind, .pluggedIn)
         XCTAssertEqual(presenter.calls.first?.duration,
@@ -237,6 +250,7 @@ final class BatteryAlertEngineTests: XCTestCase {
         engine.handle(info(percent: 50, external: true, chargeState: .charging))
         // Now flip to unplugged.
         engine.handle(info(percent: 50, external: false, chargeState: .discharging))
+        await waitForPowerSourceAlert { !presenter.calls.isEmpty }
         XCTAssertEqual(presenter.calls.last?.kind, .unplugged)
     }
 
@@ -321,9 +335,10 @@ final class BatteryAlertEngineTests: XCTestCase {
     }
 
     func test_pluggedInSound_default_on() async {
-        let (engine, _, _, sound) = makeEngine()
+        let (engine, _, presenter, sound) = makeEngine()
         engine.handle(info(percent: 50, external: false, chargeState: .discharging))
         engine.handle(info(percent: 50, external: true, chargeState: .charging))
+        await waitForPowerSourceAlert { !presenter.calls.isEmpty }
         XCTAssertEqual(sound.calls, [.pluggedIn],
                        "Plug-in sound is on by default per D22")
     }
@@ -334,6 +349,7 @@ final class BatteryAlertEngineTests: XCTestCase {
         let (engine, _, presenter, _) = makeEngine(prefs: prefs)
         engine.handle(info(percent: 50, external: false, chargeState: .discharging))
         engine.handle(info(percent: 50, external: true, chargeState: .charging))
+        try? await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(
             presenter.calls.allSatisfy({ $0.kind != .pluggedIn }),
             "pluggedInEnabled=false should suppress plug alerts"
@@ -352,6 +368,7 @@ final class BatteryAlertEngineTests: XCTestCase {
         let (engine, _, presenter, _) = makeEngine(adapterDescription: "Manifold 65W USB-C")
         engine.handle(info(percent: 50, external: false, chargeState: .discharging))
         engine.handle(info(percent: 50, external: true, chargeState: .charging))
+        await waitForPowerSourceAlert { !presenter.calls.isEmpty }
         XCTAssertEqual(presenter.calls.count, 1)
     }
 }
