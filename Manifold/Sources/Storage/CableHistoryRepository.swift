@@ -57,8 +57,24 @@ struct CableSession: Identifiable, Sendable, Equatable {
     let plugEvents: Int
 }
 
+struct CableSessionClosure: Sendable {
+    let id: Int64
+    let endedAt: Date
+    let verdict: SessionMonitor.Verdict
+    let negotiatedGbps: Double?
+    let negotiatedWatts: Int?
+    let observationCount: Int
+    let overcurrentEvents: Int
+    let plugEvents: Int
+}
+
+struct CableHistoryPruneResult: Sendable, Equatable {
+    let sessionsDeleted: Int
+    let cablesDeleted: Int
+}
+
 actor CableHistoryRepository {
-    private let dbPool: DatabasePool
+    nonisolated private let dbPool: DatabasePool
 
     init(dbPool: DatabasePool) {
         self.dbPool = dbPool
@@ -146,6 +162,59 @@ actor CableHistoryRepository {
                     endedAt, verdict.rawValue, negotiatedGbps, negotiatedWatts,
                     observationCount, overcurrentEvents, plugEvents, id
                 ]
+            )
+        }
+    }
+
+    /// Application termination does not provide an async hand-off. This
+    /// synchronous batch uses GRDB's serialized writer and returns only after
+    /// every active row has an `ended_at`, so the process cannot exit while an
+    /// unstructured task is still queued.
+    nonisolated func closeSessionsSynchronously(
+        _ closures: [CableSessionClosure]
+    ) throws {
+        guard !closures.isEmpty else { return }
+        try dbPool.write { db in
+            for closure in closures {
+                try Self.close(closure, in: db)
+            }
+        }
+    }
+
+    /// Bounds automatically-observed history while preserving everything the
+    /// user explicitly named. Old sessions for unnamed cables are removed
+    /// first; unnamed cable identities are then removed once stale and empty.
+    /// The foreign-key cascade remains a final safety net.
+    func pruneUnnamedHistory(olderThan cutoff: Date) async throws -> CableHistoryPruneResult {
+        try await dbPool.write { db in
+            try db.execute(
+                sql: """
+                DELETE FROM cable_sessions
+                WHERE started_at < ?
+                  AND cable_id IN (
+                    SELECT id FROM saved_cables
+                    WHERE nickname IS NULL OR TRIM(nickname) = ''
+                  )
+                """,
+                arguments: [cutoff]
+            )
+            let sessionsDeleted = db.changesCount
+
+            try db.execute(
+                sql: """
+                DELETE FROM saved_cables
+                WHERE (nickname IS NULL OR TRIM(nickname) = '')
+                  AND last_seen < ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM cable_sessions
+                    WHERE cable_sessions.cable_id = saved_cables.id
+                  )
+                """,
+                arguments: [cutoff]
+            )
+            return CableHistoryPruneResult(
+                sessionsDeleted: sessionsDeleted,
+                cablesDeleted: db.changesCount
             )
         }
     }
@@ -267,5 +336,26 @@ actor CableHistoryRepository {
         guard let value = nickname?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
         return value
+    }
+
+    private nonisolated static func close(
+        _ closure: CableSessionClosure,
+        in db: Database
+    ) throws {
+        try db.execute(
+            sql: """
+            UPDATE cable_sessions SET
+                ended_at = ?, verdict = ?, negotiated_gbps = ?,
+                negotiated_watts = ?, observation_count = ?,
+                overcurrent_events = ?, plug_events = ?
+            WHERE id = ?
+            """,
+            arguments: [
+                closure.endedAt, closure.verdict.rawValue,
+                closure.negotiatedGbps, closure.negotiatedWatts,
+                closure.observationCount, closure.overcurrentEvents,
+                closure.plugEvents, closure.id
+            ]
+        )
     }
 }

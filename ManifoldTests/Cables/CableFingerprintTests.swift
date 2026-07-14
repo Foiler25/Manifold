@@ -25,8 +25,21 @@ final class CableFingerprintTests: XCTestCase {
         let first = identity(port: 1)
         let second = identity(port: 4)
 
-        XCTAssertEqual(CableIdentity.key(for: first), "1234:ABCD:11223344")
+        XCTAssertEqual(
+            CableIdentity.key(for: first),
+            "1234:ABCD:0100:A1B2C3D4:11223344:55667788"
+        )
         XCTAssertEqual(CableIdentity.key(for: first), CableIdentity.key(for: second))
+    }
+
+    func testEveryAvailableEmarkerIdentityFieldParticipatesInTheKey() throws {
+        let original = identity()
+        let key = try XCTUnwrap(CableIdentity.key(for: original))
+
+        XCTAssertNotEqual(key, CableIdentity.key(for: identity(bcdDevice: 0x0200)))
+        XCTAssertNotEqual(key, CableIdentity.key(for: identity(certificationXID: 0x0102_0304)))
+        XCTAssertNotEqual(key, CableIdentity.key(for: identity(cableVDO1: 0x0102_0304)))
+        XCTAssertNotEqual(key, CableIdentity.key(for: identity(activeCableVDO2: 0x0102_0304)))
     }
 
     func testZeroVendorOrProductCannotBePersisted() {
@@ -37,6 +50,10 @@ final class CableFingerprintTests: XCTestCase {
     private func identity(
         vendorID: Int = 0x1234,
         productID: Int = 0xABCD,
+        bcdDevice: Int = 0x0100,
+        certificationXID: UInt32 = 0xA1B2_C3D4,
+        cableVDO1: UInt32 = 0x1122_3344,
+        activeCableVDO2: UInt32 = 0x5566_7788,
         port: Int = 1
     ) -> USBPDSOP {
         USBPDSOP(
@@ -46,8 +63,8 @@ final class CableFingerprintTests: XCTestCase {
             parentPortNumber: port,
             vendorID: vendorID,
             productID: productID,
-            bcdDevice: 0x0100,
-            vdos: [0, 0, 0, 0x1122_3344],
+            bcdDevice: bcdDevice,
+            vdos: [0, certificationXID, 0, cableVDO1, activeCableVDO2],
             specRevision: 0
         )
     }

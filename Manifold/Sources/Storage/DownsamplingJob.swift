@@ -40,16 +40,19 @@ final class DownsamplingJob {
 
     private let sampleRepository: SampleRepository
     private let eventRepository: EventRepository
+    private let cableHistoryRepository: CableHistoryRepository?
     private var policy: RetentionPolicy
     private var timer: Timer?
 
     init(
         sampleRepository: SampleRepository,
         eventRepository: EventRepository,
+        cableHistoryRepository: CableHistoryRepository? = nil,
         policy: RetentionPolicy = .default
     ) {
         self.sampleRepository = sampleRepository
         self.eventRepository = eventRepository
+        self.cableHistoryRepository = cableHistoryRepository
         self.policy = policy
     }
 
@@ -92,7 +95,7 @@ final class DownsamplingJob {
     /// blocking the timer callback. Errors are logged + swallowed —
     /// retention is best-effort, and the next tick will retry.
     private func tickAsync() {
-        Task { @MainActor [policy, sampleRepository, eventRepository] in
+        Task { @MainActor [policy, sampleRepository, eventRepository, cableHistoryRepository] in
             do {
                 let now = Date()
                 _ = try await sampleRepository.downsampleRawTo1Min(
@@ -107,6 +110,12 @@ final class DownsamplingJob {
                 )
                 _ = try await eventRepository.deleteOlderThan(
                     policy.cutoffDate(for: .oneHour, now: now)
+                )
+                // Unnamed cables are observations, not user-owned records.
+                // Keep a rolling 30-day window matching the 1-minute history
+                // horizon; named cables and all of their sessions are exempt.
+                _ = try await cableHistoryRepository?.pruneUnnamedHistory(
+                    olderThan: policy.cutoffDate(for: .oneMin, now: now)
                 )
             } catch {
                 Log.app.error("DownsamplingJob tick failed: \(String(describing: error), privacy: .public)")

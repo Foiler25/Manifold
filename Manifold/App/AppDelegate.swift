@@ -326,7 +326,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let cableHistory = CableHistoryRepository(dbPool: manager.dbPool)
             cableHistoryRepository = cableHistory
             cableHistoryRecorder.attachRepository(cableHistory)
-            let job = DownsamplingJob(sampleRepository: samples, eventRepository: events)
+            let job = DownsamplingJob(
+                sampleRepository: samples,
+                eventRepository: events,
+                cableHistoryRepository: cableHistory
+            )
             job.start()
             downsamplingJob = job
         } catch {
@@ -483,7 +487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cablePowerObservationTask?.cancel()
         cablePowerObservationTask = nil
         powerTelemetryLifecycle.shutdown()
-        cableHistoryRecorder.stop()
+        cableHistoryRecorder.stopForTermination()
         eventService?.shutdown()
         downsamplingJob?.stop()
         snapshotCoordinator?.shutdown()

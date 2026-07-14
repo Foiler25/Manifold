@@ -22,12 +22,17 @@ import Foundation
 enum CableIdentity {
     static func key(for identity: USBPDSOP) -> String? {
         guard identity.vendorID != 0, identity.productID != 0 else { return nil }
-        let cableVDO = identity.vdos.count > 3 ? identity.vdos[3] : 0
+        let certificationXID = identity.certStatVDO?.xid ?? 0
+        let cableVDO1 = identity.vdos.count > 3 ? identity.vdos[3] : 0
+        let activeCableVDO2 = identity.vdos.count > 4 ? identity.vdos[4] : 0
         return String(
-            format: "%04X:%04X:%08X",
+            format: "%04X:%04X:%04X:%08X:%08X:%08X",
             identity.vendorID,
             identity.productID,
-            cableVDO
+            identity.bcdDevice,
+            certificationXID,
+            cableVDO1,
+            activeCableVDO2
         )
     }
 

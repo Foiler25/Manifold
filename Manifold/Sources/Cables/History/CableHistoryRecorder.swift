@@ -19,6 +19,23 @@
 
 import Foundation
 
+enum CableHistoryRecorderError: LocalizedError {
+    case persistenceUnavailable
+    case portNotActive
+    case savedCableMissing
+
+    var errorDescription: String? {
+        switch self {
+        case .persistenceUnavailable:
+            "Cable history storage is unavailable."
+        case .portNotActive:
+            "The cable is no longer connected to that port."
+        case .savedCableMissing:
+            "The cable was saved, but its record could not be reloaded."
+        }
+    }
+}
+
 struct CableHistoryLiveState {
     let fingerprint: String
     let verdict: SessionMonitor.Verdict
@@ -31,6 +48,8 @@ struct CableHistoryLiveState {
 @Observable
 final class CableHistoryRecorder {
     private(set) var portStates: [String: CableHistoryLiveState] = [:]
+    private(set) var lastError: Error?
+    var activeSessionCount: Int { sessions.count }
 
     private struct ActiveSession {
         let fingerprint: String
@@ -47,13 +66,22 @@ final class CableHistoryRecorder {
 
     private var repository: CableHistoryRepository?
     private var sessions: [String: ActiveSession] = [:]
-    private var observationTask: Task<Void, Never>?
+    private var cadenceTask: Task<Void, Never>?
+    private var closeTask: Task<Void, Never>?
     private weak var cableEngine: CableEngine?
     private weak var powerEngine: PowerTelemetryEngine?
     private var visibleSurfaces: Set<String> = []
+    private let observationInterval: Duration
+    private let dataDeliveryOverride: SessionMonitor.DataDelivery?
 
-    init(repository: CableHistoryRepository?) {
+    init(
+        repository: CableHistoryRepository?,
+        observationInterval: Duration = .seconds(1),
+        dataDeliveryOverride: SessionMonitor.DataDelivery? = nil
+    ) {
         self.repository = repository
+        self.observationInterval = observationInterval
+        self.dataDeliveryOverride = dataDeliveryOverride
     }
 
     func attachRepository(_ repository: CableHistoryRepository) {
@@ -61,65 +89,75 @@ final class CableHistoryRecorder {
     }
 
     func start(cableEngine: CableEngine, powerEngine: PowerTelemetryEngine) {
-        guard observationTask == nil else { return }
         self.cableEngine = cableEngine
         self.powerEngine = powerEngine
-        observationTask = Task { @MainActor [weak self, weak cableEngine, weak powerEngine] in
-            while !Task.isCancelled {
-                guard let self, let cableEngine, let powerEngine else { return }
-                if !self.visibleSurfaces.isEmpty {
-                    await self.process(
-                        snapshot: cableEngine.snapshot,
-                        powerSnapshot: powerEngine.snapshot
-                    )
-                }
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    withObservationTracking {
-                        _ = cableEngine.snapshot
-                        _ = powerEngine.snapshot
-                    } onChange: {
-                        continuation.resume()
-                    }
-                }
-            }
-        }
+        if !visibleSurfaces.isEmpty { startCadenceIfNeeded() }
     }
 
     func surfaceDidAppear(_ id: String) {
+        closeTask?.cancel()
+        closeTask = nil
         visibleSurfaces.insert(id)
-        guard let cableEngine, let powerEngine else { return }
-        Task { @MainActor [weak self] in
-            await self?.process(
-                snapshot: cableEngine.snapshot,
-                powerSnapshot: powerEngine.snapshot
-            )
-        }
+        startCadenceIfNeeded()
     }
 
     func surfaceDidDisappear(_ id: String) {
         visibleSurfaces.remove(id)
         if visibleSurfaces.isEmpty {
-            Task { @MainActor [weak self] in
-                await self?.closeAll(at: .now)
+            cadenceTask?.cancel()
+            cadenceTask = nil
+            closeTask = Task { @MainActor [weak self] in
+                // Coalesce a close/reopen in the same UI transition. The
+                // visibility recheck is load-bearing for detached windows.
+                await Task.yield()
+                guard let self, self.visibleSurfaces.isEmpty else { return }
+                await self.closeAll(at: .now, whileHidden: true)
             }
         }
     }
 
     func stop() {
-        observationTask?.cancel()
-        observationTask = nil
+        cadenceTask?.cancel()
+        cadenceTask = nil
+        closeTask?.cancel()
         visibleSurfaces.removeAll()
-        Task { @MainActor [weak self] in
-            await self?.closeAll(at: .now)
+        closeTask = Task { @MainActor [weak self] in
+            await self?.closeAll(at: .now, whileHidden: false)
+        }
+    }
+
+    /// NSApplication termination is synchronous. Finish all database writes
+    /// before returning so the process cannot strand open session rows.
+    func stopForTermination(at endedAt: Date = .now) {
+        cadenceTask?.cancel()
+        cadenceTask = nil
+        closeTask?.cancel()
+        closeTask = nil
+        visibleSurfaces.removeAll()
+
+        let closures = sessions.values.compactMap { closure(for: $0, endedAt: endedAt) }
+        do {
+            try repository?.closeSessionsSynchronously(closures)
+            sessions.removeAll()
+            portStates.removeAll()
+            lastError = nil
+        } catch {
+            // Preserve the active state for diagnostics and for a retry if the
+            // lifecycle invokes termination cleanup again.
+            lastError = error
         }
     }
 
     func saveCable(portKey: String, nickname: String) async throws {
-        guard let repository,
-              let state = portStates[portKey] else { return }
+        guard let repository else {
+            throw CableHistoryRecorderError.persistenceUnavailable
+        }
+        guard let state = portStates[portKey] else {
+            throw CableHistoryRecorderError.portNotActive
+        }
         try await repository.rename(id: state.fingerprint, nickname: nickname)
         let saved = try await repository.cable(id: state.fingerprint)
-        guard let saved else { return }
+        guard let saved else { throw CableHistoryRecorderError.savedCableMissing }
         if var session = sessions[portKey] {
             session.savedCable = saved
             sessions[portKey] = session
@@ -131,6 +169,30 @@ final class CableHistoryRecorder {
             connectionDiagnostic: state.connectionDiagnostic,
             savedCable: saved
         )
+        lastError = nil
+    }
+
+    private func startCadenceIfNeeded() {
+        guard cadenceTask == nil,
+              !visibleSurfaces.isEmpty,
+              let cableEngine,
+              let powerEngine else { return }
+        cadenceTask = Task { @MainActor [weak self, weak cableEngine, weak powerEngine] in
+            while !Task.isCancelled {
+                guard let self, let cableEngine, let powerEngine,
+                      !self.visibleSurfaces.isEmpty else { break }
+                await self.process(
+                    snapshot: cableEngine.snapshot,
+                    powerSnapshot: powerEngine.snapshot
+                )
+                do {
+                    try await Task.sleep(for: self.observationInterval)
+                } catch {
+                    break
+                }
+            }
+            self?.cadenceTask = nil
+        }
     }
 
     private func process(
@@ -141,7 +203,7 @@ final class CableHistoryRecorder {
         let activePorts = snapshot.ports.filter { $0.connectionActive == true }
         let activeKeys = Set(activePorts.compactMap(\.portKey))
 
-        for key in sessions.keys where !activeKeys.contains(key) {
+        for key in Array(sessions.keys) where !activeKeys.contains(key) {
             await closeSession(portKey: key, endedAt: .now)
             portStates.removeValue(forKey: key)
         }
@@ -164,23 +226,36 @@ final class CableHistoryRecorder {
                 continue
             }
 
-            if sessions[portKey]?.fingerprint != fingerprint {
-                if sessions[portKey] != nil {
-                    await closeSession(portKey: portKey, endedAt: .now)
+            let priorFingerprint = sessions[portKey]?.fingerprint
+            if priorFingerprint != fingerprint {
+                if priorFingerprint != nil {
+                    let closed = await closeSession(portKey: portKey, endedAt: .now)
+                    guard closed else { continue }
+                    // RegressionAccumulator groups by PD contract. A new cable
+                    // on the same charger must not inherit the old cable's
+                    // resistance samples merely because the contract matches.
+                    powerEngine?.resetResistanceBaseline()
                 }
-                sessions[portKey] = await openSession(
-                    fingerprint: fingerprint,
-                    identity: identity,
-                    port: port
-                )
+                do {
+                    sessions[portKey] = try await openSession(
+                        fingerprint: fingerprint,
+                        identity: identity,
+                        port: port
+                    )
+                    lastError = nil
+                } catch {
+                    lastError = error
+                    continue
+                }
             }
             guard var session = sessions[portKey] else { continue }
 
             let diagnostic = diagnostics[portKey]
-            let dataDelivery = SessionMonitor.DataDelivery.from(
-                diagnostic?.bottleneck,
-                hasCableSpeedClaim: diagnostic?.facts.cableGbps != nil
-            )
+            let dataDelivery = dataDeliveryOverride
+                ?? SessionMonitor.DataDelivery.from(
+                    diagnostic?.bottleneck,
+                    hasCableSpeedClaim: diagnostic?.facts.cableGbps != nil
+                )
             let ratedFiveA = identity.cableVDO?.current == .fiveAmp
             let resistanceTier = resistancePort == portKey
                 ? powerSnapshot?.resistanceEstimate?.tier(ratedFiveA: ratedFiveA)
@@ -230,34 +305,30 @@ final class CableHistoryRecorder {
         fingerprint: String,
         identity: USBPDSOP,
         port: AppleHPMInterface
-    ) async -> ActiveSession {
+    ) async throws -> ActiveSession {
         let now = Date.now
         var rowID: Int64?
         var saved: SavedCable?
         if let repository, let portKey = port.portKey {
-            do {
-                let curated = CableDB.curatedCables(
-                    vid: identity.vendorID,
-                    pid: identity.productID
-                ).first
-                try await repository.upsertSavedCable(
-                    id: fingerprint,
-                    vendorID: identity.vendorID,
-                    productID: identity.productID,
-                    vendorName: CableDB.vendorName(vid: identity.vendorID),
-                    curatedBrand: curated?.brand,
-                    cableVDO: CableIdentity.cableVDORaw(for: identity),
-                    seenAt: now
-                )
-                saved = try await repository.cable(id: fingerprint)
-                rowID = try await repository.openSession(
-                    cableID: fingerprint,
-                    portKey: portKey,
-                    startedAt: now
-                )
-            } catch {
-                rowID = nil
-            }
+            let curated = CableDB.curatedCables(
+                vid: identity.vendorID,
+                pid: identity.productID
+            ).first
+            try await repository.upsertSavedCable(
+                id: fingerprint,
+                vendorID: identity.vendorID,
+                productID: identity.productID,
+                vendorName: CableDB.vendorName(vid: identity.vendorID),
+                curatedBrand: curated?.brand,
+                cableVDO: CableIdentity.cableVDORaw(for: identity),
+                seenAt: now
+            )
+            saved = try await repository.cable(id: fingerprint)
+            rowID = try await repository.openSession(
+                cableID: fingerprint,
+                portKey: portKey,
+                startedAt: now
+            )
         }
         return ActiveSession(
             fingerprint: fingerprint,
@@ -273,15 +344,58 @@ final class CableHistoryRecorder {
         )
     }
 
-    private func closeSession(portKey: String, endedAt: Date) async {
-        guard let session = sessions.removeValue(forKey: portKey) else { return }
-        guard let repository, let rowID = session.rowID else { return }
+    @discardableResult
+    private func closeSession(portKey: String, endedAt: Date) async -> Bool {
+        guard let session = sessions[portKey] else { return true }
+        guard let repository, let rowID = session.rowID else {
+            sessions.removeValue(forKey: portKey)
+            return true
+        }
+        do {
+            guard let closure = closure(for: session, endedAt: endedAt, rowID: rowID) else {
+                return false
+            }
+            try await repository.closeSession(
+                id: closure.id,
+                endedAt: closure.endedAt,
+                verdict: closure.verdict,
+                negotiatedGbps: closure.negotiatedGbps,
+                negotiatedWatts: closure.negotiatedWatts,
+                observationCount: closure.observationCount,
+                overcurrentEvents: closure.overcurrentEvents,
+                plugEvents: closure.plugEvents
+            )
+            sessions.removeValue(forKey: portKey)
+            lastError = nil
+            return true
+        } catch {
+            // Keep the session and row ID so the next cadence/disconnect or
+            // termination cleanup can retry the exact same close.
+            lastError = error
+            return false
+        }
+    }
+
+    private func closeAll(at date: Date, whileHidden: Bool) async {
+        for key in Array(sessions.keys) {
+            if whileHidden, !visibleSurfaces.isEmpty { return }
+            await closeSession(portKey: key, endedAt: date)
+        }
+        portStates.removeAll()
+    }
+
+    private func closure(
+        for session: ActiveSession,
+        endedAt: Date,
+        rowID: Int64? = nil
+    ) -> CableSessionClosure? {
+        guard let id = rowID ?? session.rowID else { return nil }
         let delta = SessionDelta(
             baseline: session.baseline,
             current: session.latestCounters
         )
-        try? await repository.closeSession(
-            id: rowID,
+        return CableSessionClosure(
+            id: id,
             endedAt: endedAt,
             verdict: session.monitor.verdict,
             negotiatedGbps: session.negotiatedGbps,
@@ -290,12 +404,5 @@ final class CableHistoryRecorder {
             overcurrentEvents: session.monitor.overcurrentEventCount,
             plugEvents: delta.plugEvents
         )
-    }
-
-    private func closeAll(at date: Date) async {
-        for key in sessions.keys {
-            await closeSession(portKey: key, endedAt: date)
-        }
-        portStates.removeAll()
     }
 }

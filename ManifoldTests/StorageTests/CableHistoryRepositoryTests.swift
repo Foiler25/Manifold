@@ -97,16 +97,61 @@ final class CableHistoryRepositoryTests: XCTestCase {
         XCTAssertEqual(latestVerdict, .notPerforming)
     }
 
+    func testRetentionPrunesOnlyOldUnnamedHistory() async throws {
+        try await upsert(id: "unnamed-active", seenAt: 10)
+        try await upsert(id: "unnamed-stale", seenAt: 10)
+        try await upsert(id: "named", nickname: "Keep me", seenAt: 10)
+
+        _ = try await repository.openSession(
+            cableID: "unnamed-active", portKey: "2/1",
+            startedAt: Date(timeIntervalSince1970: 20)
+        )
+        let recentUnnamed = try await repository.openSession(
+            cableID: "unnamed-active", portKey: "2/1",
+            startedAt: Date(timeIntervalSince1970: 150)
+        )
+        let namedSession = try await repository.openSession(
+            cableID: "named", portKey: "2/2",
+            startedAt: Date(timeIntervalSince1970: 20)
+        )
+
+        let result = try await repository.pruneUnnamedHistory(
+            olderThan: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertEqual(result, CableHistoryPruneResult(
+            sessionsDeleted: 1, cablesDeleted: 1
+        ))
+        let remainingUnnamed = try await repository.sessions(cableID: "unnamed-active")
+        let remainingNamed = try await repository.sessions(cableID: "named")
+        let staleCable = try await repository.cable(id: "unnamed-stale")
+        let namedCable = try await repository.cable(id: "named")
+        XCTAssertEqual(remainingUnnamed.map(\.id), [recentUnnamed])
+        XCTAssertEqual(remainingNamed.map(\.id), [namedSession])
+        XCTAssertNil(staleCable)
+        XCTAssertNotNil(namedCable)
+    }
+
     private func upsert(nickname: String? = nil) async throws {
+        try await upsert(
+            id: "1234:ABCD:11223344", nickname: nickname, seenAt: 10
+        )
+    }
+
+    private func upsert(
+        id: String,
+        nickname: String? = nil,
+        seenAt: TimeInterval
+    ) async throws {
         try await repository.upsertSavedCable(
-            id: "1234:ABCD:11223344",
+            id: id,
             nickname: nickname,
             vendorID: 0x1234,
             productID: 0xABCD,
             vendorName: "Vendor",
             curatedBrand: "Brand",
             cableVDO: 0x1122_3344,
-            seenAt: Date(timeIntervalSince1970: 10)
+            seenAt: Date(timeIntervalSince1970: seenAt)
         )
     }
 }
