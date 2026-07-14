@@ -59,6 +59,7 @@ struct HistoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.manifoldSurface)
+        .accessibilityIdentifier("window.tab.history.root")
         .task {
             await reload()
         }

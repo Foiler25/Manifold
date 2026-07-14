@@ -160,6 +160,7 @@ struct PopoverRoot: View {
             alignment: .topLeading
         )
         .background(Color.manifoldSurface)
+        .accessibilityIdentifier("menubar.popover.root")
     }
 
     /// Visible row count, capped at the threshold above which the
@@ -208,6 +209,7 @@ struct PopoverRoot: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
         .padding(.horizontal, 16)
+        .accessibilityIdentifier("menubar.popover.empty")
     }
 }
 

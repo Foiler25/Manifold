@@ -37,11 +37,14 @@ struct DiagnosticsBanner: View {
     @Bindable var graph: PortGraph
 
     var body: some View {
-        if graph.diagnostics.isEmpty {
-            emptyState
-        } else {
-            populated
+        Group {
+            if graph.diagnostics.isEmpty {
+                emptyState
+            } else {
+                populated
+            }
         }
+        .accessibilityIdentifier("window.tab.diagnostics.root")
     }
 
     /// Empty-state for Phase 6 (no diagnostics engine yet) AND for

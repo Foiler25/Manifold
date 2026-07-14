@@ -41,6 +41,17 @@
                ReferencedContainer = "container:Manifold.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A100000000000000000050A1"
+               BuildableName = "ManifoldUITests.xctest"
+               BlueprintName = "ManifoldUITests"
+               ReferencedContainer = "container:Manifold.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

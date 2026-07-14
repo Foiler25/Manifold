@@ -247,6 +247,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Lifecycle
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+#if DEBUG
+        // Manifold normally launches as a menu-bar accessory. UI tests
+        // that exercise the standalone window opt into a regular app
+        // activation policy before SwiftUI constructs its WindowGroup,
+        // making the initial scene deterministic without changing the
+        // production launch experience.
+        if ProcessInfo.processInfo.environment["MANIFOLD_AUTOOPEN_WINDOW"] != nil {
+            NSApp.setActivationPolicy(.regular)
+        }
+#endif
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Window-frame persistence wired explicitly via AppKit per
         // SPEC §18 Phase 6 rev-6. WindowGroup may not have created
@@ -386,6 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 #if DEBUG
         runLeakBenchIfRequested()
         autoOpenPopoverIfRequested()
+        autoOpenWindowIfRequested()
 #endif
     }
 
@@ -404,6 +418,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // a chance to install before we ask it to open.
         DispatchQueue.main.async { [weak self] in
             self?.statusItemController?.showPopover()
+        }
+    }
+
+    /// DEBUG-only companion to the popover hook. The early activation
+    /// policy change in `applicationWillFinishLaunching` normally makes
+    /// SwiftUI create the WindowGroup; this next-tick bring-up also
+    /// handles a restored window that starts miniaturized or behind
+    /// another app.
+    private func autoOpenWindowIfRequested() {
+        guard ProcessInfo.processInfo.environment["MANIFOLD_AUTOOPEN_WINDOW"] != nil else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.openMainWindow()
         }
     }
 #endif

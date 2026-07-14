@@ -29,6 +29,8 @@
 //   - Topology  → header model label (`window.topology.header.model`)
 //   - History   → placeholder title (`window.tab.history.placeholder.title`)
 //   - Diagnostics → empty-state title (`window.tab.diagnostics.empty.title`)
+//   - Battery → populated or empty-state root
+//   - Cables → cable diagnostics root
 //
 // On a clean Mac with no devices plugged in, the Topology tab still
 // renders its header (the model summary line) — that's stable enough
@@ -48,6 +50,11 @@ final class WindowUITests: XCTestCase {
         // every assertion failure points at the same root cause.
         continueAfterFailure = false
         app = XCUIApplication()
+        // Manifold is a menu-bar app in normal use. This DEBUG-only
+        // hook presents the standalone window deterministically.
+        app.launchEnvironment["MANIFOLD_AUTOOPEN_WINDOW"] = "1"
+        // Keep first-launch onboarding from covering the tab bar.
+        app.launchArguments += ["-settings.onboarding.completed", "YES"]
         app.launch()
     }
 
@@ -59,8 +66,7 @@ final class WindowUITests: XCTestCase {
 
     // MARK: - Window opens
 
-    /// The WindowGroup creates the main window on launch by default.
-    /// Verify it's present and reachable via XCUIApplication.
+    /// The DEBUG launch hook creates the main window on demand.
     func test_mainWindow_isPresentAfterLaunch() {
         let window = app.windows.firstMatch
         XCTAssertTrue(
@@ -71,17 +77,19 @@ final class WindowUITests: XCTestCase {
 
     // MARK: - Tab switching
 
-    /// Verify the three tabs exist and are clickable.
-    func test_tabBar_threeTabsExist() {
+    /// Verify all current tabs exist and are clickable.
+    func test_tabBar_allTabsExist() {
         XCTAssertTrue(tabButton(.topology).waitForExistence(timeout: 5))
         XCTAssertTrue(tabButton(.history).exists)
         XCTAssertTrue(tabButton(.diagnostics).exists)
+        XCTAssertTrue(tabButton(.battery).exists)
+        XCTAssertTrue(tabButton(.cables).exists)
     }
 
     /// Default tab is Topology — verify the topology header is
     /// visible right after launch (without needing a click).
     func test_defaultTab_isTopology_withHeaderVisible() {
-        let header = app.staticTexts["window.topology.header.model"]
+        let header = element(identifier: "window.topology.header.model")
         XCTAssertTrue(
             header.waitForExistence(timeout: 5),
             "Topology header should be visible by default — Topology is the default tab."
@@ -95,10 +103,10 @@ final class WindowUITests: XCTestCase {
         }
         tabButton(.history).click()
 
-        let placeholder = app.staticTexts["window.tab.history.placeholder.title"]
+        let placeholder = element(identifier: "window.tab.history.root")
         XCTAssertTrue(
             placeholder.waitForExistence(timeout: 3),
-            "After clicking History tab, the Phase-10 placeholder title should be visible."
+            "After clicking History, the history view should be visible."
         )
     }
 
@@ -109,10 +117,24 @@ final class WindowUITests: XCTestCase {
         }
         tabButton(.diagnostics).click()
 
-        let emptyTitle = app.staticTexts["window.tab.diagnostics.empty.title"]
+        let emptyTitle = element(identifier: "window.tab.diagnostics.root")
         XCTAssertTrue(
             emptyTitle.waitForExistence(timeout: 3),
-            "After clicking Diagnostics tab, the empty-state title should be visible."
+            "After clicking Diagnostics, the diagnostics view should be visible."
+        )
+    }
+
+    /// Click Cables tab → the re-synced cable diagnostics UI renders.
+    func test_clickCablesTab_showsCableDiagnostics() {
+        guard tabButton(.cables).waitForExistence(timeout: 5) else {
+            return XCTFail("Cables tab button never appeared.")
+        }
+        tabButton(.cables).click()
+
+        let cablesRoot = element(identifier: "window.tab.cables.populated")
+        XCTAssertTrue(
+            cablesRoot.waitForExistence(timeout: 5),
+            "After clicking Cables, the cable diagnostics view should be visible."
         )
     }
 
@@ -123,10 +145,10 @@ final class WindowUITests: XCTestCase {
             return XCTFail("History tab button never appeared.")
         }
         tabButton(.history).click()
-        _ = app.staticTexts["window.tab.history.placeholder.title"].waitForExistence(timeout: 3)
+        _ = element(identifier: "window.tab.history.root").waitForExistence(timeout: 3)
 
         tabButton(.topology).click()
-        let header = app.staticTexts["window.topology.header.model"]
+        let header = element(identifier: "window.topology.header.model")
         XCTAssertTrue(
             header.waitForExistence(timeout: 3),
             "Topology header should reappear after switching back from History."
@@ -139,7 +161,14 @@ final class WindowUITests: XCTestCase {
     /// identifier `MainWindow.tabButton` sets via
     /// `.accessibilityIdentifier("window.tab.\(tab.rawValue)")`.
     private func tabButton(_ tab: TabKind) -> XCUIElement {
-        app.buttons["window.tab.\(tab.rawValue)"]
+        element(identifier: "window.tab.\(tab.rawValue)")
+    }
+
+    /// SwiftUI's segmented Picker has changed accessibility element
+    /// types across macOS releases (button vs radio button). Query by
+    /// stable identifier without coupling tests to that private shape.
+    private func element(identifier: String) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
     }
 
     /// Mirror of `Manifold.WindowTab` — duplicated here because UI
@@ -149,5 +178,7 @@ final class WindowUITests: XCTestCase {
         case topology
         case history
         case diagnostics
+        case battery
+        case cables
     }
 }

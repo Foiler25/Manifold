@@ -88,6 +88,7 @@ struct HostHeader: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier("menubar.popover.host")
     }
 
     /// Default text colour for the draw figure, flipped to critical
