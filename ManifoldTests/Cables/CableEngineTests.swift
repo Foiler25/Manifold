@@ -81,7 +81,7 @@ final class CableEngineTests: XCTestCase {
         engine.start()
 
         try? await waitUntil(timeout: .seconds(2)) {
-            engine.lastError != nil
+            engine.lastError != nil && !engine.isRunning
         }
         XCTAssertNotNil(engine.lastError)
         XCTAssertEqual(
