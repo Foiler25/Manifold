@@ -48,6 +48,7 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
         let trmWatcher = TRMTransportWatcher()
         let phyWatcher = AppleTypeCPhyWatcher()
         let displayWatcher = DisplayPortTransportWatcher()
+        let liquidWatcher = LiquidDetectionWatcher()
         var started = false
 
         func ensureStarted() {
@@ -61,6 +62,7 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             trmWatcher.start()
             phyWatcher.start()
             displayWatcher.start()
+            liquidWatcher.start()
 
             // Lets powerWatcher.refresh() synthesize a per-port source when
             // macOS never publishes a real IOPortFeaturePowerSource node
@@ -95,7 +97,19 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             trmWatcher.refresh()
             phyWatcher.refresh()
             displayWatcher.refresh()
+            liquidWatcher.refresh()
             let battery = AppleSmartBatteryReader.read()
+            var liquidDetection: [String: LiquidDetectionStatus] = [:]
+            for update in liquidWatcher.statuses {
+                guard let port = portWatcher.ports.first(where: {
+                    $0.portNumber == update.portIndex
+                        && ($0.portTypeDescription == update.portType
+                            || update.portType == "USB-C")
+                }), let key = port.portKey else {
+                    continue
+                }
+                liquidDetection[key] = update.status
+            }
             let snap = CableSnapshot(
                 ports: portWatcher.ports,
                 powerSources: powerWatcher.sources,
@@ -112,6 +126,7 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
                 // statuses are enriched with the live CoreGraphics mode at the
                 // watcher source now (DAR-159), so no enrich is needed here.
                 displayPorts: displayWatcher.statuses.map(\.status),
+                liquidDetection: liquidDetection,
                 batteryFullyCharged: battery.battery?.fullyCharged,
                 batteryIsCharging: battery.battery?.isCharging
             )
@@ -178,4 +193,3 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
 public func makeDefaultSnapshotProvider() -> any CableSnapshotProvider {
     CableDarwinProvider()
 }
-

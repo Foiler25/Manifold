@@ -283,6 +283,18 @@ struct CablePortCard: View {
         summary.bullets + deviceBullets
     }
 
+    private var pinMap: USBCPinMap? {
+        USBCPinMap.from(
+            pinConfiguration: port.pinConfiguration,
+            plugOrientation: port.plugOrientation
+        )
+    }
+
+    private var liquidStatus: LiquidDetectionStatus? {
+        guard let key = port.portKey else { return nil }
+        return snapshot.liquidDetection[key]
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
@@ -325,6 +337,23 @@ struct CablePortCard: View {
                         }
                     }
                 }
+            }
+
+            if let liquidStatus, liquidStatus.liquidDetected {
+                Divider()
+                LiquidDetectionCallout(status: liquidStatus)
+            }
+
+            if let pinMap {
+                Divider()
+                DisclosureGroup {
+                    USBCPinDiagram(map: pinMap)
+                        .padding(.top, 8)
+                } label: {
+                    Label("Pin detail", systemImage: "cable.connector.horizontal")
+                        .font(.callout.weight(.medium))
+                }
+                .accessibilityIdentifier("cables.port.pinDetail")
             }
         }
         .padding(CablesViewConstants.cardPadding)

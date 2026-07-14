@@ -169,6 +169,11 @@ public struct CableSnapshot: Equatable {
     /// services appear and disappear with plug/unplug. Correlated to a port
     /// via `IOPortTransportStateDisplayPort.portKey`.
     public let displayPorts: [IOPortTransportStateDisplayPort]
+    /// Live liquid-detection state keyed by the same user-visible `portKey`
+    /// used throughout the snapshot joins. Upstream's watcher publishes this
+    /// separately; Manifold carries it on the snapshot so port cards remain a
+    /// pure function of one engine value.
+    public let liquidDetection: [String: LiquidDetectionStatus]
     /// AppleSmartBattery's FullyCharged flag. `nil` on desktop Macs / when
     /// no battery is present, so consumers never claim "battery full" on a
     /// machine that has no battery.
@@ -193,6 +198,7 @@ public struct CableSnapshot: Equatable {
         cioCapabilities: [CIOCableCapability] = [],
         typeCPhys: [AppleTypeCPhy] = [],
         displayPorts: [IOPortTransportStateDisplayPort] = [],
+        liquidDetection: [String: LiquidDetectionStatus] = [:],
         batteryFullyCharged: Bool? = nil,
         batteryIsCharging: Bool? = nil
     ) {
@@ -209,6 +215,7 @@ public struct CableSnapshot: Equatable {
         self.cioCapabilities = cioCapabilities
         self.typeCPhys = typeCPhys
         self.displayPorts = displayPorts
+        self.liquidDetection = liquidDetection
         self.batteryFullyCharged = batteryFullyCharged
         self.batteryIsCharging = batteryIsCharging
     }
