@@ -21,26 +21,24 @@
 // copyright + permission notice.
 //
 // ─────────────────────────────────────────────────────────────────────
-// CableSnapshotProvider.swift
-//
-// Protocol that abstracts cable / port / power IOKit reading from its
-// consumer. `CableEngine` owns one of these and binds the UI to its
-// `watch()` stream — the concrete `CableDarwinProvider` is the only
-// implementation today, but the seam keeps `CableEngine` testable
-// without touching IOKit (see `CableEngineTests` for the fake).
-
 public import Foundation
+import Darwin
 
-/// Platform backends conform to this. UI code binds to the protocol,
-/// not to a concrete watcher class.
+/// Reads the Mac model identifier (e.g. "Mac15,3") via `sysctlbyname`.
 ///
-/// `watch()` semantics:
-/// - Emits an initial snapshot immediately.
-/// - After that, emits only when the snapshot actually changes.
-/// - Cancellation tears down underlying IOKit notifications and timers
-///   via the stream's `onTermination` handler.
-/// - Errors finish the stream; backends must not retry silently.
-public protocol CableSnapshotProvider: Sendable {
-    func snapshot() async throws -> CableSnapshot
-    func watch() -> AsyncThrowingStream<CableSnapshot, Error>
+/// This used to live in `WhatCableCore`, but Core has to stay free of
+/// Darwin-only APIs so it can eventually build for a non-Darwin (e.g. Linux)
+/// backend. The lookup moved back here, to the Darwin-specific layer, which
+/// is its original home before an earlier refactor moved it into Core.
+public enum DarwinSystemInfo {
+    /// Returns the `hw.model` sysctl string, or "unknown" if the sysctl call
+    /// fails for any reason (e.g. running somewhere that doesn't have it).
+    public static func fetchMacModel() -> String {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        guard size > 0 else { return "unknown" }
+        var buf = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &buf, &size, nil, 0) == 0 else { return "unknown" }
+        return String(cString: buf)
+    }
 }

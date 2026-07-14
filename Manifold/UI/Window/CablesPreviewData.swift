@@ -47,7 +47,7 @@ extension CableSnapshot {
     /// state and `CablesView`'s "no cables plugged in" hint.
     static let previewEmptyPort = CableSnapshot(
         ports: [
-            USBCPort(
+            AppleHPMInterface(
                 id: 1,
                 serviceName: "Port-USB-C@1",
                 className: "AppleHPMInterfaceType10",

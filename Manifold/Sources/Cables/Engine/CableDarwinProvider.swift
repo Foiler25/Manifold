@@ -22,44 +22,33 @@
 //
 // ─────────────────────────────────────────────────────────────────────
 public import Foundation
-import Combine
+import os.log
 
 /// macOS implementation of `CableSnapshotProvider`. Wraps the four IOKit
 /// watcher classes and assembles their state into a `CableSnapshot`.
 ///
-/// `snapshot()` starts the watchers once, refreshes them, and reads.
-/// `watch()` keeps them started and yields a fresh snapshot whenever any
-/// watcher signals a state change via Combine `objectWillChange` — plus
-/// a 5-second backstop poll as a safety net for any property-change
-/// path the IOKit notifications might miss on unusual hardware. The
-/// previous implementation polled every 1 s; the watchers themselves
-/// are already event-driven (each registers `IOServiceAddMatching-
-/// Notification` and most also register `IOServiceAddInterest-
-/// Notification` for property changes), so the per-second wake was
-/// pure waste in steady state.
+/// `snapshot()` starts the watchers once, refreshes the polling-driven ones
+/// (the others fire IOKit match notifications during start), and reads.
+/// `watch()` keeps them started and polls for changes on a 1s timer.
+/// Polling is sufficient because `AppleHPMInterfaceWatcher` already requires it for
+/// property-change events; the others share the same loop for simplicity.
 public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendable {
     public init() {}
 
+    private static let log = Logger(subsystem: "uk.whatcable.whatcable", category: "charging")
+
     @MainActor
     private final class State {
-        let portWatcher = CablePortWatcher()
+        let portWatcher = AppleHPMInterfaceWatcher()
         let powerWatcher = PowerSourceWatcher()
-        let pdWatcher = PDIdentityWatcher()
+        let pdWatcher = USBPDSOPWatcher()
         let usbWatcher = USBWatcher()
-        let tbWatcher = ThunderboltWatcher()
+        let tbWatcher = IOIOThunderboltSwitchWatcher()
+        let usb3Watcher = USB3TransportWatcher()
+        let trmWatcher = TRMTransportWatcher()
+        let phyWatcher = AppleTypeCPhyWatcher()
+        let displayWatcher = DisplayPortTransportWatcher()
         var started = false
-
-        /// Active wakeup continuation for the `watch()` loop. Resumed
-        /// when any watcher signals a change OR when the backstop
-        /// timer fires. Single-shot — replaced on every iteration of
-        /// the loop. Nil while the loop is running its body (between
-        /// the previous wake and the next `waitForChange`).
-        private var pendingWake: CheckedContinuation<Void, Never>?
-
-        /// Combine subscriptions that sink each watcher's
-        /// `objectWillChange` into `wake()`. Held strongly so the
-        /// subscriptions live as long as the singleton state.
-        private var cancellables: Set<AnyCancellable> = []
 
         func ensureStarted() {
             guard !started else { return }
@@ -68,97 +57,66 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             pdWatcher.start()
             usbWatcher.start()
             tbWatcher.start()
+            usb3Watcher.start()
+            trmWatcher.start()
+            phyWatcher.start()
+            displayWatcher.start()
 
-            // Subscribe each watcher's `objectWillChange` to `wake()`
-            // so any IOKit-driven mutation of a watcher's @Published
-            // property unblocks the watch() loop. `objectWillChange`
-            // fires synchronously on the main thread (the watchers
-            // are MainActor-isolated), so the sink closure runs on
-            // MainActor without an explicit hop.
-            //
-            // The sink fires BEFORE the @Published assignment lands,
-            // but the loop's subsequent `state.read()` re-walks the
-            // IORegistry independently — it doesn't depend on the
-            // already-assigned @Published value — so the ordering is
-            // benign.
-            portWatcher.objectWillChange
-                .sink { [weak self] in self?.wake() }
-                .store(in: &cancellables)
-            powerWatcher.objectWillChange
-                .sink { [weak self] in self?.wake() }
-                .store(in: &cancellables)
-            pdWatcher.objectWillChange
-                .sink { [weak self] in self?.wake() }
-                .store(in: &cancellables)
-            usbWatcher.objectWillChange
-                .sink { [weak self] in self?.wake() }
-                .store(in: &cancellables)
-            tbWatcher.objectWillChange
-                .sink { [weak self] in self?.wake() }
-                .store(in: &cancellables)
+            // Lets powerWatcher.refresh() synthesize a per-port source when
+            // macOS never publishes a real IOPortFeaturePowerSource node
+            // (M1 Pro/Max/Ultra USB-C, issue #401).
+            powerWatcher.synthesisContext = { [weak self] in
+                guard let self else { return nil }
+                return PowerSourceSynthesisContext(
+                    ports: self.portWatcher.ports,
+                    identities: self.pdWatcher.identities,
+                    // hpmPortKeys() walks six IOKit service classes; wrapped
+                    // in a closure so it only runs on the rare tick that
+                    // reaches the actual synthesis call, not on every read().
+                    positionalPortKeys: { PowerTelemetryWatcher.hpmPortKeys() }
+                )
+            }
 
             started = true
         }
 
         func read() -> CableSnapshot {
-            // USBCPort property changes are now caught via the per-
-            // port `IOServiceAddInterestNotification` registrations
-            // inside `CablePortWatcher`, but the explicit refresh on
-            // each read remains a cheap consistency guard. The other
-            // watchers' refresh() calls are likewise notification-
-            // driven but cheap to repeat.
+            // AppleHPMInterface property changes don't fire match notifications,
+            // so refresh on every read. The others are notification-driven
+            // but refresh is cheap and keeps reads consistent.
             portWatcher.refresh()
-            powerWatcher.refresh()
+            // pdWatcher before powerWatcher: PowerSourceSynthesis's
+            // partner-kind attribution rung (issue #401) needs this tick's
+            // identities, not last tick's.
             pdWatcher.refresh()
+            powerWatcher.refresh()
             tbWatcher.refresh()
-            return CableSnapshot(
+            usb3Watcher.refresh()
+            trmWatcher.refresh()
+            phyWatcher.refresh()
+            displayWatcher.refresh()
+            let battery = AppleSmartBatteryReader.read()
+            let snap = CableSnapshot(
                 ports: portWatcher.ports,
                 powerSources: powerWatcher.sources,
                 identities: pdWatcher.identities,
                 usbDevices: usbWatcher.devices,
                 adapter: SystemPower.currentAdapter(),
-                thunderboltSwitches: tbWatcher.switches
+                thunderboltSwitches: tbWatcher.switches,
+                isDesktopMac: battery.isDesktopMac,
+                federatedIdentities: battery.federatedIdentities,
+                usb3Transports: usb3Watcher.transports,
+                trmTransports: trmWatcher.transports,
+                cioCapabilities: trmWatcher.cioCapabilities,
+                typeCPhys: phyWatcher.phys,
+                // statuses are enriched with the live CoreGraphics mode at the
+                // watcher source now (DAR-159), so no enrich is needed here.
+                displayPorts: displayWatcher.statuses.map(\.status),
+                batteryFullyCharged: battery.battery?.fullyCharged,
+                batteryIsCharging: battery.battery?.isCharging
             )
-        }
-
-        /// Suspend until a watcher signals a change OR `backstopSeconds`
-        /// elapses. The backstop covers the (theoretical) case where
-        /// some hardware quirk causes a watcher's IOKit notification
-        /// not to fire on a state change — a stale snapshot would
-        /// otherwise persist until the next user-initiated refresh.
-        func waitForChange(backstopSeconds: Double = 5.0) async {
-            let backstopTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(backstopSeconds))
-                // `try?` swallows `CancellationError`, so without this
-                // guard the cancelled task's `wake()` would still fire
-                // — racing back into the loop body and producing an
-                // infinite poll instead of an idle 5 s wait.
-                guard !Task.isCancelled else { return }
-                self?.wake()
-            }
-            defer { backstopTask.cancel() }
-
-            await withTaskCancellationHandler {
-                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                    pendingWake = cont
-                }
-            } onCancel: {
-                // Outer task was cancelled (consumer dropped the
-                // stream). Resume the continuation so the awaiting
-                // task can finish promptly. The cancellation handler
-                // is nonisolated, so hop to MainActor.
-                Task { @MainActor [weak self] in self?.wake() }
-            }
-        }
-
-        /// Resume the pending continuation if any. No-op when the
-        /// loop body is mid-iteration (continuation is nil between
-        /// wakes). Bursts collapse to one wake per loop turn.
-        private func wake() {
-            if let cont = pendingWake {
-                pendingWake = nil
-                cont.resume()
-            }
+            CableDarwinProvider.logChargingSignals(snap)
+            return snap
         }
     }
 
@@ -169,6 +127,28 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
     public func snapshot() async throws -> CableSnapshot {
         Self.state.ensureStarted()
         return Self.state.read()
+    }
+
+    private static func logChargingSignals(_ snap: CableSnapshot) {
+        let activePorts = snap.ports.filter { $0.connectionActive == true }
+        let adapterW = snap.adapter?.watts.map(String.init) ?? "none"
+        log.debug(
+            """
+            charging signals: \(snap.ports.count) ports, \
+            \(activePorts.count) active, \
+            adapter \(adapterW)W
+            """
+        )
+        for port in activePorts {
+            guard let key = port.portKey else { continue }
+            let sources = snap.powerSources.filter { $0.portKey == key }
+            let names = sources.map { src -> String in
+                let w = Int((Double(src.maxPowerMW) / 1000).rounded())
+                return "\(src.name)(\(w)W)"
+            }
+            let label = port.portDescription ?? port.serviceName
+            log.debug("  port \(label): sources=[\(names.joined(separator: ", "))]")
+        }
     }
 
     public func watch() -> AsyncThrowingStream<CableSnapshot, Error> {
@@ -182,7 +162,7 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
                         continuation.yield(snap)
                         last = snap
                     }
-                    await Self.state.waitForChange()
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
                 continuation.finish()
             }
@@ -198,3 +178,4 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
 public func makeDefaultSnapshotProvider() -> any CableSnapshotProvider {
     CableDarwinProvider()
 }
+

@@ -31,7 +31,7 @@ import ManifoldKit
 
 struct CablePortCard: View {
 
-    let port: USBCPort
+    let port: AppleHPMInterface
     let snapshot: CableSnapshot
 
     /// Manifold's existing graph. Used for two joins the absorbed
@@ -51,9 +51,11 @@ struct CablePortCard: View {
     /// PortSummary builder + the device-name bullet builder so we
     /// don't re-filter in two places.
     private struct PortSlice {
-        let identities: [PDIdentity]
+        let identities: [USBPDSOP]
         let sources: [PowerSource]
         let devices: [USBDevice]
+        let usb3Transports: [USB3Transport]
+        let cioCapability: CIOCableCapability?
     }
 
     private var slice: PortSlice {
@@ -64,25 +66,41 @@ struct CablePortCard: View {
         // helpers (`PDIdentityWatcher.identities(for:)` etc.) do this
         // filter; we replicate it inline here since CablePortCard
         // sees the snapshot, not the watchers.
-        let portKey = port.portKey
-        let identities: [PDIdentity] = portKey.map { key in
-            snapshot.identities.filter { $0.portKey == key }
-        } ?? []
-        let sources: [PowerSource] = portKey.map { key in
-            snapshot.powerSources.filter { $0.portKey == key }
-        } ?? []
+        let identities = snapshot.identities.filter { $0.canonicallyMatches(port: port) }
+        let sources = snapshot.powerSources.filter { $0.canonicallyMatches(port: port) }
         let devices = port.matchingDevices(from: snapshot.usbDevices)
-        return PortSlice(identities: identities, sources: sources, devices: devices)
+        let usb3Transports = snapshot.usb3Transports.filter { $0.canonicallyMatches(port: port) }
+        let cioCapability = snapshot.cioCapabilities.first { $0.canonicallyMatches(port: port) }
+        return PortSlice(
+            identities: identities,
+            sources: sources,
+            devices: devices,
+            usb3Transports: usb3Transports,
+            cioCapability: cioCapability
+        )
     }
 
     private var summary: PortSummary {
         let s = slice
+        let activePortCount = snapshot.ports.count { $0.connectionActive == true }
+        let chargerWattage = ChargerWattageSource.resolve(
+            portSources: s.sources,
+            activePortCount: activePortCount,
+            adapter: snapshot.adapter
+        )
         return PortSummary(
             port: port,
             sources: s.sources,
             identities: s.identities,
             devices: s.devices,
-            thunderboltSwitches: snapshot.thunderboltSwitches
+            thunderboltSwitches: snapshot.thunderboltSwitches,
+            federatedIdentities: snapshot.federatedIdentities,
+            usb3Transports: s.usb3Transports,
+            cioCapability: s.cioCapability,
+            chargerWattageSource: chargerWattage,
+            batteryFullyCharged: snapshot.batteryFullyCharged,
+            batteryIsCharging: snapshot.batteryIsCharging,
+            adapter: snapshot.adapter
         )
     }
 
@@ -325,6 +343,7 @@ struct CablePortCard: View {
         switch displayedStatus {
         case .empty:            return "cable.connector"
         case .charging:         return "bolt.fill"
+        case .batteryFull:      return "battery.100percent"
         case .dataDevice:       return "externaldrive.connected.to.line.below"
         case .thunderboltCable: return "bolt.horizontal.fill"
         case .displayCable:     return "display"
@@ -336,6 +355,7 @@ struct CablePortCard: View {
         switch displayedStatus {
         case .empty:            return .secondary
         case .charging,
+             .batteryFull,
              .dataDevice,
              .thunderboltCable,
              .displayCable:     return Color.manifoldAccent
