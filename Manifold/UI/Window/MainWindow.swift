@@ -57,7 +57,7 @@ struct MainWindow: View {
     @Bindable var cableEngine: CableEngine
     @Bindable var powerTelemetryEngine: PowerTelemetryEngine
     let cableHistoryRepository: CableHistoryRepository?
-    @Bindable var cableHistoryRecorder: CableHistoryRecorder
+    let cableHistoryRecorder: CableHistoryRecorder
 
     let onWindowAppear: () -> Void
     let onWindowDisappear: () -> Void

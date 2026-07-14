@@ -42,7 +42,7 @@ struct CablesView: View {
     /// any charger is currently connected). The cables snapshot
     /// alone doesn't carry either fact.
     @Bindable var graph: PortGraph
-    @Bindable var historyRecorder: CableHistoryRecorder
+    let historyRecorder: CableHistoryRecorder
 
     var body: some View {
         ScrollView {

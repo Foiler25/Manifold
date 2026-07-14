@@ -35,7 +35,7 @@ final class PowerTelemetryEngineTests: XCTestCase {
         telemetry.yield(snapshot(powerMW: 10_000, at: 1))
         telemetry.yield(snapshot(powerMW: 20_000, at: 2))
         telemetry.yield(snapshot(powerMW: 30_000, at: 3))
-        await Task.yield()
+        await waitUntil { engine.snapshot?.activePowerMW == 30_000 }
 
         XCTAssertEqual(engine.snapshot?.activePowerMW, 30_000)
         XCTAssertEqual(engine.history.map(\.systemPowerIn), [20_000, 30_000])
@@ -71,7 +71,7 @@ final class PowerTelemetryEngineTests: XCTestCase {
             batteryCurrentMA: 2_000,
             batteryPowerMW: 24_000
         ))
-        await Task.yield()
+        await waitUntil { engine.history.last?.systemPowerIn == 24_000 }
 
         XCTAssertEqual(engine.history.last?.systemPowerIn, 24_000)
     }
@@ -98,7 +98,7 @@ final class PowerTelemetryEngineTests: XCTestCase {
             contracts: ["2/1": contract],
             eventTraces: [:]
         ))
-        await Task.yield()
+        await waitUntil { engine.contracts["2/1"] != nil }
 
         XCTAssertEqual(telemetry.updatedPorts.first?.portKey, "2/1")
         XCTAssertEqual(engine.contracts["2/1"], contract)
@@ -138,6 +138,17 @@ final class PowerTelemetryEngineTests: XCTestCase {
             portSamples: [],
             resistanceEstimate: nil
         )
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(2),
+        condition: () -> Bool
+    ) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while !condition(), clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     private func makePort() -> AppleHPMInterface {

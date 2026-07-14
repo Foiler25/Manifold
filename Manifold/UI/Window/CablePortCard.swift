@@ -46,7 +46,7 @@ struct CablePortCard: View {
     ///      there. `Host.inputAdapter` is system-wide and survives
     ///      that gap.
     let graph: PortGraph
-    @Bindable var historyRecorder: CableHistoryRecorder
+    let historyRecorder: CableHistoryRecorder
     @State private var isNamingCable = false
     @State private var cableName = ""
 
