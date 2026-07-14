@@ -1531,6 +1531,22 @@
       "extractionState" : "manual",
       "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Cables" } } }
     },
+    "window.tab.negotiation.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Negotiation" } } }
+    },
+    "window.tab.negotiation.menu" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Negotiation Diagnostics" } } }
+    },
+    "window.tab.display.label" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Displays" } } }
+    },
+    "window.tab.display.menu" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Display Diagnostics" } } }
+    },
     "cables.loading.title" : {
       "comment" : "Phase 21 — Cables tab cold-launch state, before the first IOKit snapshot arrives (typically <1s).",
       "extractionState" : "manual",

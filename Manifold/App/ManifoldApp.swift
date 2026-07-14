@@ -122,6 +122,24 @@ struct ManifoldApp: App {
                     )
                 }
                 .keyboardShortcut("5", modifiers: [.command])
+
+                Button("window.tab.negotiation.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.negotiation.rawValue]
+                    )
+                }
+                .keyboardShortcut("8", modifiers: [.command])
+
+                Button("window.tab.display.menu") {
+                    NotificationCenter.default.post(
+                        name: .manifoldSelectTab,
+                        object: nil,
+                        userInfo: ["tab": WindowTab.display.rawValue]
+                    )
+                }
+                .keyboardShortcut("9", modifiers: [.command])
             }
         }
 

@@ -129,6 +129,8 @@ enum WindowTab: String, CaseIterable, Identifiable {
     /// `CableEngine` adapter on top of the absorbed cable-diagnostics
     /// engine — see `Manifold/Sources/Cables/`.
     case cables
+    case negotiation
+    case display
 
     var id: String { rawValue }
 
@@ -147,6 +149,8 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .diagnostics: return "exclamationmark.triangle"
         case .battery:     return "bolt.batteryblock"
         case .cables:      return "cable.connector"
+        case .negotiation: return "arrow.left.arrow.right"
+        case .display:     return "display"
         }
     }
 }

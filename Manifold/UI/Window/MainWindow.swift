@@ -253,6 +253,10 @@ struct MainWindow: View {
             BatteryView(graph: graph, host: host)
         case .cables:
             CablesView(engine: cableEngine, graph: graph)
+        case .negotiation:
+            NegotiationDiagnosticsView(engine: cableEngine)
+        case .display:
+            DisplayDiagnosticsView(engine: cableEngine)
         }
     }
 
