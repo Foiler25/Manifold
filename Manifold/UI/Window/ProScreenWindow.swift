@@ -105,7 +105,12 @@ struct ProScreenWindow: View {
                     onDisappear: { onPowerDisappear(surfaceID) }
                 )
             case .negotiation:
-                NegotiationDiagnosticsView(engine: cableEngine)
+                NegotiationDiagnosticsView(
+                    engine: cableEngine,
+                    powerEngine: powerEngine,
+                    onAppear: { onPowerAppear(surfaceID) },
+                    onDisappear: { onPowerDisappear(surfaceID) }
+                )
             case .display:
                 DisplayDiagnosticsView(engine: cableEngine)
             }

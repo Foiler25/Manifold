@@ -21,6 +21,9 @@ import SwiftUI
 
 struct NegotiationDiagnosticsView: View {
     @Bindable var engine: CableEngine
+    @Bindable var powerEngine: PowerTelemetryEngine
+    let onAppear: () -> Void
+    let onDisappear: () -> Void
 
     var body: some View {
         Group {
@@ -53,6 +56,8 @@ struct NegotiationDiagnosticsView: View {
         }
         .background(Color.manifoldSurface)
         .accessibilityIdentifier("window.tab.negotiation.root")
+        .onAppear(perform: onAppear)
+        .onDisappear(perform: onDisappear)
         .toolbar { DetachToolbarButton(screen: .negotiation) }
     }
 
@@ -98,6 +103,17 @@ struct NegotiationDiagnosticsView: View {
                 Label(entry.trmTransports.map(\.summaryLabel).joined(separator: " · "), systemImage: "lock.trianglebadge.exclamationmark")
                     .font(.caption)
                     .foregroundStyle(Color.manifoldWarning)
+            }
+
+            if let portKey = entry.port.portKey,
+               let contract = powerEngine.contracts[portKey] {
+                Divider()
+                PDContractInspector(contract: contract)
+            } else if let source = engine.snapshot?.powerSources.first(where: {
+                $0.portKey == entry.port.portKey && !$0.options.isEmpty
+            }) {
+                Divider()
+                PDPowerSourceInspector(source: source)
             }
         }
         .padding(CablesViewConstants.cardPadding)

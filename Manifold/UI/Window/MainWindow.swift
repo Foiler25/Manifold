@@ -281,7 +281,12 @@ struct MainWindow: View {
                 onDisappear: onPowerDisappear
             )
         case .negotiation:
-            NegotiationDiagnosticsView(engine: cableEngine)
+            NegotiationDiagnosticsView(
+                engine: cableEngine,
+                powerEngine: powerTelemetryEngine,
+                onAppear: onPowerAppear,
+                onDisappear: onPowerDisappear
+            )
         case .display:
             DisplayDiagnosticsView(engine: cableEngine)
         }

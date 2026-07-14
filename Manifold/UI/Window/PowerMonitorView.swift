@@ -148,56 +148,16 @@ struct PowerMonitorView: View {
             }
 
             if let contract = engine.contracts[sample.portKey] {
-                contractDisclosure(contract)
+                PDContractInspector(contract: contract)
             } else if let source = cableEngine.snapshot?.powerSources.first(where: {
                 $0.portKey == sample.portKey && !$0.options.isEmpty
             }) {
-                sourceDisclosure(source)
+                PDPowerSourceInspector(source: source)
             }
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .accessibilityIdentifier("power.port.card")
-    }
-
-    private func contractDisclosure(_ contract: PDContract) -> some View {
-        DisclosureGroup("PD contract · \(watts(contract.maxPower))") {
-            let activeIndex = max(0, Int((contract.activeRdo >> 28) & 0x7) - 1)
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(contract.pdoList.enumerated()), id: \.offset) { index, pdo in
-                    HStack {
-                        Image(systemName: index == activeIndex ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(index == activeIndex ? Color.accentColor : Color.secondary)
-                        Text(pdoLabel(pdo))
-                            .font(.caption.monospacedDigit())
-                    }
-                }
-                if contract.capMismatch {
-                    Label("Requested power exceeds the advertised profiles", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-            .padding(.top, 6)
-        }
-        .font(.callout)
-    }
-
-    private func sourceDisclosure(_ source: PowerSource) -> some View {
-        DisclosureGroup("PD profiles") {
-            VStack(alignment: .leading, spacing: 5) {
-                ForEach(Array(source.options.enumerated()), id: \.offset) { _, option in
-                    HStack {
-                        Image(systemName: option == source.winning ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(option == source.winning ? Color.accentColor : Color.secondary)
-                        Text("\(option.voltsLabel) · \(option.ampsLabel) · \(option.wattsLabel)")
-                            .font(.caption.monospacedDigit())
-                    }
-                }
-            }
-            .padding(.top, 6)
-        }
-        .font(.callout)
     }
 
     private func hvcCard(_ adapter: CableAdapterInfo) -> some View {
@@ -245,7 +205,7 @@ struct PowerMonitorView: View {
     }
 
     private func watts(_ milliwatts: Int) -> String {
-        String(format: "%.1f W", Double(milliwatts) / 1000)
+        PowerUnitFormatter.watts(milliwatts)
     }
 
     private func volts(_ millivolts: Int) -> String {
@@ -254,23 +214,6 @@ struct PowerMonitorView: View {
 
     private func amps(_ milliamps: Int) -> String {
         String(format: "%.2f A", Double(milliamps) / 1000)
-    }
-
-    private func pdoLabel(_ pdo: PDO) -> String {
-        switch pdo {
-        case let .fixed(voltage, current):
-            "Fixed · \(volts(voltage)) · \(amps(current))"
-        case let .battery(minimum, maximum, power):
-            "Battery · \(volts(minimum))–\(volts(maximum)) · \(watts(power))"
-        case let .variable(minimum, maximum, current):
-            "Variable · \(volts(minimum))–\(volts(maximum)) · \(amps(current))"
-        case let .pps(minimum, maximum, current):
-            "PPS · \(volts(minimum))–\(volts(maximum)) · \(amps(current))"
-        case let .eprAvs(minimum, maximum, power):
-            "EPR AVS · \(volts(minimum))–\(volts(maximum)) · \(watts(power))"
-        case let .sprAvs(current15V, current20V):
-            "SPR AVS · 15V \(amps(current15V)) · 20V \(amps(current20V))"
-        }
     }
 
     @ViewBuilder
