@@ -57,7 +57,7 @@ public struct PowerSourceSynthesisContext {
 public final class PowerSourceWatcher: ObservableObject {
     @Published public private(set) var sources: [PowerSource] = []
 
-    /// Injected by the owner (`WatcherHub` / `CableDarwinProvider`) so
+    /// Injected by the owner (`CableDarwinProvider`) so
     /// `refresh()` can synthesize a per-port source when macOS publishes none
     /// (M1 Pro/Max/Ultra USB-C, issue #401). Returns nil when the owner has
     /// no port/identity watchers to draw from, in which case `refresh()`
@@ -478,4 +478,3 @@ extension PowerSourceWatcher {
         return sources.filter { $0.canonicallyMatches(port: port) }
     }
 }
-

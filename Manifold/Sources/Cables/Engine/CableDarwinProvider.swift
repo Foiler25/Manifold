@@ -22,16 +22,16 @@
 //
 // ─────────────────────────────────────────────────────────────────────
 public import Foundation
+import Combine
 import os.log
 
 /// macOS implementation of `CableSnapshotProvider`. Wraps the four IOKit
 /// watcher classes and assembles their state into a `CableSnapshot`.
 ///
-/// `snapshot()` starts the watchers once, refreshes the polling-driven ones
-/// (the others fire IOKit match notifications during start), and reads.
-/// `watch()` keeps them started and polls for changes on a 1s timer.
-/// Polling is sufficient because `AppleHPMInterfaceWatcher` already requires it for
-/// property-change events; the others share the same loop for simplicity.
+/// The provider is event-driven for registry and property changes. A single
+/// scoped 1 Hz maintenance tick remains while a stream is attached for three
+/// values that do not have dependable notifications on all supported macOS
+/// versions: in-place TRM state, liquid state, and the CoreGraphics live mode.
 public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendable {
     public init() {}
 
@@ -50,9 +50,33 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
         let displayWatcher = DisplayPortTransportWatcher()
         let liquidWatcher = LiquidDetectionWatcher()
         var started = false
+        var streamToken: UUID?
+        var continuation: AsyncThrowingStream<CableSnapshot, Error>.Continuation?
+        var lastSnapshot: CableSnapshot?
+        var cancellables = Set<AnyCancellable>()
+        var coalesceTask: Task<Void, Never>?
+        var maintenanceTask: Task<Void, Never>?
+        var powerReconcileTask: Task<Void, Never>?
+
+        var hasStream: Bool { streamToken != nil }
 
         func ensureStarted() {
             guard !started else { return }
+            started = true
+
+            // Install dependency context before start() drains matching
+            // iterators, otherwise the first power-source synthesis pass can
+            // miss an already-connected cable.
+            powerWatcher.synthesisContext = { [weak self] in
+                guard let self else { return nil }
+                return PowerSourceSynthesisContext(
+                    ports: self.portWatcher.ports,
+                    identities: self.pdWatcher.identities,
+                    positionalPortKeys: { PowerTelemetryWatcher.hpmPortKeys() }
+                )
+            }
+            installEventSubscriptions()
+
             portWatcher.start()
             powerWatcher.start()
             pdWatcher.start()
@@ -63,33 +87,11 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             phyWatcher.start()
             displayWatcher.start()
             liquidWatcher.start()
-
-            // Lets powerWatcher.refresh() synthesize a per-port source when
-            // macOS never publishes a real IOPortFeaturePowerSource node
-            // (M1 Pro/Max/Ultra USB-C, issue #401).
-            powerWatcher.synthesisContext = { [weak self] in
-                guard let self else { return nil }
-                return PowerSourceSynthesisContext(
-                    ports: self.portWatcher.ports,
-                    identities: self.pdWatcher.identities,
-                    // hpmPortKeys() walks six IOKit service classes; wrapped
-                    // in a closure so it only runs on the rare tick that
-                    // reaches the actual synthesis call, not on every read().
-                    positionalPortKeys: { PowerTelemetryWatcher.hpmPortKeys() }
-                )
-            }
-
-            started = true
+            refreshAllOnce()
         }
 
-        func read() -> CableSnapshot {
-            // AppleHPMInterface property changes don't fire match notifications,
-            // so refresh on every read. The others are notification-driven
-            // but refresh is cheap and keeps reads consistent.
+        private func refreshAllOnce() {
             portWatcher.refresh()
-            // pdWatcher before powerWatcher: PowerSourceSynthesis's
-            // partner-kind attribution rung (issue #401) needs this tick's
-            // identities, not last tick's.
             pdWatcher.refresh()
             powerWatcher.refresh()
             tbWatcher.refresh()
@@ -98,6 +100,9 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
             phyWatcher.refresh()
             displayWatcher.refresh()
             liquidWatcher.refresh()
+        }
+
+        func read() -> CableSnapshot {
             let battery = AppleSmartBatteryReader.read()
             var liquidDetection: [String: LiquidDetectionStatus] = [:]
             for update in liquidWatcher.statuses {
@@ -130,8 +135,139 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
                 batteryFullyCharged: battery.battery?.fullyCharged,
                 batteryIsCharging: battery.battery?.isCharging
             )
-            CableDarwinProvider.logChargingSignals(snap)
             return snap
+        }
+
+        func attach(
+            token: UUID,
+            continuation: AsyncThrowingStream<CableSnapshot, Error>.Continuation
+        ) {
+            ensureStarted()
+            streamToken = token
+            self.continuation = continuation
+            lastSnapshot = nil
+            emitIfChanged()
+            startMaintenance()
+        }
+
+        func detach(token: UUID) {
+            guard streamToken == token else { return }
+            stopAll()
+        }
+
+        func stopAll() {
+            coalesceTask?.cancel()
+            coalesceTask = nil
+            maintenanceTask?.cancel()
+            maintenanceTask = nil
+            powerReconcileTask?.cancel()
+            powerReconcileTask = nil
+            cancellables.removeAll()
+            continuation = nil
+            streamToken = nil
+            lastSnapshot = nil
+
+            // Every watcher owns IOKit iterators, notification ports, and in
+            // several cases per-service interest handles. All ten must stop
+            // when the last CableEngine stream terminates.
+            portWatcher.stop()
+            powerWatcher.stop()
+            pdWatcher.stop()
+            usbWatcher.stop()
+            tbWatcher.stop()
+            usb3Watcher.stop()
+            trmWatcher.stop()
+            phyWatcher.stop()
+            displayWatcher.stop()
+            liquidWatcher.stop()
+            powerWatcher.synthesisContext = nil
+            started = false
+        }
+
+        private func installEventSubscriptions() {
+            portWatcher.$ports.dropFirst().sink { [weak self] _ in
+                self?.schedulePowerReconcile()
+            }.store(in: &cancellables)
+            pdWatcher.$identities.dropFirst().sink { [weak self] _ in
+                self?.schedulePowerReconcile()
+            }.store(in: &cancellables)
+
+            powerWatcher.$sources.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            usbWatcher.$devices.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            tbWatcher.$switches.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            usb3Watcher.$transports.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            trmWatcher.$transports.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            trmWatcher.$cioCapabilities.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            phyWatcher.$phys.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            displayWatcher.$statuses.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+            liquidWatcher.$statuses.dropFirst().sink { [weak self] _ in
+                self?.scheduleEmit()
+            }.store(in: &cancellables)
+        }
+
+        private func schedulePowerReconcile() {
+            powerReconcileTask?.cancel()
+            powerReconcileTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(75))
+                guard !Task.isCancelled, let self else { return }
+                self.powerWatcher.refresh()
+                self.scheduleEmit()
+            }
+        }
+
+        private func scheduleEmit() {
+            guard continuation != nil else { return }
+            coalesceTask?.cancel()
+            coalesceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled else { return }
+                self?.emitIfChanged()
+            }
+        }
+
+        private func emitIfChanged() {
+            guard let continuation else { return }
+            let snapshot = read()
+            guard snapshot != lastSnapshot else { return }
+            lastSnapshot = snapshot
+            CableDarwinProvider.logChargingSignals(snapshot)
+            continuation.yield(snapshot)
+        }
+
+        private func startMaintenance() {
+            maintenanceTask?.cancel()
+            maintenanceTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(1)) }
+                    catch { break }
+                    guard !Task.isCancelled, let self else { return }
+                    // These services can mutate properties without matching a
+                    // new registry node on some macOS generations. Restrict the
+                    // fallback poll to those three watchers; the other seven
+                    // remain wholly notification-driven. read() also refreshes
+                    // the adapter/battery scalar fields without another walk.
+                    self.trmWatcher.refresh()
+                    self.displayWatcher.refresh()
+                    self.liquidWatcher.refresh()
+                    self.emitIfChanged()
+                }
+            }
         }
     }
 
@@ -141,7 +277,13 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
     @MainActor
     public func snapshot() async throws -> CableSnapshot {
         Self.state.ensureStarted()
-        return Self.state.read()
+        let snapshot = Self.state.read()
+        Self.logChargingSignals(snapshot)
+        // A one-shot caller must not leave process-lifetime notification
+        // registrations behind. CableEngine's parallel watch() attachment
+        // keeps them alive when a surface is actually consuming updates.
+        if !Self.state.hasStream { Self.state.stopAll() }
+        return snapshot
     }
 
     private static func logChargingSignals(_ snap: CableSnapshot) {
@@ -168,24 +310,20 @@ public final class CableDarwinProvider: CableSnapshotProvider, @unchecked Sendab
 
     public func watch() -> AsyncThrowingStream<CableSnapshot, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task { @MainActor in
-                Self.state.ensureStarted()
-                var last: CableSnapshot? = nil
-                while !Task.isCancelled {
-                    let snap = Self.state.read()
-                    if last != snap {
-                        continuation.yield(snap)
-                        last = snap
-                    }
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                }
-                continuation.finish()
+            let token = UUID()
+            let attachTask = Task { @MainActor in
+                guard !Task.isCancelled else { return }
+                Self.state.attach(token: token, continuation: continuation)
             }
             continuation.onTermination = { _ in
-                task.cancel()
+                attachTask.cancel()
+                Task { @MainActor in Self.state.detach(token: token) }
             }
         }
     }
+
+    @MainActor
+    static var watchersRunningForTesting: Bool { state.started }
 }
 
 /// Default backend on Darwin platforms. CLI / GUI call this rather than

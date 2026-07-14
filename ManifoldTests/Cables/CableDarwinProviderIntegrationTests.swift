@@ -46,28 +46,44 @@ final class CableDarwinProviderIntegrationTests: XCTestCase {
 
     func test_watch_yieldsFirstSnapshot_withinFiveSeconds() async throws {
         let provider = CableDarwinProvider()
-        let stream = provider.watch()
-
-        let firstSnap: CableSnapshot? = try await withThrowingTaskGroup(of: CableSnapshot?.self) { group in
-            group.addTask {
-                for try await snap in stream {
-                    return snap
-                }
-                return nil
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-                return nil
-            }
-            let result = try await group.next() ?? nil
-            group.cancelAll()
-            return result
-        }
+        var stream: AsyncThrowingStream<CableSnapshot, Error>? = provider.watch()
+        let firstSnap = try await firstSnapshot(from: stream!)
 
         guard let firstSnap else {
             XCTFail("CableDarwinProvider.watch() did not yield within 5 seconds — this is the bug behind the 'Cables tab stuck on loading' symptom")
             return
         }
         print("CableDarwinProviderIntegrationTests.watch — first yield: ports=\(firstSnap.ports.count)")
+
+        // Releasing the final stream reference invokes onTermination. In the
+        // app the equivalent event is CableEngine cancelling its consumer.
+        stream = nil
+        let deadline = ContinuousClock.now + .seconds(2)
+        while CableDarwinProvider.watchersRunningForTesting,
+              ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(
+            CableDarwinProvider.watchersRunningForTesting,
+            "Cancelling the last stream must tear down every IOKit watcher"
+        )
+    }
+
+    private func firstSnapshot(
+        from stream: AsyncThrowingStream<CableSnapshot, Error>
+    ) async throws -> CableSnapshot? {
+        try await withThrowingTaskGroup(of: CableSnapshot?.self) { group in
+            group.addTask {
+                for try await snapshot in stream { return snapshot }
+                return nil
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                return nil
+            }
+            let result = try await group.next() ?? nil
+            group.cancelAll()
+            return result
+        }
     }
 }
