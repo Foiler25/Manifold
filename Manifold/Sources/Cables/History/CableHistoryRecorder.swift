@@ -146,11 +146,7 @@ final class CableHistoryRecorder {
             portStates.removeValue(forKey: key)
         }
 
-        let diagnostics = Dictionary(
-            uniqueKeysWithValues: NegotiationDiagnosticsModel(snapshot: snapshot).entries.map {
-                ($0.port.portKey ?? "", $0.diagnostic)
-            }
-        )
+        let diagnostics = NegotiationDiagnosticsModel(snapshot: snapshot).diagnosticsByPortKey
         let resistancePort = powerSnapshot.map {
             SessionMonitor.resistanceAttributedPortKey(in: $0.portSamples)
         } ?? nil

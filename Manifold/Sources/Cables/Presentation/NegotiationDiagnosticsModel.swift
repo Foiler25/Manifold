@@ -59,6 +59,24 @@ struct NegotiationDiagnosticsModel {
     let entries: [Entry]
     let hostSupported: Bool
 
+    var diagnosticsByPortKey: [String: DataLinkDiagnostic] {
+        Self.valuesByPortKey(entries.compactMap { entry in
+            entry.port.portKey.map { ($0, entry.diagnostic) }
+        })
+    }
+
+    /// HPM registry services are keyed by registry ID, not display port key.
+    /// On unusual controller layouts two services can therefore report the
+    /// same portKey. Keep the first stable reading instead of using
+    /// Dictionary(uniqueKeysWithValues:), which traps on that valid input.
+    static func valuesByPortKey<Value>(_ values: [(String, Value)]) -> [String: Value] {
+        values.reduce(into: [:]) { result, element in
+            if result[element.0] == nil {
+                result[element.0] = element.1
+            }
+        }
+    }
+
     init(snapshot: CableSnapshot) {
         hostSupported = !snapshot.ports.isEmpty
         entries = snapshot.ports

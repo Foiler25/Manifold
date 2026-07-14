@@ -41,6 +41,7 @@ public final class PortDiagnosticsWatcher: ObservableObject {
     private var continuation: AsyncStream<PortDiagnosticsSnapshot>.Continuation?
     private var notifyPort: IONotificationPortRef?
     private var matchIterator: io_iterator_t = 0
+    private var interestNotifications: [UInt64: io_object_t] = [:]
     private var cachedPortKeys: [String] = []
 
     public init() {
@@ -64,9 +65,7 @@ public final class PortDiagnosticsWatcher: ObservableObject {
             // task runs, it becomes a no-op rather than touching freed memory.
             Task { @MainActor [weak watcher] in
                 guard let watcher else { return }
-                while case let service = IOIteratorNext(iterator), service != 0 {
-                    IOObjectRelease(service)
-                }
+                watcher.drain(iterator: iterator)
                 watcher.refresh()
             }
         }
@@ -79,9 +78,7 @@ public final class PortDiagnosticsWatcher: ObservableObject {
             selfPtr,
             &matchIterator
         ) == KERN_SUCCESS {
-            while case let service = IOIteratorNext(matchIterator), service != 0 {
-                IOObjectRelease(service)
-            }
+            drain(iterator: matchIterator)
             refresh()
         }
     }
@@ -91,6 +88,10 @@ public final class PortDiagnosticsWatcher: ObservableObject {
             IOObjectRelease(matchIterator)
             matchIterator = 0
         }
+        for notification in interestNotifications.values {
+            IOObjectRelease(notification)
+        }
+        interestNotifications.removeAll()
         if let port = notifyPort {
             IONotificationPortDestroy(port)
             notifyPort = nil
@@ -100,7 +101,10 @@ public final class PortDiagnosticsWatcher: ObservableObject {
     }
 
     public func refresh() {
-        guard let dict = PowerTelemetryWatcher.appleSmartBatteryPropertiesForDiagnostics() else { return }
+        guard let dict = PowerTelemetryWatcher.appleSmartBatteryPropertiesForDiagnostics() else {
+            publish(counters: [:], contracts: [:], traces: [:])
+            return
+        }
         let entries = wcArray(dict["PortControllerInfo"]).map(wcDictionary)
         var counters: [String: PortHealthCounters] = [:]
         var contracts: [String: PDContract] = [:]
@@ -114,10 +118,20 @@ public final class PortDiagnosticsWatcher: ObservableObject {
         for (offset, entry) in entries.enumerated() {
             guard let key = keyMap[offset] else { continue }
             counters[key] = Self.healthCounters(from: entry)
-            contracts[key] = Self.contract(from: entry)
+            if let contract = Self.contract(from: entry) {
+                contracts[key] = contract
+            }
             traces[key] = Self.eventTrace(from: entry)
         }
 
+        publish(counters: counters, contracts: contracts, traces: traces)
+    }
+
+    private func publish(
+        counters: [String: PortHealthCounters],
+        contracts: [String: PDContract],
+        traces: [String: PDEventTrace]
+    ) {
         let snapshot = PortDiagnosticsSnapshot(
             timestamp: Date(),
             healthCounters: counters,
@@ -126,6 +140,50 @@ public final class PortDiagnosticsWatcher: ObservableObject {
         )
         latestSnapshot = snapshot
         continuation?.yield(snapshot)
+    }
+
+    private func drain(iterator: io_iterator_t) {
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            registerInterest(for: service)
+            IOObjectRelease(service)
+        }
+    }
+
+    /// AppleSmartBattery is a long-lived service. Charger renegotiation mutates
+    /// its PortControllerInfo properties without matching a new service, so a
+    /// match-only watcher would keep the first contract forever.
+    private func registerInterest(for service: io_service_t) {
+        guard let notifyPort else { return }
+        var entryID: UInt64 = 0
+        guard IORegistryEntryGetRegistryEntryID(service, &entryID) == KERN_SUCCESS,
+              interestNotifications[entryID] == nil else { return }
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let callback: IOServiceInterestCallback = { refcon, _, messageType, _ in
+            guard let refcon,
+                  PortDiagnosticsWatcher.shouldRefresh(for: messageType) else { return }
+            let watcher = Unmanaged<PortDiagnosticsWatcher>.fromOpaque(refcon).takeUnretainedValue()
+            Task { @MainActor [weak watcher] in watcher?.refresh() }
+        }
+        var notification: io_object_t = 0
+        guard IOServiceAddInterestNotification(
+            notifyPort,
+            service,
+            kIOGeneralInterest,
+            callback,
+            selfPtr,
+            &notification
+        ) == KERN_SUCCESS else { return }
+        interestNotifications[entryID] = notification
+    }
+
+    nonisolated static func shouldRefresh(for _: natural_t) -> Bool {
+        // kIOGeneralInterest delivers property-change messages as well as
+        // lifecycle messages. Refreshing for every message is deliberately
+        // cheap and avoids depending on IOMessage C macros that Swift cannot
+        // import. In particular, a PD renegotiation mutates the existing
+        // AppleSmartBattery service rather than matching a new one.
+        true
     }
 
     /// Map each `PortControllerInfo` array index to a port key.
@@ -182,15 +240,18 @@ public final class PortDiagnosticsWatcher: ObservableObject {
         return result
     }
 
-    private static func contract(from dict: [String: Any]) -> PDContract {
+    nonisolated static func contract(from dict: [String: Any]) -> PDContract? {
         let rawPDOs = wcArray(dict["PortControllerPortPDO"]).map(wcUInt32)
         let pdoCount = wcInt(dict["PortControllerNPDOs"])
         let decoded = rawPDOs.prefix(pdoCount > 0 ? pdoCount : rawPDOs.count).map(PDO.decode(rawValue:))
+        let activeRdo = wcUInt32(dict["PortControllerActiveContractRdo"])
+        let maxPower = wcInt(dict["PortControllerMaxPower"])
+        guard activeRdo != 0 || maxPower > 0 else { return nil }
         return PDContract(
-            activeRdo: wcUInt32(dict["PortControllerActiveContractRdo"]),
+            activeRdo: activeRdo,
             pdoList: decoded,
             pdoCount: pdoCount,
-            maxPower: wcInt(dict["PortControllerMaxPower"]),
+            maxPower: maxPower,
             capMismatch: wcBool(dict["PortControllerCapMismatch"]),
             srcTypes: wcInt(dict["PortControllerSrcTypes"])
         )

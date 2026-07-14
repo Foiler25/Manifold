@@ -28,6 +28,35 @@ import Testing
 @Suite("PortDiagnosticsWatcher port-key mapping")
 struct PortDiagnosticsKeyMapTests {
 
+    @Test("AppleSmartBattery property changes trigger a contract refresh")
+    func propertyChangesTriggerRefresh() {
+        // 0x130 is the IOMessage payload for a service property change. The
+        // watcher refreshes on every kIOGeneralInterest callback so it also
+        // remains robust to SDKs where the composed C macro is not importable.
+        #expect(PortDiagnosticsWatcher.shouldRefresh(for: 0x130))
+    }
+
+    @Test("An all-zero controller entry does not create a false PD contract")
+    func zeroContractIsNil() {
+        #expect(PortDiagnosticsWatcher.contract(from: [
+            "PortControllerActiveContractRdo": 0,
+            "PortControllerMaxPower": 0,
+            "PortControllerNPDOs": 0,
+            "PortControllerPortPDO": []
+        ]) == nil)
+    }
+
+    @Test("A live controller contract is retained")
+    func activeContractIsPublished() {
+        let contract = PortDiagnosticsWatcher.contract(from: [
+            "PortControllerActiveContractRdo": UInt32(1 << 28),
+            "PortControllerMaxPower": 65_000,
+            "PortControllerNPDOs": 1,
+            "PortControllerPortPDO": [UInt32(0x0001912C)]
+        ])
+        #expect(contract?.maxPower == 65_000)
+    }
+
     // Build a self-keyed PowerSource with a winning contract of `watts` mW.
     private func source(port: Int, type: Int = 2, watts: Int) -> PowerSource {
         PowerSource(

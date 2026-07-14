@@ -76,6 +76,22 @@ final class PowerTelemetryEngineTests: XCTestCase {
         XCTAssertEqual(engine.history.last?.systemPowerIn, 24_000)
     }
 
+    func testPortPowerPresentationTreatsSampleWattsAsMilliwatts() {
+        let sample = PortPowerSample(
+            portIndex: 1,
+            portKey: "2/1",
+            current: 3_250,
+            watts: 65_000,
+            configuredVoltage: 20_000,
+            configuredCurrent: 3_250,
+            adapterVoltage: 0,
+            vconnCurrent: 0,
+            vconnPower: 0
+        )
+
+        XCTAssertEqual(PowerUnitFormatter.watts(sample.watts), "65.0 W")
+    }
+
     func testForwardsPortsAndContracts() async {
         let telemetry = StubPowerTelemetrySource()
         let diagnostics = StubPortDiagnosticsSource()

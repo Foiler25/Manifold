@@ -129,7 +129,7 @@ struct PowerMonitorView: View {
                 Label(portName(sample.portKey), systemImage: "cable.connector")
                     .font(.headline)
                 Spacer()
-                Text(sample.isContractedFallback ? "Contracted max" : watts(sample.watts * 10))
+                Text(sample.isContractedFallback ? "Contracted max" : watts(sample.watts))
                     .font(.headline.monospacedDigit())
             }
             if sample.isContractedFallback {

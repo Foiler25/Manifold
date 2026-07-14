@@ -55,4 +55,14 @@ final class NegotiationDiagnosticsModelTests: XCTestCase {
             NegotiationDiagnosticsModel.Entry.weakParty(for: .fine(activeGbps: 40))
         )
     }
+
+    func testDuplicatePortKeysAreDeduplicatedWithoutTrapping() {
+        let values = NegotiationDiagnosticsModel.valuesByPortKey([
+            ("2/1", 10),
+            ("2/1", 20),
+            ("2/2", 30)
+        ])
+
+        XCTAssertEqual(values, ["2/1": 10, "2/2": 30])
+    }
 }
