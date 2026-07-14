@@ -29,6 +29,23 @@
 import SwiftUI
 import ManifoldKit
 
+enum CableSaveResult: Equatable {
+    case saved
+    case failed(String)
+}
+
+@MainActor
+func performCableSave(
+    _ operation: () async throws -> Void
+) async -> CableSaveResult {
+    do {
+        try await operation()
+        return .saved
+    } catch {
+        return .failed(error.localizedDescription)
+    }
+}
+
 struct CablePortCard: View {
 
     let port: AppleHPMInterface
@@ -49,6 +66,7 @@ struct CablePortCard: View {
     let historyRecorder: CableHistoryRecorder
     @State private var isNamingCable = false
     @State private var cableName = ""
+    @State private var saveError: String?
 
     init(
         port: AppleHPMInterface,
@@ -419,10 +437,31 @@ struct CablePortCard: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 guard let key = port.portKey else { return }
-                Task { try? await historyRecorder.saveCable(portKey: key, nickname: cableName) }
+                Task {
+                    let result = await performCableSave {
+                        try await historyRecorder.saveCable(
+                            portKey: key,
+                            nickname: cableName
+                        )
+                    }
+                    if case let .failed(message) = result {
+                        saveError = message
+                    }
+                }
             }
         } message: {
             Text("Manifold will recognize this e-marker when you reconnect it.")
+        }
+        .alert(
+            "Couldn't save cable",
+            isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )
+        ) {
+            Button("OK") { saveError = nil }
+        } message: {
+            if let saveError { Text(saveError) }
         }
     }
 
@@ -432,12 +471,20 @@ struct CablePortCard: View {
         case .amber: .orange
         case .red: .red
         }
-        return Text(state.savedCable?.nickname ?? state.verdict.rawValue.replacingOccurrences(of: "notPerforming", with: "Needs attention").capitalized)
+        return Text(state.savedCable?.nickname ?? verdictLabel(state.verdict))
             .font(.caption2.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(color.opacity(0.14), in: Capsule())
+    }
+
+    private func verdictLabel(_ verdict: SessionMonitor.Verdict) -> String {
+        switch verdict {
+        case .performing: String(localized: "Performing")
+        case .caution: String(localized: "Caution")
+        case .notPerforming: String(localized: "Needs attention")
+        }
     }
 
     // MARK: - Icon mapping

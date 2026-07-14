@@ -89,8 +89,8 @@ struct NegotiationDiagnosticsView: View {
             if facts.cableEmarkerGbps != nil || facts.cableControllerGbps != nil {
                 Divider()
                 HStack(spacing: 18) {
-                    metric("E-marker", value: facts.cableEmarkerGbps.map { "\(format($0)) Gbps" } ?? "Not read")
-                    metric("TB controller", value: facts.cableControllerGbps.map { "\(format($0)) Gbps" } ?? "Not reported")
+                    metric("E-marker", value: facts.cableEmarkerGbps.map { "\(format($0)) Gbps" } ?? String(localized: "Not read"))
+                    metric("TB controller", value: facts.cableControllerGbps.map { "\(format($0)) Gbps" } ?? String(localized: "Not reported"))
                 }
                 if entry.diagnostic.cableSignalConflict {
                     Label("The e-marker and Thunderbolt controller disagree; the live controller measurement wins.", systemImage: "exclamationmark.triangle.fill")
@@ -133,21 +133,21 @@ struct NegotiationDiagnosticsView: View {
             }
             GridRow {
                 Text("Data").foregroundStyle(.secondary)
-                matrixValue(facts.hostGbps.map { "\(format($0)) Gbps" } ?? "Unknown", party: .host, weak: entry.weakParty)
-                matrixValue(facts.cableGbps.map { "\(format($0)) Gbps" } ?? "Unknown", party: .cable, weak: entry.weakParty)
-                matrixValue(facts.deviceGbps.map { "\(format($0)) Gbps" } ?? "Unknown", party: .device, weak: entry.weakParty)
+                matrixValue(facts.hostGbps.map { "\(format($0)) Gbps" } ?? String(localized: "Unknown"), party: .host, weak: entry.weakParty)
+                matrixValue(facts.cableGbps.map { "\(format($0)) Gbps" } ?? String(localized: "Unknown"), party: .cable, weak: entry.weakParty)
+                matrixValue(facts.deviceGbps.map { "\(format($0)) Gbps" } ?? String(localized: "Unknown"), party: .device, weak: entry.weakParty)
             }
             GridRow {
                 Text("Power").foregroundStyle(.secondary)
                 matrixValue(entry.negotiatedWatts.map { "\($0) W in" } ?? "—", party: .host, weak: entry.weakParty)
-                matrixValue(entry.cableRatedWatts.map { "\($0) W max" } ?? "Unknown", party: .cable, weak: entry.weakParty)
+                matrixValue(entry.cableRatedWatts.map { "\($0) W max" } ?? String(localized: "Unknown"), party: .cable, weak: entry.weakParty)
                 matrixValue("—", party: .device, weak: entry.weakParty)
             }
             GridRow {
                 Text("Transport").foregroundStyle(.secondary)
                 Text(entry.port.transportsSupported.joined(separator: ", ")).font(.caption)
                 Text(cableTypeLabel(entry.cableIdentity?.cableVDO?.cableType)).font(.caption)
-                Text(facts.deviceName ?? "Unknown").font(.caption)
+                Text(facts.deviceName ?? String(localized: "Unknown")).font(.caption)
             }
         }
         .font(.caption)
@@ -155,14 +155,14 @@ struct NegotiationDiagnosticsView: View {
 
     private func cableTypeLabel(_ type: PDVDO.CableType?) -> String {
         switch type {
-        case .passive: "Passive"
-        case .active: "Active"
-        case .other: "Other"
-        case nil: "Unknown"
+        case .passive: String(localized: "Passive")
+        case .active: String(localized: "Active")
+        case .other: String(localized: "Other")
+        case nil: String(localized: "Unknown")
         }
     }
 
-    private func partyHeader(_ title: String, party: NegotiationDiagnosticsModel.CapabilityParty, weak: NegotiationDiagnosticsModel.CapabilityParty?) -> some View {
+    private func partyHeader(_ title: LocalizedStringKey, party: NegotiationDiagnosticsModel.CapabilityParty, weak: NegotiationDiagnosticsModel.CapabilityParty?) -> some View {
         Text(title)
             .font(.caption.weight(.semibold))
             .foregroundStyle(weak == party ? Color.manifoldWarning : Color.manifoldText)
@@ -175,14 +175,14 @@ struct NegotiationDiagnosticsView: View {
             .background(RoundedRectangle(cornerRadius: 5).fill(weak == party ? Color.manifoldWarning.opacity(0.16) : Color.clear))
     }
 
-    private func metric(_ title: String, value: String) -> some View {
+    private func metric(_ title: LocalizedStringKey, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
             Text(value).font(.caption.weight(.semibold))
         }
     }
 
-    private func emptyState(title: String, detail: String) -> some View {
+    private func emptyState(title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
         ContentUnavailableView(title, systemImage: "arrow.left.arrow.right", description: Text(detail))
     }
 

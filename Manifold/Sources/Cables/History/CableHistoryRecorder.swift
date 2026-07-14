@@ -27,11 +27,11 @@ enum CableHistoryRecorderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .persistenceUnavailable:
-            "Cable history storage is unavailable."
+            String(localized: "Cable history storage is unavailable.")
         case .portNotActive:
-            "The cable is no longer connected to that port."
+            String(localized: "The cable is no longer connected to that port.")
         case .savedCableMissing:
-            "The cable was saved, but its record could not be reloaded."
+            String(localized: "The cable was saved, but its record could not be reloaded.")
         }
     }
 }

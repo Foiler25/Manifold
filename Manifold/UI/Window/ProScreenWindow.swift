@@ -28,10 +28,10 @@ enum ProScreen: String, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .savedCables: "Saved Cables"
-        case .power: "Power Monitor"
-        case .negotiation: "Negotiation Diagnostics"
-        case .display: "Display Diagnostics"
+        case .savedCables: String(localized: "Saved Cables")
+        case .power: String(localized: "Power Monitor")
+        case .negotiation: String(localized: "Negotiation Diagnostics")
+        case .display: String(localized: "Display Diagnostics")
         }
     }
 

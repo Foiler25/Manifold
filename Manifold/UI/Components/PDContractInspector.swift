@@ -90,17 +90,17 @@ enum PowerUnitFormatter {
     static func pdoLabel(_ pdo: PDO) -> String {
         switch pdo {
         case let .fixed(voltage, current):
-            "Fixed · \(volts(voltage)) · \(amps(current))"
+            String(localized: "Fixed · \(volts(voltage)) · \(amps(current))")
         case let .battery(minimum, maximum, power):
-            "Battery · \(volts(minimum))–\(volts(maximum)) · \(watts(power))"
+            String(localized: "Battery · \(volts(minimum))–\(volts(maximum)) · \(watts(power))")
         case let .variable(minimum, maximum, current):
-            "Variable · \(volts(minimum))–\(volts(maximum)) · \(amps(current))"
+            String(localized: "Variable · \(volts(minimum))–\(volts(maximum)) · \(amps(current))")
         case let .pps(minimum, maximum, current):
-            "PPS · \(volts(minimum))–\(volts(maximum)) · \(amps(current))"
+            String(localized: "PPS · \(volts(minimum))–\(volts(maximum)) · \(amps(current))")
         case let .eprAvs(minimum, maximum, power):
-            "EPR AVS · \(volts(minimum))–\(volts(maximum)) · \(watts(power))"
+            String(localized: "EPR AVS · \(volts(minimum))–\(volts(maximum)) · \(watts(power))")
         case let .sprAvs(current15V, current20V):
-            "SPR AVS · 15V \(amps(current15V)) · 20V \(amps(current20V))"
+            String(localized: "SPR AVS · 15V \(amps(current15V)) · 20V \(amps(current20V))")
         }
     }
 }

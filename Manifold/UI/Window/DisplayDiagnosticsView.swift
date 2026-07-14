@@ -61,39 +61,44 @@ struct DisplayDiagnosticsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(facts.monitorName ?? entry.transport.monitor?.productName ?? "External display")
+                    Text(facts.monitorName ?? entry.transport.monitor?.productName ?? String(localized: "External display"))
                         .font(.headline)
-                    Text(facts.currentMode?.label ?? "Connected, mode unreadable")
+                    Text(facts.currentMode?.label ?? String(localized: "Connected, mode unreadable"))
                         .font(.title3.weight(.semibold))
                 }
                 Spacer()
                 if let max = facts.maxMode {
-                    metric("Best mode", max.shortLabel)
+                    metric(String(localized: "Best mode"), max.shortLabel)
                 }
             }
 
             HStack(spacing: 20) {
-                metric("Link", facts.rateDescription ?? "Unknown rate")
-                metric("Lanes", "\(facts.lanes) of \(facts.maxLanes)")
-                metric("Path", entry.transport.link.tunneled ? "Thunderbolt / USB4" : "DisplayPort Alt Mode")
+                metric(String(localized: "Link"), facts.rateDescription ?? String(localized: "Unknown rate"))
+                metric(String(localized: "Lanes"), "\(facts.lanes) of \(facts.maxLanes)")
+                metric(
+                    String(localized: "Path"),
+                    entry.transport.link.tunneled
+                        ? String(localized: "Thunderbolt / USB4")
+                        : String(localized: "DisplayPort Alt Mode")
+                )
             }
 
             if let needed = facts.neededGbps, let delivered = facts.deliveredGbps {
                 HStack(spacing: 20) {
-                    metric("Mode needs", "\(format(needed)) Gbps")
-                    metric("Link delivers", "\(format(delivered)) Gbps")
+                    metric(String(localized: "Mode needs"), "\(format(needed)) Gbps")
+                    metric(String(localized: "Link delivers"), "\(format(delivered)) Gbps")
                 }
             }
 
             if entry.diagnostic.bottleneck == .compressionActive {
-                callout("DSC compression is active", detail: "The live mode exceeds the uncompressed link budget and is reaching the display through Display Stream Compression.", warning: false)
+                callout(String(localized: "DSC compression is active"), detail: String(localized: "The live mode exceeds the uncompressed link budget and is reaching the display through Display Stream Compression."), warning: false)
             } else if entry.diagnostic.bottleneck == .compressionPlausible {
-                callout("DSC compression is likely", detail: "The link is at its lane and rate ceiling; the display may be using compression for its top mode.", warning: false)
+                callout(String(localized: "DSC compression is likely"), detail: String(localized: "The link is at its lane and rate ceiling; the display may be using compression for its top mode."), warning: false)
             }
 
             if let sink = facts.sinkType {
                 let branch = facts.branchDevice.map { " — \($0)" } ?? ""
-                callout("\(sink) adapter\(branch)", detail: "An active adapter participates in this link, so a bandwidth limit cannot automatically be blamed on the cable.", warning: entry.diagnostic.bottleneck == .adapterLimit)
+                callout(String(localized: "\(sink) adapter\(branch)"), detail: String(localized: "An active adapter participates in this link, so a bandwidth limit cannot automatically be blamed on the cable."), warning: entry.diagnostic.bottleneck == .adapterLimit)
             }
 
             Text(entry.diagnostic.summary)
@@ -109,7 +114,7 @@ struct DisplayDiagnosticsView: View {
                     .foregroundStyle(Color.manifoldAccent)
             }
             if let billboardNote = entry.diagnostic.billboardNote {
-                callout("Alt Mode setup hint", detail: billboardNote, warning: true)
+                callout(String(localized: "Alt Mode setup hint"), detail: billboardNote, warning: true)
             }
         }
         .padding(CablesViewConstants.cardPadding)

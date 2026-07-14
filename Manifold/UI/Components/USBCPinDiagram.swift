@@ -136,9 +136,9 @@ struct LiquidDetectionCallout: View {
 
     private var detail: String {
         if status.mitigationsEnabled {
-            return "\(status.state). Protective mitigations are active. Disconnect the cable and allow the port to dry."
+            return String(localized: "\(status.state). Protective mitigations are active. Disconnect the cable and allow the port to dry.")
         }
-        return "\(status.state). Disconnect the cable and allow the port to dry."
+        return String(localized: "\(status.state). Disconnect the cable and allow the port to dry.")
     }
 }
 

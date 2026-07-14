@@ -57,8 +57,8 @@ struct PowerMonitorView: View {
 
                 if snapshot.portSamples.isEmpty {
                     Text(snapshot.perPortMeteringSupported
-                         ? "No ports are currently drawing power."
-                         : "Live per-port metering isn't available on this Mac.")
+                         ? String(localized: "No ports are currently drawing power.")
+                         : String(localized: "Live per-port metering isn't available on this Mac."))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
@@ -79,7 +79,9 @@ struct PowerMonitorView: View {
     private func powerChart(_ snapshot: PowerMonitorSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(snapshot.onBattery ? "System discharge" : "System power input")
+                Text(snapshot.onBattery
+                     ? String(localized: "System discharge")
+                     : String(localized: "System power input"))
                     .font(.headline)
                 Spacer()
                 Text(watts(snapshot.activePowerMW))
@@ -108,7 +110,12 @@ struct PowerMonitorView: View {
     private func systemCard(_ snapshot: PowerMonitorSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(snapshot.onBattery ? "Battery" : "System Power", systemImage: "bolt.fill")
+                Label(
+                    snapshot.onBattery
+                        ? String(localized: "Battery")
+                        : String(localized: "System Power"),
+                    systemImage: "bolt.fill"
+                )
                     .font(.headline)
                 Spacer()
                 resistanceChip(snapshot.resistanceEstimate)
@@ -129,7 +136,9 @@ struct PowerMonitorView: View {
                 Label(portName(sample.portKey), systemImage: "cable.connector")
                     .font(.headline)
                 Spacer()
-                Text(sample.isContractedFallback ? "Contracted max" : watts(sample.watts))
+                Text(sample.isContractedFallback
+                     ? String(localized: "Contracted max")
+                     : watts(sample.watts))
                     .font(.headline.monospacedDigit())
             }
             if sample.isContractedFallback {
@@ -162,7 +171,10 @@ struct PowerMonitorView: View {
 
     private func hvcCard(_ adapter: CableAdapterInfo) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(adapter.name ?? "Charger profiles", systemImage: "powerplug")
+            Label(
+                adapter.name ?? String(localized: "Charger profiles"),
+                systemImage: "powerplug"
+            )
                 .font(.headline)
             ForEach(Array(adapter.hvcMenu.enumerated()), id: \.offset) { index, entry in
                 HStack {
@@ -199,7 +211,7 @@ struct PowerMonitorView: View {
 
     private func portName(_ key: String) -> String {
         guard let port = cableEngine.snapshot?.ports.first(where: { $0.portKey == key }) else {
-            return "Port \(key)"
+            return String(localized: "Port \(key)")
         }
         return port.portDescription ?? port.serviceName
     }
@@ -217,7 +229,7 @@ struct PowerMonitorView: View {
     }
 
     @ViewBuilder
-    private func metricRow(_ name: String, value: String) -> some View {
+    private func metricRow(_ name: LocalizedStringKey, value: String) -> some View {
         GridRow {
             Text(name).foregroundStyle(.secondary)
             Text(value).monospacedDigit()

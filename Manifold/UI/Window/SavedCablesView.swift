@@ -19,6 +19,22 @@
 
 import SwiftUI
 
+enum CableHistoryLoadResult<Value> {
+    case loaded(Value)
+    case failed(String)
+}
+
+@MainActor
+func loadCableHistory<Value>(
+    _ operation: () async throws -> Value
+) async -> CableHistoryLoadResult<Value> {
+    do {
+        return .loaded(try await operation())
+    } catch {
+        return .failed(error.localizedDescription)
+    }
+}
+
 struct SavedCablesView: View {
     let repository: CableHistoryRepository?
     @Bindable var engine: CableEngine
@@ -27,6 +43,9 @@ struct SavedCablesView: View {
     @State private var selectedID: String?
     @State private var sessions: [CableSession] = []
     @State private var isLoading = true
+    @State private var isLoadingSessions = false
+    @State private var loadError: String?
+    @State private var sessionLoadError: String?
 
     var body: some View {
         Group {
@@ -38,6 +57,14 @@ struct SavedCablesView: View {
                 )
             } else if isLoading {
                 ProgressView("Loading saved cables…")
+            } else if let loadError {
+                ContentUnavailableView {
+                    Label("Couldn't load saved cables", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    Button("Try Again") { Task { await reload() } }
+                }
             } else if cables.isEmpty {
                 ContentUnavailableView(
                     "No saved cables",
@@ -67,7 +94,7 @@ struct SavedCablesView: View {
                     Spacer()
                     verdictChip(cable.verdictSummary.worstVerdict)
                 }
-                Text(cable.curatedBrand ?? cable.vendorName ?? "Unknown vendor")
+                Text(cable.curatedBrand ?? cable.vendorName ?? String(localized: "Unknown vendor"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Last seen \(cable.lastSeen.formatted(date: .abbreviated, time: .shortened))")
@@ -88,7 +115,17 @@ struct SavedCablesView: View {
                     summary(cable)
                     Text("Session timeline")
                         .font(.headline)
-                    if sessions.isEmpty {
+                    if isLoadingSessions {
+                        ProgressView("Loading sessions…")
+                    } else if let sessionLoadError {
+                        ContentUnavailableView {
+                            Label("Couldn't load session history", systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(sessionLoadError)
+                        } actions: {
+                            Button("Try Again") { Task { await loadSessions() } }
+                        }
+                    } else if sessions.isEmpty {
                         Text("No completed observations yet.")
                             .foregroundStyle(.secondary)
                     } else {
@@ -171,17 +208,36 @@ struct SavedCablesView: View {
             isLoading = false
             return
         }
-        cables = (try? await repository.savedCables()) ?? []
-        if selectedID == nil { selectedID = cables.first?.id }
+        isLoading = true
+        switch await loadCableHistory({ try await repository.savedCables() }) {
+        case let .loaded(value):
+            cables = value
+            loadError = nil
+            if selectedID == nil { selectedID = cables.first?.id }
+        case let .failed(message):
+            loadError = message
+        }
         isLoading = false
     }
 
     private func loadSessions() async {
         guard let repository, let selectedID else {
             sessions = []
+            sessionLoadError = nil
             return
         }
-        sessions = (try? await repository.sessions(cableID: selectedID)) ?? []
+        sessions = []
+        sessionLoadError = nil
+        isLoadingSessions = true
+        switch await loadCableHistory({
+            try await repository.sessions(cableID: selectedID)
+        }) {
+        case let .loaded(value):
+            sessions = value
+        case let .failed(message):
+            sessionLoadError = message
+        }
+        isLoadingSessions = false
     }
 
     private func duration(_ seconds: TimeInterval) -> String {
@@ -208,10 +264,10 @@ struct SavedCablesView: View {
 
     private func verdictLabel(_ verdict: SessionMonitor.Verdict?) -> String {
         switch verdict {
-        case .performing: "Performing"
-        case .caution: "Caution"
-        case .notPerforming: "Needs attention"
-        case nil: "Not yet rated"
+        case .performing: String(localized: "Performing")
+        case .caution: String(localized: "Caution")
+        case .notPerforming: String(localized: "Needs attention")
+        case nil: String(localized: "Not yet rated")
         }
     }
 }

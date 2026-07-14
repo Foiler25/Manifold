@@ -256,6 +256,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        Task.detached(priority: .utility) {
+            CableDB.preload()
+        }
 #if DEBUG
         // Manifold normally launches as a menu-bar accessory. UI tests
         // that exercise the standalone window opt into a regular app

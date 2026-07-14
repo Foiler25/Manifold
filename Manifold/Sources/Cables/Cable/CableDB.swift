@@ -43,6 +43,13 @@ public enum CableDB {
 
     private static let store: Store = Store.load()
 
+    /// Force the one-time catalog scan. AppDelegate calls this from a detached
+    /// utility task during launch so the first cable card never opens SQLite
+    /// and walks ~14k vendor rows on the main actor.
+    public static func preload() {
+        _ = store
+    }
+
     /// Look up a vendor name by VID. Returns names from any source
     /// (USB-IF, usb.ids, manual). Returns nil for unknown VIDs and
     /// for VID 0 (which is filtered at the presentation layer by
