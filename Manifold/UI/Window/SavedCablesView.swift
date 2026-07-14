@@ -56,6 +56,7 @@ struct SavedCablesView: View {
         .accessibilityIdentifier("window.tab.savedCables.root")
         .task { await reload() }
         .task(id: selectedID) { await loadSessions() }
+        .toolbar { DetachToolbarButton(screen: .savedCables) }
     }
 
     private var cableList: some View {

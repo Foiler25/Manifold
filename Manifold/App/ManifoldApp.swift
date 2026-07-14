@@ -65,6 +65,7 @@ struct ManifoldApp: App {
         .defaultSize(MainWindowConstants.defaultWindowSize)
         .windowResizability(.contentMinSize)
         .commands {
+            ProScreenCommands()
             // Phase 11: File ▸ Export… (Cmd-E). Replaces the
             // default `importExport` group so the menu reads
             // "Export…" rather than the system's "Import from…".
@@ -165,6 +166,24 @@ struct ManifoldApp: App {
                 .keyboardShortcut("9", modifiers: [.command])
             }
         }
+
+        WindowGroup(id: "manifold.proScreen", for: ProScreen.self) { $screen in
+            if let screen {
+                ProScreenWindow(
+                    screen: screen,
+                    cableHistoryRepository: appDelegate.publishedCableHistoryRepository,
+                    cableEngine: appDelegate.publishedCableEngine,
+                    powerEngine: appDelegate.publishedPowerTelemetryEngine,
+                    onCableAppear: appDelegate.notifyCableSurfaceDidAppear,
+                    onCableDisappear: appDelegate.notifyCableSurfaceDidDisappear,
+                    onPowerAppear: appDelegate.notifyPowerSurfaceDidAppear,
+                    onPowerDisappear: appDelegate.notifyPowerSurfaceDidDisappear
+                )
+                .preferredColorScheme(currentColorScheme)
+            }
+        }
+        .defaultSize(width: 760, height: 560)
+        .windowResizability(.contentMinSize)
 
         // Phase 14: Settings tab view per SPEC §13. Phase 16
         // adds the Sparkle UpdaterController for the Updates

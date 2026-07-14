@@ -168,6 +168,12 @@ struct MainWindow: View {
         )
         .onAppear { onWindowAppear() }
         .onDisappear { onWindowDisappear() }
+        .background(
+            WindowFrameAutosaveInstaller(
+                identifier: "ManifoldMainWindow",
+                autosaveName: MainWindowConstants.windowFrameAutosaveName
+            )
+        )
         .sheet(isPresented: $isExportSheetPresented) {
             ExportSheet(
                 graph: graph,

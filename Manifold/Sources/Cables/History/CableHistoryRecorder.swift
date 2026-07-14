@@ -48,6 +48,9 @@ final class CableHistoryRecorder {
     private var repository: CableHistoryRepository?
     private var sessions: [String: ActiveSession] = [:]
     private var observationTask: Task<Void, Never>?
+    private weak var cableEngine: CableEngine?
+    private weak var powerEngine: PowerTelemetryEngine?
+    private var visibleSurfaces: Set<String> = []
 
     init(repository: CableHistoryRepository?) {
         self.repository = repository
@@ -59,13 +62,17 @@ final class CableHistoryRecorder {
 
     func start(cableEngine: CableEngine, powerEngine: PowerTelemetryEngine) {
         guard observationTask == nil else { return }
+        self.cableEngine = cableEngine
+        self.powerEngine = powerEngine
         observationTask = Task { @MainActor [weak self, weak cableEngine, weak powerEngine] in
             while !Task.isCancelled {
                 guard let self, let cableEngine, let powerEngine else { return }
-                await self.process(
-                    snapshot: cableEngine.snapshot,
-                    powerSnapshot: powerEngine.snapshot
-                )
+                if !self.visibleSurfaces.isEmpty {
+                    await self.process(
+                        snapshot: cableEngine.snapshot,
+                        powerSnapshot: powerEngine.snapshot
+                    )
+                }
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     withObservationTracking {
                         _ = cableEngine.snapshot
@@ -78,9 +85,30 @@ final class CableHistoryRecorder {
         }
     }
 
+    func surfaceDidAppear(_ id: String) {
+        visibleSurfaces.insert(id)
+        guard let cableEngine, let powerEngine else { return }
+        Task { @MainActor [weak self] in
+            await self?.process(
+                snapshot: cableEngine.snapshot,
+                powerSnapshot: powerEngine.snapshot
+            )
+        }
+    }
+
+    func surfaceDidDisappear(_ id: String) {
+        visibleSurfaces.remove(id)
+        if visibleSurfaces.isEmpty {
+            Task { @MainActor [weak self] in
+                await self?.closeAll(at: .now)
+            }
+        }
+    }
+
     func stop() {
         observationTask?.cancel()
         observationTask = nil
+        visibleSurfaces.removeAll()
         Task { @MainActor [weak self] in
             await self?.closeAll(at: .now)
         }

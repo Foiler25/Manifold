@@ -53,6 +53,7 @@ struct NegotiationDiagnosticsView: View {
         }
         .background(Color.manifoldSurface)
         .accessibilityIdentifier("window.tab.negotiation.root")
+        .toolbar { DetachToolbarButton(screen: .negotiation) }
     }
 
     private func negotiationCard(_ entry: NegotiationDiagnosticsModel.Entry) -> some View {

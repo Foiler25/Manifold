@@ -1069,8 +1069,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `.titled + .resizable`. Phase 7+ that adds more windows can
     /// tighten the matcher (e.g., via a marker view).
     private func installMainWindowFrameAutosaveName() {
-        guard let window = NSApp.windows.first(where: { window in
-            window.styleMask.contains(.titled) && window.styleMask.contains(.resizable)
+        guard let window = NSApp.windows.first(where: {
+            $0.identifier?.rawValue == "ManifoldMainWindow"
         }) else {
             // Try once more on the next tick — under unusual launch
             // conditions the WindowGroup may take >1 run-loop iteration
@@ -1092,8 +1092,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// hard-crash on this because a missing main window mid-launch
     /// is recoverable (the window may simply not be open yet).
     private func retryInstallMainWindowFrameAutosaveName() {
-        guard let window = NSApp.windows.first(where: { window in
-            window.styleMask.contains(.titled) && window.styleMask.contains(.resizable)
+        guard let window = NSApp.windows.first(where: {
+            $0.identifier?.rawValue == "ManifoldMainWindow"
         }) else {
             Log.app.error("Main window still not found on retry; frame persistence not wired.")
             return
@@ -1152,6 +1152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Phase 21: bring the cable engine online alongside the
         // telemetry sampler. Idempotent — repeat appears are no-ops.
         cableEngineLifecycle.windowDidAppear()
+        cableHistoryRecorder.surfaceDidAppear("main")
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
         }
@@ -1169,6 +1170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Phase 21: stop the cable engine when the window closes —
         // 1Hz IOKit polling is wasted work with no observer.
         cableEngineLifecycle.windowDidDisappear()
+        cableHistoryRecorder.surfaceDidDisappear("main")
         // Defer the policy flip one runloop tick. SwiftUI's
         // `onDisappear` fires before the NSWindow is fully closed;
         // switching policy mid-close can leave AppKit thinking a
@@ -1187,6 +1189,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func notifyPowerSurfaceDidDisappear(_ id: String) {
         powerTelemetryLifecycle.surfaceDidDisappear(id)
+    }
+
+    func notifyCableSurfaceDidAppear(_ id: String) {
+        cableEngineLifecycle.surfaceDidAppear(id)
+        cableHistoryRecorder.surfaceDidAppear(id)
+    }
+
+    func notifyCableSurfaceDidDisappear(_ id: String) {
+        cableEngineLifecycle.surfaceDidDisappear(id)
+        cableHistoryRecorder.surfaceDidDisappear(id)
     }
 
     private func startCablePowerObserver() {

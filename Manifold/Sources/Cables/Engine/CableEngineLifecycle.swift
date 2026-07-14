@@ -45,7 +45,7 @@ final class CableEngineLifecycle {
     /// `attach()` (SwiftUI's `onAppear` can run before
     /// `applicationDidFinishLaunching` completes — observed in
     /// production logs) doesn't lose its start signal.
-    private var windowVisible: Bool = false
+    private var visibleSurfaces: Set<String> = []
 
     init(engine: CableEngine? = nil) {
         self.engine = engine
@@ -56,9 +56,9 @@ final class CableEngineLifecycle {
     /// attach time, kick the engine immediately — mirrors
     /// `SamplerLifecycle.attach`'s replay-of-current-state pattern.
     func attach(_ engine: CableEngine) {
-        Log.app.info("CableEngineLifecycle.attach — engine bound, windowVisible=\(self.windowVisible, privacy: .public)")
+        Log.app.info("CableEngineLifecycle.attach — engine bound, surfaces=\(self.visibleSurfaces.count, privacy: .public)")
         self.engine = engine
-        if windowVisible && !isShutDown {
+        if !visibleSurfaces.isEmpty && !isShutDown {
             engine.start()
         }
     }
@@ -66,31 +66,29 @@ final class CableEngineLifecycle {
     /// Called from `MainWindow.onAppear`. Records the visible state
     /// and starts the engine if attached. If `attach()` hasn't run
     /// yet, the visible state is replayed when it does.
-    func windowDidAppear() {
+    func surfaceDidAppear(_ id: String) {
         guard !isShutDown else { return }
-        windowVisible = true
-        if engine == nil {
-            Log.app.info("CableEngineLifecycle.windowDidAppear — engine not yet attached, queued start until attach()")
-        } else {
-            Log.app.info("CableEngineLifecycle.windowDidAppear — calling engine.start()")
-        }
-        engine?.start()
+        let wasEmpty = visibleSurfaces.isEmpty
+        visibleSurfaces.insert(id)
+        if wasEmpty, !visibleSurfaces.isEmpty { engine?.start() }
     }
 
     /// Called from `MainWindow.onDisappear`. Stops the engine. The
     /// engine is itself idempotent so this is safe to call repeatedly.
-    func windowDidDisappear() {
+    func surfaceDidDisappear(_ id: String) {
         guard !isShutDown else { return }
-        windowVisible = false
-        Log.app.info("CableEngineLifecycle.windowDidDisappear — calling engine.stop()")
-        engine?.stop()
+        visibleSurfaces.remove(id)
+        if visibleSurfaces.isEmpty { engine?.stop() }
     }
+
+    func windowDidAppear() { surfaceDidAppear("main") }
+    func windowDidDisappear() { surfaceDidDisappear("main") }
 
     /// `applicationWillTerminate` cleanup. Idempotent.
     func shutdown() {
         guard !isShutDown else { return }
         isShutDown = true
-        windowVisible = false
+        visibleSurfaces.removeAll()
         engine?.stop()
     }
 }

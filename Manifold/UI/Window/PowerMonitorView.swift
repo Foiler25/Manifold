@@ -46,6 +46,7 @@ struct PowerMonitorView: View {
         .accessibilityIdentifier("window.tab.power.root")
         .onAppear(perform: onAppear)
         .onDisappear(perform: onDisappear)
+        .toolbar { DetachToolbarButton(screen: .power) }
     }
 
     private func content(_ snapshot: PowerMonitorSnapshot) -> some View {

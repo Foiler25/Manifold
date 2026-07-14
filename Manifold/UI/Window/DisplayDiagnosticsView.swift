@@ -53,6 +53,7 @@ struct DisplayDiagnosticsView: View {
         }
         .background(Color.manifoldSurface)
         .accessibilityIdentifier("window.tab.display.root")
+        .toolbar { DetachToolbarButton(screen: .display) }
     }
 
     private func displayCard(_ entry: DisplayDiagnosticsModel.Entry) -> some View {

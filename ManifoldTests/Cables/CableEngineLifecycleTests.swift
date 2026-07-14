@@ -83,6 +83,22 @@ final class CableEngineLifecycleTests: XCTestCase {
         XCTAssertFalse(engine.isRunning)
     }
 
+    func test_multipleSurfacesOnlyStopAfterLastDisappears() {
+        let lifecycle = CableEngineLifecycle()
+        let engine = CableEngine(provider: StubCableProvider(snapshots: [], trailingError: nil))
+        lifecycle.attach(engine)
+
+        lifecycle.surfaceDidAppear("main")
+        lifecycle.surfaceDidAppear("pro.power")
+        lifecycle.surfaceDidAppear("pro.power")
+        XCTAssertTrue(engine.isRunning)
+
+        lifecycle.surfaceDidDisappear("main")
+        XCTAssertTrue(engine.isRunning)
+        lifecycle.surfaceDidDisappear("pro.power")
+        XCTAssertFalse(engine.isRunning)
+    }
+
     func test_windowDidDisappearBeforeAttach_doesNotStartOnAttach() {
         // If the user closed the window between launch and attach
         // (impossible in practice but tested for completeness), the
