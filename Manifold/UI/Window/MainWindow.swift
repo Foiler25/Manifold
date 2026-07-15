@@ -56,7 +56,6 @@ struct MainWindow: View {
     /// survives across window close/reopen cycles.
     @Bindable var cableEngine: CableEngine
     @Bindable var powerTelemetryEngine: PowerTelemetryEngine
-    let cableHistoryRepository: CableHistoryRepository?
     let cableHistoryRecorder: CableHistoryRecorder
 
     let onWindowAppear: () -> Void
@@ -223,25 +222,66 @@ struct MainWindow: View {
     /// past the inspector divider. The `.bar` material matches the
     /// title bar's translucency so the two read as one continuous
     /// chrome strip.
+    ///
+    /// The tabs are split across two full-width rows of four segments
+    /// each so the labels stay readable in the middle column rather
+    /// than shrinking into a single crowded strip.
+    ///
+    /// These rows deliberately use buttons instead of two segmented
+    /// `Picker`s. A segmented picker requires its selection to match one
+    /// of its tags, but the shared selection necessarily belongs to only
+    /// one row at a time. Giving both pickers the same binding therefore
+    /// leaves one in an invalid selection state and can send SwiftUI into
+    /// a continuous observation/layout reconciliation loop.
     private var tabPickerBar: some View {
-        HStack {
-            Picker(selection: selectedTab) {
-                ForEach(WindowTab.allCases) { tab in
-                    Label(LocalizedStringKey(tab.labelKey), systemImage: tab.systemImageName)
-                        .accessibilityIdentifier("window.tab.\(tab.rawValue)")
-                        .tag(tab)
-                }
-            } label: {
-                Text("window.toolbar.tab.picker.label")
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            Spacer()
+        VStack(spacing: 6) {
+            tabPickerRow(Array(WindowTab.allCases.prefix(4)))
+            tabPickerRow(Array(WindowTab.allCases.suffix(4)))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    /// One full-width row of the tab control. Each button writes directly
+    /// to the shared selection, while the row whose tabs do not contain
+    /// that selection naturally renders with no highlighted segment.
+    private func tabPickerRow(_ tabs: [WindowTab]) -> some View {
+        HStack(spacing: 2) {
+            ForEach(tabs) { tab in
+                let isSelected = selectedTab.wrappedValue == tab
+                Button {
+                    selectedTab.wrappedValue = tab
+                } label: {
+                    Label(LocalizedStringKey(tab.labelKey), systemImage: tab.systemImageName)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 3)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.primary.opacity(0.14))
+                            .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
+                    }
+                }
+                .accessibilityIdentifier("window.tab.\(tab.rawValue)")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+        }
+        .accessibilityLabel("window.toolbar.tab.picker.label")
     }
 
     // MARK: - Tab content + helpers
@@ -267,11 +307,6 @@ struct MainWindow: View {
                 engine: cableEngine,
                 graph: graph,
                 historyRecorder: cableHistoryRecorder
-            )
-        case .savedCables:
-            SavedCablesView(
-                repository: cableHistoryRepository,
-                engine: cableEngine
             )
         case .power:
             PowerMonitorView(
@@ -331,7 +366,6 @@ struct MainWindow: View {
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [.empty])),
         powerTelemetryEngine: PowerTelemetryEngine(),
-        cableHistoryRepository: nil,
         cableHistoryRecorder: CableHistoryRecorder(repository: nil),
         onWindowAppear: {},
         onWindowDisappear: {},
@@ -348,7 +382,6 @@ struct MainWindow: View {
         sampleRepository: nil,
         cableEngine: CableEngine(provider: PreviewCableProvider(snapshots: [])),
         powerTelemetryEngine: PowerTelemetryEngine(),
-        cableHistoryRepository: nil,
         cableHistoryRecorder: CableHistoryRecorder(repository: nil),
         onWindowAppear: {},
         onWindowDisappear: {},

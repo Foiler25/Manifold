@@ -28,16 +28,26 @@ enum MainWindowConstants {
 
     // MARK: - Window sizing
 
-    /// Default window size on first launch. Big enough that the
-    /// three-pane NavigationSplitView shows real content in each
-    /// column without manual resize. Subsequent launches use the
-    /// system-persisted frame via `NSWindow.frameAutosaveName`.
-    static let defaultWindowSize: CGSize = CGSize(width: 920, height: 600)
+    /// Default window size on first launch. The tab picker is stacked
+    /// into two rows of four (see `MainWindow.tabPickerBar`), so the
+    /// content column no longer has to be wide enough for a single
+    /// eight-segment strip — a ~500 pt column comfortably fits a row of
+    /// four labels. That lets the window sit compact while still giving
+    /// `sidebarIdealWidth` (240) + a ~500 pt content column +
+    /// `inspectorIdealWidth` (300) their room, so neither the sidebar
+    /// host name nor the inspector empty state clips. Subsequent
+    /// launches use the system-persisted frame via
+    /// `NSWindow.frameAutosaveName`.
+    static let defaultWindowSize: CGSize = CGSize(width: 1080, height: 680)
 
     /// Minimum window size below which the three-pane layout collapses
-    /// uglily. Sized so that, with the sidebar + inspector at their
-    /// mins, the middle column still has ~240 pt of usable width.
-    static let minimumWindowSize: CGSize = CGSize(width: 780, height: 420)
+    /// uglily. Width is `sidebarIdealWidth` (240) + `inspectorIdealWidth`
+    /// (300) + a 360 pt content floor = 900, so even at the minimum both
+    /// side columns can still reach their ideal widths and neither the
+    /// host name nor the inspector empty state clips (the two-row tab
+    /// strip may compress its labels a touch at this width, which is an
+    /// acceptable trade at the smallest size).
+    static let minimumWindowSize: CGSize = CGSize(width: 900, height: 520)
 
     /// Sidebar column widths. The 220 pt minimum is the value the user
     /// requested — host names longer than ~16 characters will tail-
@@ -129,7 +139,6 @@ enum WindowTab: String, CaseIterable, Identifiable {
     /// `CableEngine` adapter on top of the absorbed cable-diagnostics
     /// engine — see `Manifold/Sources/Cables/`.
     case cables
-    case savedCables
     case power = "powerMonitorV2"
     case negotiation
     case display
@@ -152,7 +161,6 @@ enum WindowTab: String, CaseIterable, Identifiable {
         case .diagnostics: return "exclamationmark.triangle"
         case .battery:     return "bolt.batteryblock"
         case .cables:      return "cable.connector"
-        case .savedCables: return "bookmark"
         case .power:       return "bolt.horizontal.circle"
         case .negotiation: return "arrow.left.arrow.right"
         case .display:     return "display"

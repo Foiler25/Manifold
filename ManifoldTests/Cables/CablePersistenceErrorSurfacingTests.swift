@@ -23,21 +23,6 @@ import XCTest
 
 @MainActor
 final class CablePersistenceErrorSurfacingTests: XCTestCase {
-    func testSavedCableLoadDistinguishesDatabaseFailureFromEmpty() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        try fixture.manager.dbPool.close()
-
-        let result = await loadCableHistory {
-            try await fixture.repository.savedCables()
-        }
-
-        guard case let .failed(message) = result else {
-            return XCTFail("A closed database must produce a visible failure state")
-        }
-        XCTAssertFalse(message.isEmpty)
-    }
-
     func testSaveActionReturnsFailureInsteadOfSilentSuccess() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }

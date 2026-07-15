@@ -35,9 +35,6 @@ in one — no telemetry, no network, no sandbox compromises.
   fingerprint, trust signals, live pin diagram, plug orientation,
   and liquid-detection state. Engine tracks upstream WhatCable
   v1.1.9. Apple Silicon only.
-- **Saved cables.** Cable history keyed on e-marker fingerprint —
-  recognizes a cable across reconnects and builds a per-session
-  timeline of what was plugged where.
 - **Power monitor.** Live system power-input graph with USB-C PD
   contract inspection (advertised PDOs vs the requested RDO).
 - **Negotiation diagnostics.** Mac port vs cable vs device
@@ -46,7 +43,7 @@ in one — no telemetry, no network, no sandbox compromises.
   cross-check.
 - **Display diagnostics.** Live display mode vs DisplayPort link
   state, DSC status, and adapter naming.
-- **Detachable windows.** Cable, Power, Negotiation, and Display
+- **Detachable windows.** Power, Negotiation, and Display
   screens each tear off into a standalone window; frames persist
   across launches.
 - **Display info.** Connected displays show resolution, refresh rate,

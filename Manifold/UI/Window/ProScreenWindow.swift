@@ -21,14 +21,12 @@ import AppKit
 import SwiftUI
 
 enum ProScreen: String, Codable, Hashable {
-    case savedCables
     case power
     case negotiation
     case display
 
     var title: String {
         switch self {
-        case .savedCables: String(localized: "Saved Cables")
         case .power: String(localized: "Power Monitor")
         case .negotiation: String(localized: "Negotiation Diagnostics")
         case .display: String(localized: "Display Diagnostics")
@@ -37,7 +35,6 @@ enum ProScreen: String, Codable, Hashable {
 
     var frameAutosaveName: String {
         switch self {
-        case .savedCables: "ManifoldSavedCablesWindow"
         case .power: "ManifoldPowerMonitorWindow"
         case .negotiation: "ManifoldNegotiationWindow"
         case .display: "ManifoldDisplayDiagnosticsWindow"
@@ -69,7 +66,7 @@ struct ProScreenCommands: Commands {
         CommandGroup(after: .windowArrangement) {
             Divider()
             ForEach(
-                [ProScreen.savedCables, .power, .negotiation, .display],
+                [ProScreen.power, .negotiation, .display],
                 id: \.self
             ) { screen in
                 Button("Open \(screen.title) in New Window") {
@@ -82,7 +79,6 @@ struct ProScreenCommands: Commands {
 
 struct ProScreenWindow: View {
     let screen: ProScreen
-    let cableHistoryRepository: CableHistoryRepository?
     @Bindable var cableEngine: CableEngine
     @Bindable var powerEngine: PowerTelemetryEngine
     let onCableAppear: (String) -> Void
@@ -95,8 +91,6 @@ struct ProScreenWindow: View {
     var body: some View {
         Group {
             switch screen {
-            case .savedCables:
-                SavedCablesView(repository: cableHistoryRepository, engine: cableEngine)
             case .power:
                 PowerMonitorView(
                     engine: powerEngine,

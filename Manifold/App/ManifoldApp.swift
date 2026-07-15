@@ -53,7 +53,6 @@ struct ManifoldApp: App {
                 sampleRepository: appDelegate.publishedSampleRepository,
                 cableEngine: appDelegate.publishedCableEngine,
                 powerTelemetryEngine: appDelegate.publishedPowerTelemetryEngine,
-                cableHistoryRepository: appDelegate.publishedCableHistoryRepository,
                 cableHistoryRecorder: appDelegate.publishedCableHistoryRecorder,
                 onWindowAppear: { appDelegate.notifyMainWindowDidAppear() },
                 onWindowDisappear: { appDelegate.notifyMainWindowDidDisappear() },
@@ -129,15 +128,6 @@ struct ManifoldApp: App {
                 }
                 .keyboardShortcut("5", modifiers: [.command])
 
-                Button("window.tab.savedCables.menu") {
-                    NotificationCenter.default.post(
-                        name: .manifoldSelectTab,
-                        object: nil,
-                        userInfo: ["tab": WindowTab.savedCables.rawValue]
-                    )
-                }
-                .keyboardShortcut("6", modifiers: [.command])
-
                 Button("window.tab.power.menu") {
                     NotificationCenter.default.post(
                         name: .manifoldSelectTab,
@@ -145,7 +135,7 @@ struct ManifoldApp: App {
                         userInfo: ["tab": WindowTab.power.rawValue]
                     )
                 }
-                .keyboardShortcut("7", modifiers: [.command])
+                .keyboardShortcut("6", modifiers: [.command])
 
                 Button("window.tab.negotiation.menu") {
                     NotificationCenter.default.post(
@@ -154,7 +144,7 @@ struct ManifoldApp: App {
                         userInfo: ["tab": WindowTab.negotiation.rawValue]
                     )
                 }
-                .keyboardShortcut("8", modifiers: [.command])
+                .keyboardShortcut("7", modifiers: [.command])
 
                 Button("window.tab.display.menu") {
                     NotificationCenter.default.post(
@@ -163,7 +153,7 @@ struct ManifoldApp: App {
                         userInfo: ["tab": WindowTab.display.rawValue]
                     )
                 }
-                .keyboardShortcut("9", modifiers: [.command])
+                .keyboardShortcut("8", modifiers: [.command])
             }
         }
 
@@ -171,7 +161,6 @@ struct ManifoldApp: App {
             if let screen {
                 ProScreenWindow(
                     screen: screen,
-                    cableHistoryRepository: appDelegate.publishedCableHistoryRepository,
                     cableEngine: appDelegate.publishedCableEngine,
                     powerEngine: appDelegate.publishedPowerTelemetryEngine,
                     onCableAppear: appDelegate.notifyCableSurfaceDidAppear,

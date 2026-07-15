@@ -84,7 +84,6 @@ final class WindowUITests: XCTestCase {
         XCTAssertTrue(tabButton(.diagnostics).exists)
         XCTAssertTrue(tabButton(.battery).exists)
         XCTAssertTrue(tabButton(.cables).exists)
-        XCTAssertTrue(tabButton(.savedCables).exists)
         XCTAssertTrue(tabButton(.power).exists)
         XCTAssertTrue(tabButton(.negotiation).exists)
         XCTAssertTrue(tabButton(.display).exists)
@@ -144,7 +143,6 @@ final class WindowUITests: XCTestCase {
 
     func test_proTabsRenderAndPowerDetaches() {
         let screens: [(TabKind, String)] = [
-            (.savedCables, "window.tab.savedCables.root"),
             (.power, "window.tab.power.root"),
             (.negotiation, "window.tab.negotiation.root"),
             (.display, "window.tab.display.root")
@@ -191,9 +189,8 @@ final class WindowUITests: XCTestCase {
         element(identifier: "window.tab.\(tab.rawValue)")
     }
 
-    /// SwiftUI's segmented Picker has changed accessibility element
-    /// types across macOS releases (button vs radio button). Query by
-    /// stable identifier without coupling tests to that private shape.
+    /// Query by stable identifier without coupling tests to the tab
+    /// control's accessibility element type.
     private func element(identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
     }
@@ -207,7 +204,6 @@ final class WindowUITests: XCTestCase {
         case diagnostics
         case battery
         case cables
-        case savedCables
         case power = "powerMonitorV2"
         case negotiation
         case display
