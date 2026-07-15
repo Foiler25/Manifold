@@ -54,7 +54,6 @@ struct NegotiationDiagnosticsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color.manifoldSurface)
         .accessibilityIdentifier("window.tab.negotiation.root")
         .onAppear(perform: onAppear)
         .onDisappear(perform: onDisappear)
@@ -182,8 +181,14 @@ struct NegotiationDiagnosticsView: View {
         }
     }
 
+    /// Top-anchored empty state inside a `ScrollView` so it sits just
+    /// below the tab picker like the Cables and Diagnostics tabs, rather
+    /// than floating in the vertical center of the pane.
     private func emptyState(title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
-        ContentUnavailableView(title, systemImage: "arrow.left.arrow.right", description: Text(detail))
+        ScrollView {
+            ContentUnavailableView(title, systemImage: "arrow.left.arrow.right", description: Text(detail))
+                .frame(maxWidth: .infinity)
+        }
     }
 
     private func format(_ value: Double) -> String {

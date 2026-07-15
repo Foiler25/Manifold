@@ -27,17 +27,21 @@ struct DisplayDiagnosticsView: View {
             if let snapshot = engine.snapshot {
                 let model = DisplayDiagnosticsModel(snapshot: snapshot)
                 if !model.hostSupported {
-                    ContentUnavailableView(
-                        "Display diagnostics aren't available on this Mac",
-                        systemImage: "display.trianglebadge.exclamationmark",
-                        description: Text("No USB-C DisplayPort transport data is exposed by this host.")
-                    )
+                    topAligned {
+                        ContentUnavailableView(
+                            "Display diagnostics aren't available on this Mac",
+                            systemImage: "display.trianglebadge.exclamationmark",
+                            description: Text("No USB-C DisplayPort transport data is exposed by this host.")
+                        )
+                    }
                 } else if model.entries.isEmpty {
-                    ContentUnavailableView(
-                        "No external display detected",
-                        systemImage: "display",
-                        description: Text("Connect a display through USB-C, DisplayPort, HDMI, USB4, or Thunderbolt to inspect its live link.")
-                    )
+                    topAligned {
+                        ContentUnavailableView(
+                            "No external display detected",
+                            systemImage: "display",
+                            description: Text("Connect a display through USB-C, DisplayPort, HDMI, USB4, or Thunderbolt to inspect its live link.")
+                        )
+                    }
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 16) {
@@ -51,9 +55,15 @@ struct DisplayDiagnosticsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color.manifoldSurface)
         .accessibilityIdentifier("window.tab.display.root")
         .toolbar { DetachToolbarButton(screen: .display) }
+    }
+
+    /// Top-anchors an empty/placeholder state inside a `ScrollView` so
+    /// it sits just below the tab picker like the Cables and Diagnostics
+    /// tabs, instead of floating in the vertical center of the pane.
+    private func topAligned<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView { content().frame(maxWidth: .infinity) }
     }
 
     private func displayCard(_ entry: DisplayDiagnosticsModel.Entry) -> some View {
