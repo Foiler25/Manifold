@@ -191,5 +191,45 @@ launch-at-login, and Sparkle update channel — all live-applied.
       ]]></description>
       <enclosure url="https://github.com/Foiler25/Manifold/releases/download/v0.2.0/Manifold-0.2.0.dmg" sparkle:edSignature="BY6IsQv1p5uUdhTr48lPNMtlpHwSWXVVO6nfpUecnzbreQWxgW5hD0yKpH+GTtDK8enf2a1YZ1shD/pGHg3MDw==" length="6212246" type="application/octet-stream" />
     </item>
+      <item>
+      <title>Manifold 0.3.0</title>
+      <pubDate>Wed, 15 Jul 2026 15:35:29 +0000</pubDate>
+      <sparkle:version>3</sparkle:version>
+      <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+<h3>Manifold 0.3.0</h3>
+<p>Manifold 0.3.0 makes the Cables area a much more capable tool for understanding USB-C, Thunderbolt, charging, and display connections as they happen.</p>
+<h4>New</h4>
+<ul>
+<li><strong>Live Power Monitor.</strong> See a live graph of system power input or battery discharge, plus voltage, current, and power readings. When your Mac exposes it, Manifold also shows per-port power use, cable-resistance estimates, and charger profiles. If live per-port metering is unavailable, it clearly labels the negotiated power ceiling instead.</li>
+<li><strong>USB Power Delivery contract inspection.</strong> Power Monitor and Negotiation Diagnostics now show the active PD contract alongside the power profiles a charger advertises, making it easier to see what your Mac requested and received.</li>
+<li><strong>Negotiation Diagnostics.</strong> Compare the capabilities of the Mac port, cable, and connected device with the link that was actually negotiated. Manifold highlights the limiting part of the connection and calls out disagreements between a cable's e-marker and its live Thunderbolt-controller reading.</li>
+<li><strong>Display Diagnostics.</strong> Inspect external-display mode, DisplayPort link rate and lane count, available bandwidth, Display Stream Compression (DSC), active adapters, and helpful Alt Mode setup hints.</li>
+<li><strong>More detail for every USB-C port.</strong> Cable cards can now show a live pin and plug-orientation diagram, liquid-detection warnings, richer USB/Thunderbolt transport information, and e-marker-based cable identification.</li>
+<li><strong>Remember your cables.</strong> Name a connected cable once and Manifold recognizes it when it is reconnected. Live status chips show whether a cable is performing as expected, still being verified, or needs attention.</li>
+<li><strong>Connection health warnings.</strong> Manifold can flag repeated unexpected connection drops and overcurrent protection trips during the current cable session, with practical next steps.</li>
+<li><strong>Detachable diagnostic windows.</strong> Open Power Monitor, Negotiation Diagnostics, or Display Diagnostics in a separate window from the screen toolbar or Window menu. Their positions and sizes are remembered across launches.</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li>Cable recognition and diagnostics now use the WhatCable v1.1.9 data and engine update, improving cable, vendor, power, transport, and display insight.</li>
+<li>Cable and diagnostic monitoring now responds primarily to hardware events, reducing unnecessary background activity while keeping live views current.</li>
+<li>The diagnostics interface has been streamlined around the live Cables, Power Monitor, Negotiation, and Display views.</li>
+</ul>
+<h4>Fixed</h4>
+<ul>
+<li>Improved the reliability of live cable, power, and port diagnostics across connect, disconnect, and screen-open/close cycles.</li>
+<li>Cable history recording is more resilient during connection changes and retains its sampling cadence correctly.</li>
+<li>If Manifold cannot save a named cable, it now explains the failure instead of silently losing the action.</li>
+</ul>
+<h4>Install &amp; update</h4>
+<ul>
+<li><strong>Already installed?</strong> Manifold auto-updates — pick <em>Check for Updates…</em> in Settings → Updates to grab it now, or wait for the next scheduled check.</li>
+<li><strong>First time?</strong> Download <code>Manifold-0.3.0.dmg</code>, open it, drag Manifold to Applications. First launch: right-click → Open, then System Settings → Privacy &amp; Security → Open Anyway.</li>
+</ul>
+      ]]></description>
+      <enclosure url="https://github.com/Foiler25/Manifold/releases/download/v0.3.0/Manifold-0.3.0.dmg" sparkle:edSignature="MCPGDR749EhRoWBWOaF76SPZ4IDtwneU2jdUKSRAlYen3BY93ZUlp/NMleYLLH7wATDjha4Rr84W2HMHuVyYBA==" length="7586873" type="application/octet-stream" />
+    </item>
   </channel>
 </rss>
